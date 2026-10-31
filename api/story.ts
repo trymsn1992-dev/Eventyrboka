@@ -71,10 +71,10 @@ Den underliggende moralen/metaforen skal være: "${options.metaphor}".
 
 Ønsket varighet for historien er: ${options.duration}.
 Tilpass lengden basert på varigheten:
-- "Kort (ca. 2,5 min)": ca 3-4 runder med valg før slutten.
-- "Middels (ca. 5 min)": ca 6-8 runder med valg.
-- "Lang (ca. 10 min)": ca 12-15 runder med valg.
-- "Ekstra lang (ca. 15 min)": ca 20+ runder med valg.
+- "Kort (ca. 2,5 min · 5 sider)": ca 3-4 runder med valg før slutten.
+- "Middels (ca. 5 min · 8 sider)": ca 6-8 runder med valg.
+- "Lang (ca. 10 min · 15 sider)": ca 12-15 runder med valg.
+- "Ekstra lang (ca. 15 min · 25 sider)": ca 20+ runder med valg.
 
 Skriv historien i segmenter. Hvert segment skal være ca. 3-5 setninger.
 På slutten av hvert segment (unntatt slutten), gi leseren 2 eller 3 valg for å drive handlingen videre.

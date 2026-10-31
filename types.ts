@@ -80,15 +80,15 @@ export const AGE_GROUPS = [
 ];
 
 export const DURATIONS = [
-  "Kort (ca. 2,5 min)",
-  "Middels (ca. 5 min)",
-  "Lang (ca. 10 min)",
-  "Ekstra lang (ca. 15 min)"
+  "Kort (ca. 2,5 min · 5 sider)",
+  "Middels (ca. 5 min · 8 sider)",
+  "Lang (ca. 10 min · 15 sider)",
+  "Ekstra lang (ca. 15 min · 25 sider)"
 ];
 
 export const DURATION_ESTIMATES: Record<string, number> = {
-  "Kort (ca. 2,5 min)": 5,
-  "Middels (ca. 5 min)": 8,
-  "Lang (ca. 10 min)": 15,
-  "Ekstra lang (ca. 15 min)": 25
+  "Kort (ca. 2,5 min · 5 sider)": 5,
+  "Middels (ca. 5 min · 8 sider)": 8,
+  "Lang (ca. 10 min · 15 sider)": 15,
+  "Ekstra lang (ca. 15 min · 25 sider)": 25
 };
