@@ -8,13 +8,22 @@ import {
   StoryOptions,
 } from "../../types";
 
+// Older client bundles and saved stories reference these legacy duration
+// labels. Accept them so a stale cache or an old saved story still works.
+const LEGACY_DURATIONS = [
+  "Kort (ca. 2,5 min)",
+  "Middels (ca. 5 min)",
+  "Lang (ca. 10 min)",
+  "Ekstra lang (ca. 15 min)",
+];
+
 const ALLOWED = {
   character: new Set(CHARACTERS),
   metaphor: new Set(METAPHORS),
   theme: new Set(THEMES),
   genre: new Set(GENRES),
   ageGroup: new Set(AGE_GROUPS),
-  duration: new Set(DURATIONS),
+  duration: new Set([...DURATIONS, ...LEGACY_DURATIONS]),
 };
 
 export function validateOptions(options: unknown): StoryOptions | null {
