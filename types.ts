@@ -76,8 +76,7 @@ export const AGE_GROUPS = [
   "2-3 år",
   "3-4 år",
   "4-5 år",
-  "6-8 år",
-  "30+"
+  "6-8 år"
 ];
 
 export const DURATIONS = [

@@ -68,10 +68,11 @@ const App: React.FC = () => {
   };
 
   const handleChoice = async (choice: Choice) => {
+    if (!options) return;
     setIsLoading(true);
     setError(null);
     try {
-      const nextSegment = await continueStory(choice.nextPlotPoint);
+      const nextSegment = await continueStory(options, segments, choice.nextPlotPoint);
       setSegments(prev => [...prev, nextSegment]);
     } catch (err) {
       setError("Oisann! Noe gikk galt når vi skulle bla om. Prøv å klikke igjen.");
