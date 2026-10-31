@@ -153,7 +153,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-grow flex items-center justify-center p-4 md:p-8 relative">
+      <main className="flex-grow flex items-start justify-center p-4 md:p-8 relative">
         {error && (
            <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center shadow-lg">
              <AlertCircle className="w-5 h-5 mr-2" />

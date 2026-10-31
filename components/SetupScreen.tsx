@@ -420,7 +420,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen w-full flex flex-col items-center pt-4 pb-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-8 bg-white p-8 rounded-3xl shadow-2xl border-4 border-indigo-100 mb-12">
         <div className="text-center">
           <div className="mx-auto h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
