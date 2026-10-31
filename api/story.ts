@@ -164,7 +164,7 @@ export default async function handler(
   } catch (error) {
     console.error("Story error:", error);
     const msg = error instanceof Error ? error.message : String(error);
-    if (/UNAVAILABLE|high demand|503/.test(msg)) {
+    if (/UNAVAILABLE|high demand|503|timed out|timeout/i.test(msg)) {
       return res.status(503).json({
         error:
           "Historiefortelleren er veldig travel akkurat nå. Vent et minutt og prøv igjen.",
