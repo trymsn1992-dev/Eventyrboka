@@ -3,6 +3,7 @@ import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
+import { withRetry } from "./_lib/retry.js";
 import { StoryOptions } from "../types.js";
 
 export const maxDuration = 60;
@@ -142,15 +143,17 @@ export default async function handler(
       }". Fortsett historien basert på dette valget. Hvis historien føles ferdig basert på valgt varighet, eller metaforen er tydelig formidlet, kan du avslutte historien nå ved å sette isEnding til true. Husk 'illustrationPrompt' på engelsk.`;
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-      },
-    });
+    const response = await withRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+        },
+      })
+    );
 
     if (!response.text) {
       throw new Error("Tomt svar fra Gemini");
@@ -160,6 +163,13 @@ export default async function handler(
     return res.status(200).json(segment);
   } catch (error) {
     console.error("Story error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    if (/UNAVAILABLE|high demand|503/.test(msg)) {
+      return res.status(503).json({
+        error:
+          "Historiefortelleren er veldig travel akkurat nå. Vent et minutt og prøv igjen.",
+      });
+    }
     return res
       .status(500)
       .json({ error: "Kunne ikke generere historien. Prøv igjen." });

@@ -61,7 +61,8 @@ const App: React.FC = () => {
       setSegments([firstSegment]);
       setView('reading');
     } catch (err) {
-      setError("Beklager, vi klarte ikke å starte historien. Prøv igjen, eller sjekk internettforbindelsen.");
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +76,8 @@ const App: React.FC = () => {
       const nextSegment = await continueStory(options, segments, choice.nextPlotPoint);
       setSegments(prev => [...prev, nextSegment]);
     } catch (err) {
-      setError("Oisann! Noe gikk galt når vi skulle bla om. Prøv å klikke igjen.");
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg || "Oisann! Noe gikk galt når vi skulle bla om. Prøv å klikke igjen.");
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ai, ART_STYLE, CHARACTER_DESCRIPTIONS } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { withRetry } from "./_lib/retry.js";
 
 export const maxDuration = 60;
 
@@ -47,15 +48,17 @@ export default async function handler(
       Ensure the character matches the description exactly. Maintain the watercolor art style. Keep the scene safe and age-appropriate for young children.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents: { parts: [{ text: fullPrompt }] },
-      config: {
-        imageConfig: {
-          aspectRatio: "3:4",
+    const response = await withRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: { parts: [{ text: fullPrompt }] },
+        config: {
+          imageConfig: {
+            aspectRatio: "3:4",
+          },
         },
-      },
-    });
+      })
+    );
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
