@@ -145,7 +145,7 @@ export default async function handler(
 
     const response = await withRetry(() =>
       ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-3.8-flash",
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
         config: {
           systemInstruction,
