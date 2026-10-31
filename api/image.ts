@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { ai, ART_STYLE, CHARACTER_DESCRIPTIONS } from "./_lib/gemini";
-import { getClientIp, rateLimit } from "./_lib/rate-limit";
+import { ai, ART_STYLE, CHARACTER_DESCRIPTIONS } from "./_lib/gemini.js";
+import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 
 export const maxDuration = 60;
 

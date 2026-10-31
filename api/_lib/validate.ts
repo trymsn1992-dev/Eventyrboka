@@ -6,7 +6,7 @@ import {
   AGE_GROUPS,
   DURATIONS,
   StoryOptions,
-} from "../../types";
+} from "../../types.js";
 
 // Older client bundles and saved stories reference these legacy duration
 // labels. Accept them so a stale cache or an old saved story still works.

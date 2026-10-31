@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Modality } from "@google/genai";
-import { ai } from "./_lib/gemini";
-import { getClientIp, rateLimit } from "./_lib/rate-limit";
+import { ai } from "./_lib/gemini.js";
+import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 
 export const maxDuration = 60;
 
