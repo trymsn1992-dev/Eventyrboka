@@ -375,30 +375,57 @@ export const BookPage: React.FC<BookPageProps> = ({
                </button>
             </div>
 
-            <div className="prose prose-lg lg:prose-xl prose-indigo max-w-none mb-6 lg:mb-10">
+            <div className="mb-6 lg:mb-10">
               <style>{`
-                @keyframes chunkIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-                .chunk-in { animation: chunkIn 0.45s ease-out; }
+                @keyframes chunkSwap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
               `}</style>
-              <div className="font-serif text-gray-800 leading-relaxed space-y-3 lg:space-y-4 text-lg lg:text-xl">
-                {textChunks.slice(0, chunksRevealed).map((chunk, idx) => (
-                  <p
-                    key={idx}
-                    className={`${idx === chunksRevealed - 1 ? 'chunk-in' : ''} ${idx === 0 ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2' : ''}`}
-                  >
-                    {chunk}
-                  </p>
-                ))}
-              </div>
-              {!allChunksShown && (
-                <button
-                  onClick={() => setChunksRevealed(c => Math.min(c + 1, textChunks.length))}
-                  className="mt-4 w-full flex items-center justify-center gap-2 py-3 lg:py-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-serif text-base lg:text-lg transition-colors active:scale-[0.98]"
-                  aria-label="Vis mer tekst"
+              {/* Fixed-height text frame so the image never shifts when the
+                  current sentence changes. Tap anywhere to advance. */}
+              <button
+                type="button"
+                onClick={() =>
+                  !allChunksShown &&
+                  setChunksRevealed(c => Math.min(c + 1, textChunks.length))
+                }
+                disabled={allChunksShown}
+                aria-label={allChunksShown ? 'Siste setning' : 'Vis neste setning'}
+                className={`relative w-full text-left rounded-2xl px-5 py-6 lg:px-7 lg:py-8 min-h-[180px] lg:min-h-[220px] flex items-center justify-center border transition-colors ${
+                  allChunksShown
+                    ? 'border-transparent cursor-default'
+                    : 'border-amber-100 bg-amber-50/40 hover:bg-amber-50/80 active:bg-amber-100/80 cursor-pointer'
+                }`}
+              >
+                <p
+                  key={chunksRevealed}
+                  style={{ animation: 'chunkSwap 0.4s ease-out' }}
+                  className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl text-center ${
+                    chunksRevealed === 1
+                      ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                      : ''
+                  }`}
                 >
-                  <span>Fortsett</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
+                  {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
+                </p>
+                {!allChunksShown && (
+                  <span className="absolute bottom-3 right-4 flex items-center gap-1 text-xs lg:text-sm text-amber-700/80 font-serif italic">
+                    Trykk <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                )}
+              </button>
+              {/* Progress dots: shows how far through the page we are */}
+              {textChunks.length > 1 && (
+                <div className="flex items-center justify-center gap-1.5 mt-3">
+                  {textChunks.map((_, idx) => (
+                    <span
+                      key={idx}
+                      className={`block h-1.5 rounded-full transition-all duration-300 ${
+                        idx < chunksRevealed
+                          ? 'w-6 bg-indigo-400'
+                          : 'w-3 bg-indigo-100'
+                      }`}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
