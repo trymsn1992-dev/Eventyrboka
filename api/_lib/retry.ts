@@ -14,9 +14,13 @@ function isTransient(error: unknown): boolean {
   if (statusText === "UNAVAILABLE" || statusText === "RESOURCE_EXHAUSTED") return true;
   const msg = typeof e.message === "string" ? e.message : "";
   if (/UNAVAILABLE|high demand|try again later|timeout|timed out/i.test(msg)) return true;
-  // Empty-response errors from our own code — treat as transient so the model
-  // fallback chain can try the next model (safety filter, routing weirdness).
+  // Empty-response errors from our own code — safety filter, routing weirdness.
   if (/tomt svar|empty response|no text|blocked/i.test(msg)) return true;
+  // Model-availability errors: 404 "no longer available". Not retry-able on
+  // the same model, but withModelFallback should try the next model instead
+  // of surfacing a 500 to the user.
+  if (code === 404 || statusText === "NOT_FOUND") return true;
+  if (/no longer available|model not found|unknown model/i.test(msg)) return true;
   return false;
 }
 
