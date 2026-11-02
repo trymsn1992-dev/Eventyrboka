@@ -256,13 +256,6 @@ export const BookPage: React.FC<BookPageProps> = ({
                     className="relative w-full h-full object-contain"
                   />
                 )}
-
-                {/* Overlay caption */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white p-4 pt-8 opacity-0 hover:opacity-100 transition-opacity duration-300">
-                    <p className="text-xs md:text-sm font-medium text-center leading-snug">
-                      {segment.illustrationPrompt}
-                    </p>
-                </div>
              </div>
              <div className="mt-2 lg:mt-4 text-indigo-300 text-xs lg:text-sm font-serif italic text-center">
                 Side {pageNumber}
