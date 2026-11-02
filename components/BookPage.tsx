@@ -40,16 +40,18 @@ interface BookPageProps {
   onChoice: (choice: Choice) => void;
   onRestart: () => void;
   onSave: () => Promise<boolean>;
+  onWrapUp?: () => void;
   isGenerating: boolean;
   pageNumber: number;
   totalPages?: number; // Total estimated pages
 }
 
-export const BookPage: React.FC<BookPageProps> = ({ 
-  segment, 
-  onChoice, 
-  onRestart, 
+export const BookPage: React.FC<BookPageProps> = ({
+  segment,
+  onChoice,
+  onRestart,
   onSave,
+  onWrapUp,
   isGenerating,
   pageNumber,
   totalPages
@@ -471,6 +473,17 @@ export const BookPage: React.FC<BookPageProps> = ({
                       </div>
                     </button>
                   ))}
+                  {onWrapUp && (
+                    <div className="pt-4 flex justify-center">
+                      <button
+                        onClick={onWrapUp}
+                        className="text-xs lg:text-sm text-gray-400 hover:text-indigo-600 underline decoration-dotted underline-offset-4 transition-colors"
+                        title="For voksne: hopp rett til slutten på neste side"
+                      >
+                        Avslutt historien på neste side
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

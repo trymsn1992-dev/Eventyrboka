@@ -11,10 +11,10 @@ import {
 // Older client bundles and saved stories reference these legacy duration
 // labels. Accept them so a stale cache or an old saved story still works.
 const LEGACY_DURATIONS = [
-  "Kort (ca. 2,5 min)",
-  "Middels (ca. 5 min)",
-  "Lang (ca. 10 min)",
-  "Ekstra lang (ca. 15 min)",
+  "Kort (ca. 2,5 min · 5 sider)",
+  "Middels (ca. 5 min · 8 sider)",
+  "Lang (ca. 10 min · 15 sider)",
+  "Ekstra lang (ca. 15 min · 25 sider)",
 ];
 
 const ALLOWED = {

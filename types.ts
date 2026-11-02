@@ -109,10 +109,10 @@ export function normalizeAgeGroup(input: string | undefined): string {
 }
 
 export const DURATIONS = [
-  "Kort (ca. 2,5 min · 5 sider)",
-  "Middels (ca. 5 min · 8 sider)",
-  "Lang (ca. 10 min · 15 sider)",
-  "Ekstra lang (ca. 15 min · 25 sider)"
+  "Kort (ca. 2,5 min)",
+  "Middels (ca. 5 min)",
+  "Lang (ca. 10 min)",
+  "Ekstra lang (ca. 15 min)"
 ];
 
 // Every story now has a fixed number of choice pages + one resolution page.
@@ -129,7 +129,31 @@ export interface DurationDensity {
   pacing: string;
 }
 
+// Density entries exist for the current DURATIONS and for the legacy
+// "· N sider" labels still present in older saved stories. All variants map to
+// the same density — the length of the sider-labels was descriptive only.
 export const DURATION_DENSITY: Record<string, DurationDensity> = {
+  "Kort (ca. 2,5 min)": {
+    sentences: "3-5",
+    miniScenes: 0,
+    pacing: "stramt og raskt — rett på handlingen, ingen mini-scener før valget",
+  },
+  "Middels (ca. 5 min)": {
+    sentences: "6-10",
+    miniScenes: 1,
+    pacing: "rolig — én kort mini-scene (observasjon, dialog eller sanselig øyeblikk) før valget",
+  },
+  "Lang (ca. 10 min)": {
+    sentences: "12-18",
+    miniScenes: 2,
+    pacing: "fyldig — to mini-scener som bygger stemning og karakter før valget",
+  },
+  "Ekstra lang (ca. 15 min)": {
+    sentences: "18-25",
+    miniScenes: 3,
+    pacing: "rik og detaljert — to-tre mini-scener, gjerne med en bikarakter-møte, før valget",
+  },
+  // Legacy aliases from older saved stories.
   "Kort (ca. 2,5 min · 5 sider)": {
     sentences: "3-5",
     miniScenes: 0,
@@ -152,9 +176,13 @@ export const DURATION_DENSITY: Record<string, DurationDensity> = {
   },
 };
 
-// Kept for backward compatibility with any code or saved story that references it.
-// Represents the ESTIMATED PAGE COUNT (now fixed), not minutes.
+// Kept for backward compatibility with code that references it.
+// Every duration maps to the same fixed page count now.
 export const DURATION_ESTIMATES: Record<string, number> = {
+  "Kort (ca. 2,5 min)": TOTAL_PAGES,
+  "Middels (ca. 5 min)": TOTAL_PAGES,
+  "Lang (ca. 10 min)": TOTAL_PAGES,
+  "Ekstra lang (ca. 15 min)": TOTAL_PAGES,
   "Kort (ca. 2,5 min · 5 sider)": TOTAL_PAGES,
   "Middels (ca. 5 min · 8 sider)": TOTAL_PAGES,
   "Lang (ca. 10 min · 15 sider)": TOTAL_PAGES,

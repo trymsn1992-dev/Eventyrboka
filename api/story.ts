@@ -154,6 +154,9 @@ interface StoryRequestBody {
   previousSegments?: Array<{ text: string }>;
   choiceSummary?: string;
   plan?: unknown;
+  // Parent escape hatch: when true, treat the next segment as the resolution
+  // regardless of how far through the story we are.
+  forceEnding?: boolean;
 }
 
 function validatePlan(input: unknown): StoryPlan | undefined {
@@ -256,11 +259,15 @@ export default async function handler(
 
     const segmentIndex = previousSegments.length; // 0 for the opener
     const pageNumber = segmentIndex + 1;
-    const isFinalPage = pageNumber >= TOTAL_PAGES;
+    const forceEnding = body.forceEnding === true;
+    const isFinalPage = forceEnding || pageNumber >= TOTAL_PAGES;
 
     // Direct 1:1 beat mapping. Page N hits beat N (if the plan has one).
-    const currentBeat = plan?.beats?.[segmentIndex];
-    const nextBeat = plan?.beats?.[segmentIndex + 1];
+    // When forceEnding is set we jump straight to the final beat (the resolution).
+    const currentBeat = forceEnding
+      ? plan?.beats?.[plan.beats.length - 1]
+      : plan?.beats?.[segmentIndex];
+    const nextBeat = forceEnding ? undefined : plan?.beats?.[segmentIndex + 1];
     const beatHint = currentBeat
       ? `\n\nDU SKRIVER SIDE ${pageNumber} AV ${TOTAL_PAGES}.
 Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
@@ -289,6 +296,11 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
     let userPrompt: string;
     if (previousSegments.length === 0) {
       userPrompt = `Start historien. Åpne med en konkret, sanselig scene — ikke en oppsummering. Introduser karakteren gjennom en handling som viser stemmen deres.${beatHint}`;
+    } else if (forceEnding) {
+      const storySoFar = previousSegments
+        .map((s, i) => `Side ${i + 1}: ${s.text}`)
+        .join("\n\n");
+      userPrompt = `Historien så langt:\n\n${storySoFar}\n\nEn forelder har bedt om at historien avsluttes nå på neste side. Rund av varmt og raskt: knytt sløyfen tilbake til åpningen, la metaforen "${options.metaphor}" komme tydelig frem, og gi en koselig slutt. Sett isEnding=true og la 'choices' være tom eller utelat den.${beatHint}\n\nHusk 'illustrationPrompt' på engelsk.`;
     } else {
       const storySoFar = previousSegments
         .map((s, i) => `Side ${i + 1}: ${s.text}`)

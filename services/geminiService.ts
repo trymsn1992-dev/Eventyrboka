@@ -56,7 +56,8 @@ export const continueStoryText = async (
   options: StoryOptions,
   previousSegments: StorySegment[],
   choiceSummary: string,
-  plan?: StoryPlan
+  plan?: StoryPlan,
+  forceEnding?: boolean
 ): Promise<StorySegment> => {
   const trimmed = previousSegments.map((s) => ({ text: s.text }));
   return postJson<StorySegment>("/api/story", {
@@ -64,6 +65,7 @@ export const continueStoryText = async (
     previousSegments: trimmed,
     choiceSummary,
     plan,
+    forceEnding,
   });
 };
 

@@ -150,6 +150,36 @@ const App: React.FC = () => {
     }
   };
 
+  // Parent escape hatch: next page becomes the resolution regardless of plan position.
+  const handleWrapUp = async () => {
+    if (!options) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const nextSegment = await continueStoryText(
+        options,
+        segments,
+        "avslutt historien varmt nå",
+        plan ?? undefined,
+        true,
+      );
+      const insertIndex = segments.length;
+      setSegments(prev => [...prev, nextSegment]);
+      setIsLoading(false);
+      void attachIllustrationAt(
+        insertIndex,
+        nextSegment,
+        options,
+        plan ?? undefined,
+        Promise.resolve(plan?.characterSheetBase64)
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg || "Klarte ikke å avslutte historien akkurat nå. Prøv igjen.");
+      setIsLoading(false);
+    }
+  };
+
   const handleRestart = () => {
     setSegments([]);
     setOptions(null);
@@ -264,11 +294,12 @@ const App: React.FC = () => {
           />
         ) : (
           currentSegment && (
-            <BookPage 
-              segment={currentSegment} 
-              onChoice={handleChoice} 
+            <BookPage
+              segment={currentSegment}
+              onChoice={handleChoice}
               onRestart={handleRestart}
               onSave={handleSaveStory}
+              onWrapUp={handleWrapUp}
               isGenerating={isLoading}
               pageNumber={segments.length}
               totalPages={estimatedPages}
