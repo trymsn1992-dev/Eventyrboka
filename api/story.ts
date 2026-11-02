@@ -29,7 +29,8 @@ const RESPONSE_SCHEMA = {
         properties: {
           text: {
             type: Type.STRING,
-            description: "The text displayed on the button for the user to choose.",
+            description:
+              "VERY SHORT button label in Norwegian: 2-5 words, maximum ~30 characters. A quick action phrase like 'Innrømmer det ærlig' or 'Henter limtuben'. NEVER a full sentence or plot summary — the summary goes in nextPlotPoint.",
           },
           nextPlotPoint: {
             type: Type.STRING,
@@ -137,6 +138,12 @@ VALG-KVALITET:
 - Ingen "feil" valg. Begge er trygge og moralsk gyldige.
 - Begge uttrykker ulike tilnærminger eller verdier — ikke bare "venstre/høyre".
 - På beatet merket ⭐ (metafor-test) MÅ valgene være en konkret, levbar versjon av metaforen.
+
+VALG-TEKST (viktig — knappene skal være lette å lese for barn):
+- "text"-feltet skal være KORT: 2-5 ord, maks ~30 tegn. En rask handling: "Innrømmer det ærlig", "Henter limtuben", "Deler kaken".
+- IKKE en hel setning. IKKE en oppsummering. Den detaljerte oppsummeringen av hva som skjer legges KUN i nextPlotPoint.
+- Dårlig: "Nils peker ærlig med poten opp mot fiskekakene for å innrømme fristelsen."
+- Bra:   "Innrømmer det ærlig"
 
 SPRÅK:
 Bruk konkrete sanselige detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.

@@ -2,8 +2,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Choice, StorySegment } from '../types';
 import { Button } from './Button';
-import { ArrowRight, RefreshCw, CheckCircle, Image as ImageIcon, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
+import { ArrowRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
+import { IllustrationLoader } from './IllustrationLoader';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -241,17 +242,19 @@ export const BookPage: React.FC<BookPageProps> = ({
         <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 border-dashed lg:page-curl bg-indigo-50/30 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 lg:rounded-lg lg:p-6 lg:bg-white lg:shadow-inner">
              <div className={`relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[250px] ${isGenerating ? 'max-h-[60vh]' : 'max-h-[40vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
-                {hasImage ? (
+                {/* The loader stays mounted while the image loads so the
+                    animation keeps running; it fades out as the image fades in. */}
+                <div
+                  className={`absolute inset-0 transition-opacity duration-700 ease-out ${hasImage ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                >
+                  <IllustrationLoader />
+                </div>
+                {hasImage && (
                   <img
                     src={segment.imageBase64}
                     alt={segment.illustrationPrompt}
-                    className="w-full h-full object-contain"
+                    className="relative w-full h-full object-contain"
                   />
-                ) : (
-                  <div className="text-gray-300 flex flex-col items-center py-12">
-                    <ImageIcon className="w-16 h-16 mb-2" />
-                    <span className="text-sm">Illustrasjon mangler</span>
-                  </div>
                 )}
 
                 {/* Overlay caption */}
