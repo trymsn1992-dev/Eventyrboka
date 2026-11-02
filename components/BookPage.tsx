@@ -363,28 +363,6 @@ export const BookPage: React.FC<BookPageProps> = ({
           {(!isGenerating || chosenChoice) && (
           <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto scroll-smooth" ref={textContainerRef}>
             
-            {/* Sticky Audio Button Header */}
-            <div className="sticky top-0 z-20 flex justify-end mb-4 bg-[#fdfbf7]/95 backdrop-blur-sm py-2 -mt-2 border-b border-indigo-50 lg:border-none lg:bg-transparent lg:backdrop-blur-none">
-               <button 
-                 onClick={handleReadAloud}
-                 disabled={isLoadingAudio || isGenerating}
-                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm lg:shadow-none
-                   ${isPlaying 
-                     ? 'bg-red-100 text-red-600 hover:bg-red-200' 
-                     : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                   } ${isLoadingAudio ? 'opacity-70 cursor-wait' : ''}`}
-               >
-                 {isLoadingAudio ? (
-                   <Loader2 className="w-4 h-4 animate-spin" />
-                 ) : isPlaying ? (
-                   <StopCircle className="w-4 h-4" />
-                 ) : (
-                   <Volume2 className="w-4 h-4" />
-                 )}
-                 {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : 'Les høyt'}
-               </button>
-            </div>
-
             <div className="mb-6 lg:mb-10">
               <style>{`
                 @keyframes chunkSwap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -446,6 +424,28 @@ export const BookPage: React.FC<BookPageProps> = ({
                   ))}
                 </div>
               )}
+              {/* Les høyt sits under the text frame now so it does not compete
+                  with the illustration for attention at the top. */}
+              <div className="mt-5 flex justify-center">
+                <button
+                  onClick={handleReadAloud}
+                  disabled={isLoadingAudio || isGenerating}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm ${
+                    isPlaying
+                      ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                      : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                  } ${isLoadingAudio ? 'opacity-70 cursor-wait' : ''}`}
+                >
+                  {isLoadingAudio ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isPlaying ? (
+                    <StopCircle className="w-4 h-4" />
+                  ) : (
+                    <Volume2 className="w-4 h-4" />
+                  )}
+                  {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : 'Les høyt'}
+                </button>
+              </div>
             </div>
 
             <div className="mt-auto space-y-6 pb-8">

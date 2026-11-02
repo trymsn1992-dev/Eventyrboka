@@ -33,6 +33,30 @@ const App: React.FC = () => {
   // this so segment 2+ get the plan even if the user clicks before it lands.
   const pendingPlanRef = useRef<Promise<StoryPlan | undefined> | null>(null);
 
+  // Hide feedback banner + header on scroll down, reveal on scroll up.
+  // Keeps the illustration prominent while reading, without permanently
+  // losing access to the logo (restart) or feedback link.
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+  useEffect(() => {
+    const SHOW_THRESHOLD = 50;
+    const DELTA = 6;
+    const handleScroll = () => {
+      const y = window.scrollY;
+      const last = lastScrollYRef.current;
+      if (y < SHOW_THRESHOLD) {
+        setChromeVisible(true);
+      } else if (y > last + DELTA) {
+        setChromeVisible(false);
+      } else if (y < last - DELTA) {
+        setChromeVisible(true);
+      }
+      lastScrollYRef.current = y;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // Load stories from IndexedDB on mount
   useEffect(() => {
     const loadStories = async () => {
@@ -264,30 +288,36 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#e8e6e1] flex flex-col">
-      <a
-        href={FEEDBACK_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors z-30"
+      <div
+        className={`sticky top-0 z-30 transition-transform duration-300 ease-out ${
+          chromeVisible ? 'translate-y-0' : '-translate-y-full'
+        }`}
       >
-        <MessageSquare className="w-4 h-4 shrink-0" />
-        <span className="text-center">
-          Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
-        </span>
-      </a>
-      <header className="bg-white shadow-sm py-4 px-6 z-20">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
-            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
-          </button>
-          {view === 'reading' && options && (
-            <div className="hidden md:flex text-sm text-gray-500 gap-4">
-              <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
-              <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
-            </div>
-          )}
-        </div>
-      </header>
+        <a
+          href={FEEDBACK_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
+        >
+          <MessageSquare className="w-4 h-4 shrink-0" />
+          <span className="text-center">
+            Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
+          </span>
+        </a>
+        <header className="bg-white shadow-sm py-4 px-6">
+          <div className="max-w-7xl mx-auto flex justify-between items-center">
+            <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
+              <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
+            </button>
+            {view === 'reading' && options && (
+              <div className="hidden md:flex text-sm text-gray-500 gap-4">
+                <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
+                <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
+              </div>
+            )}
+          </div>
+        </header>
+      </div>
 
       <main className="flex-grow flex items-start justify-center p-4 md:p-8 relative">
         {error && (
