@@ -65,17 +65,27 @@ export const BookPage: React.FC<BookPageProps> = ({
   // bridge text and a "Neste side" button in place of the choice buttons.
   const [chosenChoice, setChosenChoice] = useState<Choice | null>(null);
 
-  // Chunked text reveal: segment.text is split into bite-sized chunks (one
-  // sentence each). The reader taps "Fortsett" to reveal the next chunk.
-  // Keeps text small so the illustration stays prominent on mobile.
+  // Chunked text reveal: whichever text is currently active (the segment or,
+  // after a choice is picked, that choice's bridge) is split into one-sentence
+  // chunks and shown one at a time in a fixed-height frame. Keeps text small
+  // so the illustration stays prominent on mobile and the layout never shifts.
+  const activeSource = chosenChoice?.bridge?.trim()
+    ? chosenChoice.bridge
+    : segment.text;
+  const isReadingBridge = Boolean(chosenChoice?.bridge?.trim());
   const textChunks = React.useMemo(() => {
-    return segment.text
+    return activeSource
       .split('\n')
       .flatMap(p => p.split(/(?<=[.!?…])\s+(?=[A-ZÆØÅ«"'])/))
       .map(s => s.trim())
       .filter(Boolean);
-  }, [segment.text]);
+  }, [activeSource]);
   const [chunksRevealed, setChunksRevealed] = useState(1);
+  // Whenever the active source switches (new page OR choice just picked)
+  // restart at the first sentence.
+  useEffect(() => {
+    setChunksRevealed(1);
+  }, [activeSource]);
   const allChunksShown = chunksRevealed >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
   const [isSaved, setIsSaved] = useState(false);
@@ -395,17 +405,26 @@ export const BookPage: React.FC<BookPageProps> = ({
                     : 'border-amber-100 bg-amber-50/40 hover:bg-amber-50/80 active:bg-amber-100/80 cursor-pointer'
                 }`}
               >
-                <p
-                  key={chunksRevealed}
+                <div
+                  key={`${isReadingBridge ? 'b' : 's'}-${chunksRevealed}`}
                   style={{ animation: 'chunkSwap 0.4s ease-out' }}
-                  className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl text-center ${
-                    chunksRevealed === 1
-                      ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
-                      : ''
-                  }`}
+                  className="w-full"
                 >
-                  {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
-                </p>
+                  {isReadingBridge && chunksRevealed === 1 && (
+                    <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
+                      Du valgte: {chosenChoice?.text}
+                    </p>
+                  )}
+                  <p
+                    className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl text-center ${
+                      chunksRevealed === 1 && !isReadingBridge
+                        ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                        : ''
+                    }`}
+                  >
+                    {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
+                  </p>
+                </div>
                 {!allChunksShown && (
                   <span className="absolute bottom-3 right-4 flex items-center gap-1 text-xs lg:text-sm text-amber-700/80 font-serif italic">
                     Trykk <ArrowRight className="w-3.5 h-3.5" />
@@ -519,24 +538,14 @@ export const BookPage: React.FC<BookPageProps> = ({
                 </div>
               ) : !allChunksShown ? null : (
                 chosenChoice ? (
-                  // Choice has been picked: show the bridge text + "Neste side"
-                  // button. The next segment generates in the background and
-                  // the button activates when it lands.
+                  // Choice has been picked. The bridge text is now shown
+                  // chunk-by-chunk inside the main text frame (above).
+                  // Here we only render the Neste side button.
                   <div className="space-y-5 animate-[fadeIn_0.4s_ease-out]">
                     <style>{`
                       @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
                       @keyframes nextReady { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5); } 70% { box-shadow: 0 0 0 12px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); } }
                     `}</style>
-                    {chosenChoice.bridge && (
-                      <div className="bg-indigo-50/60 border-l-4 border-indigo-300 rounded-r-xl p-4 lg:p-5">
-                        <p className="text-xs lg:text-sm uppercase tracking-widest text-indigo-400 font-bold mb-2">
-                          Du valgte: {chosenChoice.text}
-                        </p>
-                        <p className="font-serif text-base lg:text-lg text-gray-800 leading-relaxed">
-                          {chosenChoice.bridge}
-                        </p>
-                      </div>
-                    )}
                     <button
                       onClick={() => isNextPageReady && onNextPage?.()}
                       disabled={!isNextPageReady}
