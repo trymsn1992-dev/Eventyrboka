@@ -5,7 +5,9 @@ import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, DURATIONS, DURATION_ESTIMATES } from './types';
 import { startNewStory, continueStory } from './services/geminiService';
 import { saveStoryToDB, getAllStoriesFromDB, deleteStoryFromDB } from './services/storage';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, MessageSquare } from 'lucide-react';
+
+const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -141,11 +143,22 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#e8e6e1] flex flex-col">
+      <a
+        href={FEEDBACK_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors z-30"
+      >
+        <MessageSquare className="w-4 h-4 shrink-0" />
+        <span className="text-center">
+          Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
+        </span>
+      </a>
       <header className="bg-white shadow-sm py-4 px-6 z-20">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-indigo-800 flex items-center gap-2 cursor-pointer" onClick={handleRestart}>
-            <span className="text-3xl">📚</span> Eventyrboka
-          </h1>
+          <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
+            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
+          </button>
           {view === 'reading' && options && (
             <div className="hidden md:flex text-sm text-gray-500 gap-4">
               <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
