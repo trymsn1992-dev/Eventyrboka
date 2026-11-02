@@ -13,6 +13,10 @@ export interface StoryOptions {
 export interface Choice {
   text: string;
   nextPlotPoint: string;
+  // 1-2 sentence continuation shown on the CURRENT page right after this
+  // choice is picked. Keeps the reader occupied while the next page generates,
+  // and makes the chosen path feel like a real consequence instead of a jump.
+  bridge?: string;
 }
 
 export interface StorySegment {

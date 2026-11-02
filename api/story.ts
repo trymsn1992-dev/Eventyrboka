@@ -57,8 +57,13 @@ const RESPONSE_SCHEMA = {
             description:
               "Short summary of HOW this choice colors the arrival at the next beat (never 'what new destination this choice leads to').",
           },
+          bridge: {
+            type: Type.STRING,
+            description:
+              "1-2 setninger på NORSK som vises på SAMME side rett etter at brukeren har valgt dette alternativet. Beskriv den umiddelbare konsekvensen av valget — hva karakteren gjør eller føler akkurat nå — slik at barnet har noe å lese mens neste side lages. Må være konkret og sanselig, ikke oppsummering. Må lede naturlig videre inn mot neste beat.",
+          },
         },
-        required: ["text", "nextPlotPoint"],
+        required: ["text", "nextPlotPoint", "bridge"],
       },
       description:
         "Exactly 2 choices for the user. BOTH must lead to the same next beat but with different texture. Omit entirely on the final (ending) page.",
@@ -164,6 +169,13 @@ VALG-TEKST (viktig — knappene skal være lette å lese for barn):
 - IKKE en hel setning. IKKE en oppsummering. Den detaljerte oppsummeringen av hva som skjer legges KUN i nextPlotPoint.
 - Dårlig: "Nils peker ærlig med poten opp mot fiskekakene for å innrømme fristelsen."
 - Bra:   "Innrømmer det ærlig"
+
+BRIDGE-TEKST (viktig — dette er det barnet leser mens neste side genereres):
+- "bridge"-feltet er 1-2 setninger på norsk som vises på DENNE siden rett etter at valget er klikket.
+- Beskriv den umiddelbare konsekvensen av valget: hva karakteren gjør, føler eller ser akkurat nå.
+- Konkret og sanselig, ikke abstrakt oppsummering. Driver handlingen fremover.
+- Må lede naturlig mot neste beat — ikke lukke av scenen, men åpne mot det som kommer.
+- Eksempel: valg "Innrømmer det ærlig" → bridge: "Nils senket halen og mjauet lavt. 'Jeg smakte bare litt...' Bestemor Astrid satte seg ned og klappet puten ved siden av seg."
 
 SPRÅK:
 Bruk konkrete sanselige detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.

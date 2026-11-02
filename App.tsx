@@ -24,6 +24,10 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
+  // Which segment the reader is currently viewing. We only advance this when
+  // they click "Neste side"; the segments array can grow underneath while
+  // they read the bridge on the current page.
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   // Pending plan while it generates in the background. handleChoice awaits
   // this so segment 2+ get the plan even if the user clicks before it lands.
@@ -81,6 +85,7 @@ const App: React.FC = () => {
   const handleStartStory = async (selectedOptions: StoryOptions) => {
     setOptions(selectedOptions);
     setPlan(null);
+    setCurrentPageIndex(0);
     setIsLoading(true);
     setError(null);
     try {
@@ -192,8 +197,13 @@ const App: React.FC = () => {
     setSegments([]);
     setOptions(null);
     setPlan(null);
+    setCurrentPageIndex(0);
     setView('setup');
     setError(null);
+  };
+
+  const handleNextPage = () => {
+    setCurrentPageIndex(i => Math.min(i + 1, segments.length - 1));
   };
 
   const handleSaveStory = async (): Promise<boolean> => {
@@ -228,6 +238,7 @@ const App: React.FC = () => {
     setOptions(storyOptions);
     setPlan(story.plan ?? null);
     setSegments(story.segments);
+    setCurrentPageIndex(0);
     setView('reading');
   };
 
@@ -241,8 +252,12 @@ const App: React.FC = () => {
     }
   };
 
-  // Get the current segment (the last one in the array)
-  const currentSegment = segments[segments.length - 1];
+  // The segment the reader is actually viewing. Separate from segments.length
+  // so the next segment can be ready in the background while the reader
+  // finishes the bridge text on the current page.
+  const currentSegment = segments[currentPageIndex];
+  // True when the next segment has arrived but the reader has not advanced yet.
+  const isNextPageReady = currentPageIndex < segments.length - 1;
 
   // Every story is now exactly TOTAL_PAGES pages regardless of duration.
   const estimatedPages = TOTAL_PAGES;
@@ -308,8 +323,10 @@ const App: React.FC = () => {
               onRestart={handleRestart}
               onSave={handleSaveStory}
               onWrapUp={handleWrapUp}
+              onNextPage={handleNextPage}
               isGenerating={isLoading}
-              pageNumber={segments.length}
+              isNextPageReady={isNextPageReady}
+              pageNumber={currentPageIndex + 1}
               totalPages={estimatedPages}
             />
           )
