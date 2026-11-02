@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
@@ -24,6 +24,10 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
+
+  // Pending plan while it generates in the background. handleChoice awaits
+  // this so segment 2+ get the plan even if the user clicks before it lands.
+  const pendingPlanRef = useRef<Promise<StoryPlan | undefined> | null>(null);
 
   // Load stories from IndexedDB on mount
   useEffect(() => {
@@ -80,45 +84,40 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Fire the reference-sheet image call now; it is slow and the text does
-      // not need it. We only await it later, inside the image generation step.
+      // Fire plan + sheet in the background. Neither blocks the first segment.
+      // The plan is used from segment 2 onward; the sheet is used by every
+      // illustration call. Both finish while the reader is on segment 1.
+      const planPromise = planStory(selectedOptions).catch(err => {
+        console.warn("Plan failed, continuing without plan", err);
+        return undefined;
+      });
       const sheetPromise = generateCharacterSheet(selectedOptions.character);
+      pendingPlanRef.current = planPromise;
 
-      // Plan is on the critical path — the first segment prompt needs it.
-      let storyPlan: StoryPlan | undefined;
-      try {
-        storyPlan = await planStory(selectedOptions);
-      } catch (planErr) {
-        console.warn("Plan failed, continuing without plan", planErr);
-      }
-
-      // Start the first segment text as soon as the plan is in. This is what
-      // the reader sees first; we no longer wait for the sheet or the image.
-      const firstSegment = await startNewStoryText(selectedOptions, storyPlan);
+      // Start segment 1 immediately. The server-side opener picks an archetype
+      // seed itself so the opening stays varied without needing the plan.
+      const firstSegment = await startNewStoryText(selectedOptions, undefined);
       setSegments([firstSegment]);
       setView('reading');
       setIsLoading(false);
 
-      // Resolve the sheet into state once ready so saved stories keep it,
-      // then kick off the illustration — it updates the segment in place.
-      sheetPromise.then(sheet => {
-        if (!sheet) return;
-        const planWithSheet: StoryPlan = {
-          ...(storyPlan ?? {
-            logline: '',
-            characterVoice: '',
-            beats: [],
-            moralArc: '',
-            settingSeeds: [],
-            sideCharacters: [],
-          }),
+      // Compose plan + sheet into state as they land, so segment 2+ have both.
+      void Promise.all([planPromise, sheetPromise]).then(([p, sheet]) => {
+        if (!p && !sheet) return;
+        const composed: StoryPlan = {
+          logline: p?.logline ?? '',
+          characterVoice: p?.characterVoice ?? '',
+          beats: p?.beats ?? [],
+          moralArc: p?.moralArc ?? '',
+          settingSeeds: p?.settingSeeds ?? [],
+          sideCharacters: p?.sideCharacters ?? [],
           characterSheetBase64: sheet,
         };
-        storyPlan = planWithSheet;
-        setPlan(planWithSheet);
+        setPlan(composed);
       });
 
-      void attachIllustrationAt(0, firstSegment, selectedOptions, storyPlan, sheetPromise);
+      // Illustrate segment 1 in the background. It only needs the sheet, not the plan.
+      void attachIllustrationAt(0, firstSegment, selectedOptions, undefined, sheetPromise);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
@@ -131,17 +130,22 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const nextSegment = await continueStoryText(options, segments, choice.nextPlotPoint, plan ?? undefined);
+      // If the plan is still generating, wait for it before continuing.
+      // By the time a reader clicks a choice this is almost always a no-op.
+      let activePlan = plan ?? undefined;
+      if (!activePlan && pendingPlanRef.current) {
+        activePlan = (await pendingPlanRef.current) ?? undefined;
+      }
+      const nextSegment = await continueStoryText(options, segments, choice.nextPlotPoint, activePlan);
       const insertIndex = segments.length;
       setSegments(prev => [...prev, nextSegment]);
       setIsLoading(false);
-      // Illustration runs in the background; we already have the sheet in `plan`.
       void attachIllustrationAt(
         insertIndex,
         nextSegment,
         options,
-        plan ?? undefined,
-        Promise.resolve(plan?.characterSheetBase64)
+        activePlan,
+        Promise.resolve(activePlan?.characterSheetBase64)
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -156,11 +160,15 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      let activePlan = plan ?? undefined;
+      if (!activePlan && pendingPlanRef.current) {
+        activePlan = (await pendingPlanRef.current) ?? undefined;
+      }
       const nextSegment = await continueStoryText(
         options,
         segments,
         "avslutt historien varmt nå",
-        plan ?? undefined,
+        activePlan,
         true,
       );
       const insertIndex = segments.length;
@@ -170,8 +178,8 @@ const App: React.FC = () => {
         insertIndex,
         nextSegment,
         options,
-        plan ?? undefined,
-        Promise.resolve(plan?.characterSheetBase64)
+        activePlan,
+        Promise.resolve(activePlan?.characterSheetBase64)
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";

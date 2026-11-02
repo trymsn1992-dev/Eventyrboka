@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoryOptions, CHARACTERS, METAPHORS, AGE_GROUPS, DURATIONS, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { BookOpen, Sparkles, User, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock } from 'lucide-react';
@@ -269,6 +269,23 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     ageGroup: AGE_GROUPS[1],
     duration: DURATIONS[1]
   });
+
+  // Warm the serverless functions in the background. Sending OPTIONS gets a
+  // 405 back without touching Gemini, but it spins up the Vercel lambda so the
+  // real POST later skips the cold start. Fire-and-forget.
+  useEffect(() => {
+    const warm = (url: string) => {
+      try {
+        void fetch(url, { method: 'OPTIONS' }).catch(() => undefined);
+      } catch {
+        // ignore
+      }
+    };
+    warm('/api/plan');
+    warm('/api/story');
+    warm('/api/image');
+    warm('/api/character-sheet');
+  }, []);
 
   const handleChange = (key: keyof StoryOptions, value: string) => {
     setOptions(prev => ({ ...prev, [key]: value }));

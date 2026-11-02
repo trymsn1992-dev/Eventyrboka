@@ -12,6 +12,21 @@ import {
   TOTAL_PAGES,
 } from "../types.js";
 
+// Same pool as the planner — used for segment 1 when the plan has not landed yet,
+// so the opener still gets a varied, non-generic start.
+const OPENING_ARCHETYPES = [
+  "midt i noe uventet som allerede skjer",
+  "like etter at noe akkurat har gått galt eller rart",
+  "med en mystisk fremmed som dukker opp",
+  "på vei vekk fra noe trygt og kjent",
+  "like før en viktig hendelse de har gledet seg til",
+  "ved at karakteren mister noe de bryr seg om",
+  "ved at karakteren finner noe de ikke forventet",
+  "med at karakteren føler seg utenfor eller glemt",
+  "med en drøm som farger stemningen for det som kommer",
+  "midt i en helt vanlig morgen — som bryter sammen på overraskende vis",
+];
+
 export const maxDuration = 60;
 
 const RESPONSE_SCHEMA = {
@@ -302,7 +317,15 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
 
     let userPrompt: string;
     if (previousSegments.length === 0) {
-      userPrompt = `Start historien. Åpne med en konkret, sanselig scene — ikke en oppsummering. Introduser karakteren gjennom en handling som viser stemmen deres.${beatHint}`;
+      // Fast path: segment 1 does not wait for the plan. Pick an opening
+      // archetype directly so the opener still varies, and let the planner
+      // run in the background for segments 2+.
+      const openingArchetype =
+        OPENING_ARCHETYPES[Math.floor(Math.random() * OPENING_ARCHETYPES.length)];
+      const openerExtras = plan
+        ? ""
+        : `\n\nDette er side 1 av ${TOTAL_PAGES}. Åpne historien ${openingArchetype}. Introduser ${options.character} gjennom en konkret handling som viser stemmen deres, antyd dilemmaet metaforen "${options.metaphor}" vil teste. Begge valg skal lede naturlig videre i historien.`;
+      userPrompt = `Start historien. Åpne med en konkret, sanselig scene — ikke en oppsummering. Introduser karakteren gjennom en handling som viser stemmen deres.${beatHint}${openerExtras}`;
     } else if (forceEnding) {
       const storySoFar = previousSegments
         .map((s, i) => `Side ${i + 1}: ${s.text}`)

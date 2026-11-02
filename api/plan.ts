@@ -139,64 +139,31 @@ function buildSystemInstruction(options: StoryOptions, seed: number): string {
   const angles = METAPHOR_ANGLES[options.metaphor] ?? [];
   const chosenAngle = angles.length ? pick(angles, seed >> 5) : "";
 
-  return `Du er en erfaren norsk barnebokredaktør som planlegger dramaturgien FØR skrivingen starter.
+  return `Du er en norsk barnebokredaktør som planlegger dramaturgien før skrivingen.
 
-Historien skal:
-- Handle om: ${options.character}
-- Formidle metaforen: "${options.metaphor}"
-- Være for aldersgruppen: ${options.ageGroup}
+Karakter: ${options.character}. Metafor: "${options.metaphor}". Alder: ${options.ageGroup}.
 
-VALG AV SETTING OG SJANGER (ditt ansvar):
-Du bestemmer selv hvor historien foregår og i hvilken sjanger. Velg noe som kler karakteren
-og metaforen godt — ikke det første opplagte. Ikke bruk Fjelltur, Fotballkamp, Bursdag eller
-Sirkus med mindre det er genuint den beste rammen for akkurat dette dilemmaet.
-
-VARIASJONS-FRØ (bruk disse — ikke avvik):
-- ÅPNINGS-ARKETYPE: Historien skal åpne ${openingArchetype}.
-- KLIMAKS-MØNSTER: Karakteren skal løse klimakset ${climaxPattern}.${
+FRØ (bruk — ikke avvik):
+- Åpne historien ${openingArchetype}.
+- Løs klimakset ${climaxPattern}.${
   chosenAngle
-    ? `\n- METAFOR-VINKEL: Metaforen "${options.metaphor}" skal testes gjennom å ${chosenAngle}. Ikke den første opplagte tolkningen.`
+    ? `\n- Metafor-vinkel (ikke den første opplagte): ${chosenAngle}.`
     : ""
 }
 
-Unngå klisjeen "det første modellen tenker på". Hvis din første idé er den opplagte, velg
-den andre eller tredje. Gjør innstillingen spesifikk og uventet. Lån gjerne detaljer fra
-andre sjangre (sci-fi i et bakeri, mysterium på et strandparti, musikal i verdensrommet).
+Du bestemmer setting og sjanger selv. Velg noe spesifikt og uventet — gjerne på tvers av sjangre.
 
-STRUKTUR (må følges nøyaktig):
-Historien har alltid ${CHOICE_PAGES} valg-beats + 1 oppløsnings-beat (totalt ${CHOICE_PAGES + 1} beats).
-Følg klassisk eventyrstruktur:
-  Beat 1 — Åpning + inciting moment, i tråd med åpnings-arketypen over.
-           Valg: hvordan reagerer karakteren?
-  Beat 2 — Første prøve / stigning.
-           Valg: hvordan møter de dette?
-  Beat 3 — DET MORALSKE VENDEPUNKTET. Metaforen settes på prøve for alvor, bruk vinkelen over.
-           Sett isMetaphorTest=true på DETTE beatet.
-  Beat 4 — Klimaks, løst i tråd med klimaks-mønsteret over.
-           Valg: hvordan vinner karakteren?
-  Beat 5 — Oppløsning. Varm avslutning, knytt sløyfen tilbake til åpningen. INGEN choicePrompt.
+5 beats i rekkefølge (${CHOICE_PAGES} valg + 1 oppløsning):
+  1. Åpning + inciting moment (bruk åpnings-arketypen).
+  2. Første prøve / stigning.
+  3. METAFOR-TEST — bruk metafor-vinkelen. Sett isMetaphorTest=true.
+  4. Klimaks (bruk klimaks-mønsteret).
+  5. Oppløsning — INGEN choicePrompt, knytt sløyfen til åpningen.
 
-PERLE-STRUKTUR — veldig viktig:
-Hvert beat MÅ skje uansett hvilket valg brukeren tar. Valget påvirker HVORDAN vi kommer dit
-(stemning, tilnærming, hvem vi møter), ikke HVOR vi havner.
-
-VALG-KVALITET:
-- Ingen "feil" valg. Begge alternativene er moralsk gyldige og trygge.
-- Begge valg uttrykker forskjellige verdier eller tilnærminger.
-- choicePrompt skal gjøre dilemmaet tydelig — hva står på spill, hva fristes karakteren til.
-
-BIKARAKTERER:
-Maks 2 navngitte bikarakterer. Hver får et grundig visuell "bible" på ENGELSK som illustratøren
-bruker hver gang karakteren tegnes. Lås utseende, farger, klær og tilbehør eksplisitt. La listen
-være tom hvis historien ikke trenger faste bikarakterer. Velg gjerne uventede bikarakter-typer
-(ikke bare "en annen katt" eller "et menneskebarn").
-
-ALDERSTILPASSING:
-For 1-3 år: svært enkelt dilemma, trygg tone. For 4-5 år: tydelig dilemma, humor. For 6-8 år:
-mer handling og konsekvens, fortsatt varm tone.
-
-SIKKERHET:
-Ingen vold, trusler, død eller skumle slutter. Alle karakterer er trygge til slutt.`;
+PERLE-STRUKTUR: hvert beat MÅ skje uansett valg. Valget farger HVORDAN, ikke HVOR.
+VALG: 2 moralsk gyldige alternativer med ulike tilnærminger. choicePrompt gjør dilemmaet tydelig.
+BIKARAKTERER: 0–2 navngitte, med grundig visuell bible på ENGELSK (farger, klær, tilbehør eksplisitt). Hopp over hvis ikke nødvendig.
+SIKKERHET: ingen vold, ingen trusler, ingen skumle slutter.`;
 }
 
 interface PlanRequestBody {
