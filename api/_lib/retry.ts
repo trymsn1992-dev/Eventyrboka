@@ -51,3 +51,26 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
   throw lastError;
 }
+
+// Tries each model in order. Each model gets its own full withRetry run.
+// If a model exhausts retries with a transient error, we move to the next.
+// Non-transient errors (e.g. invalid request) throw straight away.
+export async function withModelFallback<T>(
+  models: string[],
+  fn: (model: string) => Promise<T>
+): Promise<T> {
+  let lastError: unknown;
+  for (const model of models) {
+    try {
+      return await withRetry(() => fn(model));
+    } catch (error) {
+      lastError = error;
+      if (!isTransient(error)) throw error;
+      console.warn(
+        `Model ${model} exhausted retries, falling back`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+  throw lastError;
+}

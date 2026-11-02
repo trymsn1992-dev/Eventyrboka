@@ -22,6 +22,10 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  if (req.method === "OPTIONS") {
+    res.setHeader("Allow", "POST");
+    return res.status(204).end();
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });

@@ -3,8 +3,10 @@ import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
-import { withRetry } from "./_lib/retry.js";
+import { withModelFallback } from "./_lib/retry.js";
 import { StoryOptions, CHOICE_PAGES } from "../types.js";
+
+const TEXT_MODEL_CHAIN = ["gemini-flash-latest", "gemini-2.5-flash"];
 
 export const maxDuration = 60;
 
@@ -174,6 +176,10 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  if (req.method === "OPTIONS") {
+    res.setHeader("Allow", "POST");
+    return res.status(204).end();
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
@@ -198,9 +204,9 @@ export default async function handler(
     const seed = Math.floor(Math.random() * 1_000_000);
     const systemInstruction = buildSystemInstruction(options, seed);
 
-    const response = await withRetry(() =>
+    const response = await withModelFallback(TEXT_MODEL_CHAIN, (model) =>
       ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model,
         contents: [
           {
             role: "user",
@@ -215,8 +221,6 @@ export default async function handler(
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
-          // Higher temperature on PLANNING only — pushes the model off its
-          // first obvious interpretation. Segment writing stays at default.
           temperature: 1.1,
           topP: 0.95,
         },

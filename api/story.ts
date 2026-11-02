@@ -3,7 +3,12 @@ import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
-import { withRetry } from "./_lib/retry.js";
+import { withModelFallback } from "./_lib/retry.js";
+
+// Primary routes to the best-available Flash model; the pinned 2.5 fallback
+// kicks in if the alias is exhausted. See commit history (33c62aa, 3bcc55f):
+// both pins and aliases have hit capacity caps at different times.
+const TEXT_MODEL_CHAIN = ["gemini-flash-latest", "gemini-2.5-flash"];
 import {
   StoryOptions,
   StoryPlan,
@@ -242,6 +247,12 @@ export default async function handler(
   res: VercelResponse
 ) {
   const tStart = Date.now();
+  // OPTIONS is only used by the SetupScreen's warming pings — ack it quietly so
+  // the browser does not log it as a red error alongside real failures.
+  if (req.method === "OPTIONS") {
+    res.setHeader("Allow", "POST");
+    return res.status(204).end();
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
@@ -342,9 +353,9 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
     }
 
     const tGemini = Date.now();
-    const response = await withRetry(() =>
+    const response = await withModelFallback(TEXT_MODEL_CHAIN, (model) =>
       ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model,
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
         config: {
           systemInstruction,
