@@ -426,7 +426,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           <div className="mx-auto h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
             <BookOpen className="h-10 w-10 text-indigo-600" />
           </div>
-          <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Lag ditt eventyr!</h2>
+          <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Lag din fortelling!</h2>
         </div>
 
         <form className="mt-10 space-y-12" onSubmit={handleSubmit}>
