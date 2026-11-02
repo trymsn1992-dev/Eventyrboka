@@ -4,9 +4,36 @@ import { Choice, StorySegment } from '../types';
 import { Button } from './Button';
 import { ArrowRight, RefreshCw, CheckCircle, Image as ImageIcon, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
-import { PageTurnAnimation } from './PageTurnAnimation';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
+
+const WAIT_QUESTIONS = [
+  "Hva ser du i bildet?",
+  "Hvor mange farger kan du finne?",
+  "Hva tror du skjer videre?",
+  "Hvis du var i bildet, hva ville du gjort?",
+  "Hvilken lyd tror du du ville hørt her?",
+  "Finner du noe skjult i bildet?",
+  "Hva ville du sagt hvis du var der?",
+  "Hvem i bildet ligner mest på deg?",
+  "Hva lukter det kanskje her?",
+  "Hva synes du er finest i bildet?",
+  "Kan du telle alle tingene i bildet?",
+  "Hva ville du gjort først hvis du var med?",
+  "Hvilken ting i bildet ville du tatt med hjem?",
+  "Hva tror du figurene snakker om?",
+];
+
+const WAIT_MESSAGES = [
+  "Blar om til neste side...",
+  "Pønsker ut hva som skjer...",
+  "Tegner neste bilde...",
+  "Koker sammen litt magi...",
+  "Spisser blyantene...",
+  "Fargelegger fantasien...",
+  "Hva skjer nå, mon tro?",
+  "Skriver så blekket spruter...",
+];
 
 interface BookPageProps {
   segment: StorySegment;
@@ -39,6 +66,40 @@ export const BookPage: React.FC<BookPageProps> = ({
   const [audioProgress, setAudioProgress] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // Waiting-state (next-page loading) states
+  const [waitQuestion, setWaitQuestion] = useState<string>(WAIT_QUESTIONS[0]);
+  const [waitMessage, setWaitMessage] = useState<string>(WAIT_MESSAGES[0]);
+  const [waitProgress, setWaitProgress] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setWaitProgress(0);
+      return;
+    }
+
+    // Pick a fresh question + message when generation starts
+    setWaitQuestion(WAIT_QUESTIONS[Math.floor(Math.random() * WAIT_QUESTIONS.length)]);
+    setWaitMessage(WAIT_MESSAGES[Math.floor(Math.random() * WAIT_MESSAGES.length)]);
+    setWaitProgress(0);
+
+    const msgInterval = setInterval(() => {
+      setWaitMessage(WAIT_MESSAGES[Math.floor(Math.random() * WAIT_MESSAGES.length)]);
+    }, 3500);
+
+    const progInterval = setInterval(() => {
+      setWaitProgress(prev => {
+        const remaining = 95 - prev;
+        const increment = Math.max(0.1, remaining * 0.02 + Math.random() * 0.5);
+        return Math.min(95, prev + increment);
+      });
+    }, 100);
+
+    return () => {
+      clearInterval(msgInterval);
+      clearInterval(progInterval);
+    };
+  }, [isGenerating]);
 
   useEffect(() => {
     // Reset scroll on desktop text container or window on mobile
@@ -175,13 +236,13 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div className="w-full lg:w-1/2 p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 border-dashed lg:page-curl bg-indigo-50/30">
+        <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 border-dashed lg:page-curl bg-indigo-50/30 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 lg:rounded-lg lg:p-6 lg:bg-white lg:shadow-inner">
-             <div className="relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[250px] max-h-[40vh] lg:max-h-full">
+             <div className={`relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[250px] ${isGenerating ? 'max-h-[60vh]' : 'max-h-[40vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
                 {hasImage ? (
-                  <img 
-                    src={segment.imageBase64} 
-                    alt={segment.illustrationPrompt} 
+                  <img
+                    src={segment.imageBase64}
+                    alt={segment.illustrationPrompt}
                     className="w-full h-full object-contain"
                   />
                 ) : (
@@ -190,7 +251,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                     <span className="text-sm">Illustrasjon mangler</span>
                   </div>
                 )}
-                
+
                 {/* Overlay caption */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white p-4 pt-8 opacity-0 hover:opacity-100 transition-opacity duration-300">
                     <p className="text-xs md:text-sm font-medium text-center leading-snug">
@@ -205,10 +266,38 @@ export const BookPage: React.FC<BookPageProps> = ({
         </div>
 
         {/* Right Page: Text and Choices (Bottom on Mobile) */}
-        <div className="w-full lg:w-1/2 bg-[#fdfbf7] relative flex flex-col lg:h-full">
-          
-          {/* Loading Overlay with Page Turn Animation */}
-          {isGenerating && <PageTurnAnimation />}
+        <div className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
+
+          {/* Waiting Panel - shown while next page is generating */}
+          {isGenerating && (
+            <div className="h-full flex flex-col items-center justify-center px-6 py-8 lg:p-8 text-center min-h-[280px]">
+              <div className="w-full max-w-sm bg-white border-2 border-indigo-100 rounded-2xl p-5 lg:p-6 shadow-md mb-5 lg:mb-6">
+                <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3">
+                  — Mens dere venter —
+                </p>
+                <h3 className="text-lg lg:text-2xl font-serif font-bold text-indigo-800 mb-3 leading-snug">
+                  {waitQuestion}
+                </h3>
+                <p className="text-xs lg:text-sm text-gray-500 italic">
+                  Se på bildet sammen og snakk om det!
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-indigo-600 mb-3">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm lg:text-base font-serif italic">
+                  {waitMessage}
+                </span>
+              </div>
+
+              <div className="w-40 lg:w-48 h-2 bg-gray-200 rounded-full overflow-hidden border border-gray-300/50 shadow-inner">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-400 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${waitProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Audio Loading Overlay */}
           {isLoadingAudio && (
@@ -237,7 +326,8 @@ export const BookPage: React.FC<BookPageProps> = ({
             </div>
           )}
           
-          {/* Scrollable content container */}
+          {/* Scrollable content container (hidden while next page is generating) */}
+          {!isGenerating && (
           <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto scroll-smooth" ref={textContainerRef}>
             
             {/* Sticky Audio Button Header */}
@@ -385,6 +475,7 @@ export const BookPage: React.FC<BookPageProps> = ({
               )}
             </div>
           </div>
+          )}
 
           {/* Progress Bar at the very bottom */}
           {totalPages && totalPages > 0 && (
