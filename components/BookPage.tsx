@@ -64,6 +64,19 @@ export const BookPage: React.FC<BookPageProps> = ({
   // The choice the reader just picked on THIS page. While set, we show the
   // bridge text and a "Neste side" button in place of the choice buttons.
   const [chosenChoice, setChosenChoice] = useState<Choice | null>(null);
+
+  // Chunked text reveal: segment.text is split into bite-sized chunks (one
+  // sentence each). The reader taps "Fortsett" to reveal the next chunk.
+  // Keeps text small so the illustration stays prominent on mobile.
+  const textChunks = React.useMemo(() => {
+    return segment.text
+      .split('\n')
+      .flatMap(p => p.split(/(?<=[.!?…])\s+(?=[A-ZÆØÅ«"'])/))
+      .map(s => s.trim())
+      .filter(Boolean);
+  }, [segment.text]);
+  const [chunksRevealed, setChunksRevealed] = useState(1);
+  const allChunksShown = chunksRevealed >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -123,6 +136,7 @@ export const BookPage: React.FC<BookPageProps> = ({
 
     // Reset the chosen-choice overlay whenever we land on a new page.
     setChosenChoice(null);
+    setChunksRevealed(1);
   }, [segment]);
 
   useEffect(() => {
@@ -251,7 +265,7 @@ export const BookPage: React.FC<BookPageProps> = ({
         {/* Left Page: Illustration (Top on Mobile) */}
         <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 border-dashed lg:page-curl bg-indigo-50/30 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 lg:rounded-lg lg:p-6 lg:bg-white lg:shadow-inner">
-             <div className={`relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[250px] ${isGenerating && !chosenChoice ? 'max-h-[60vh]' : 'max-h-[40vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
+             <div className={`relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating && !chosenChoice ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
                     animation keeps running; it fades out as the image fades in. */}
                 <div
@@ -361,14 +375,31 @@ export const BookPage: React.FC<BookPageProps> = ({
                </button>
             </div>
 
-            <div className="prose prose-lg lg:prose-xl prose-indigo max-w-none mb-12">
-              <div className="font-serif text-gray-800 leading-relaxed space-y-4">
-                {segment.text.split('\n').map((paragraph, idx) => (
-                  <p key={idx} className={idx === 0 ? "first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2" : ""}>
-                    {paragraph}
+            <div className="prose prose-lg lg:prose-xl prose-indigo max-w-none mb-6 lg:mb-10">
+              <style>{`
+                @keyframes chunkIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+                .chunk-in { animation: chunkIn 0.45s ease-out; }
+              `}</style>
+              <div className="font-serif text-gray-800 leading-relaxed space-y-3 lg:space-y-4 text-lg lg:text-xl">
+                {textChunks.slice(0, chunksRevealed).map((chunk, idx) => (
+                  <p
+                    key={idx}
+                    className={`${idx === chunksRevealed - 1 ? 'chunk-in' : ''} ${idx === 0 ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2' : ''}`}
+                  >
+                    {chunk}
                   </p>
                 ))}
               </div>
+              {!allChunksShown && (
+                <button
+                  onClick={() => setChunksRevealed(c => Math.min(c + 1, textChunks.length))}
+                  className="mt-4 w-full flex items-center justify-center gap-2 py-3 lg:py-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-serif text-base lg:text-lg transition-colors active:scale-[0.98]"
+                  aria-label="Vis mer tekst"
+                >
+                  <span>Fortsett</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
             <div className="mt-auto space-y-6 pb-8">
@@ -459,7 +490,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                     )}
                   </div>
                 </div>
-              ) : (
+              ) : !allChunksShown ? null : (
                 chosenChoice ? (
                   // Choice has been picked: show the bridge text + "Neste side"
                   // button. The next segment generates in the background and
