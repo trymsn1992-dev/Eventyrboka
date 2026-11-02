@@ -3,7 +3,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
-import { planStory, generateCharacterSheet, startNewStory, continueStory } from './services/geminiService';
+import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration } from './services/geminiService';
 import { saveStoryToDB, getAllStoriesFromDB, deleteStoryFromDB } from './services/storage';
 import { AlertCircle, MessageSquare } from 'lucide-react';
 
@@ -55,28 +55,55 @@ const App: React.FC = () => {
     loadStories();
   }, []);
 
+  // Attaches the illustration for a segment in the background, updating state
+  // in place when the image lands. The reader can start reading while this runs.
+  const attachIllustrationAt = async (
+    index: number,
+    segment: StorySegment,
+    opts: StoryOptions,
+    activePlan: StoryPlan | undefined,
+    sheetPromise: Promise<string | undefined>
+  ) => {
+    const sheet = await sheetPromise;
+    const image = await generateIllustration(segment, opts, activePlan, sheet);
+    if (!image) return;
+    setSegments(prev => {
+      const next = [...prev];
+      if (next[index]) next[index] = { ...next[index], imageBase64: image };
+      return next;
+    });
+  };
+
   const handleStartStory = async (selectedOptions: StoryOptions) => {
     setOptions(selectedOptions);
     setPlan(null);
     setIsLoading(true);
     setError(null);
     try {
-      // Plan the arc and pre-generate the canonical character sheet in parallel.
-      // Both are quality enhancers — if either fails we proceed without blocking the user.
-      const [planResult, sheetResult] = await Promise.allSettled([
-        planStory(selectedOptions),
-        generateCharacterSheet(selectedOptions.character),
-      ]);
+      // Fire the reference-sheet image call now; it is slow and the text does
+      // not need it. We only await it later, inside the image generation step.
+      const sheetPromise = generateCharacterSheet(selectedOptions.character);
 
+      // Plan is on the critical path — the first segment prompt needs it.
       let storyPlan: StoryPlan | undefined;
-      if (planResult.status === 'fulfilled') {
-        storyPlan = planResult.value;
-      } else {
-        console.warn("Plan failed, continuing without plan", planResult.reason);
+      try {
+        storyPlan = await planStory(selectedOptions);
+      } catch (planErr) {
+        console.warn("Plan failed, continuing without plan", planErr);
       }
 
-      if (sheetResult.status === 'fulfilled' && sheetResult.value) {
-        storyPlan = {
+      // Start the first segment text as soon as the plan is in. This is what
+      // the reader sees first; we no longer wait for the sheet or the image.
+      const firstSegment = await startNewStoryText(selectedOptions, storyPlan);
+      setSegments([firstSegment]);
+      setView('reading');
+      setIsLoading(false);
+
+      // Resolve the sheet into state once ready so saved stories keep it,
+      // then kick off the illustration — it updates the segment in place.
+      sheetPromise.then(sheet => {
+        if (!sheet) return;
+        const planWithSheet: StoryPlan = {
           ...(storyPlan ?? {
             logline: '',
             characterVoice: '',
@@ -85,21 +112,16 @@ const App: React.FC = () => {
             settingSeeds: [],
             sideCharacters: [],
           }),
-          characterSheetBase64: sheetResult.value,
+          characterSheetBase64: sheet,
         };
-      } else if (sheetResult.status === 'rejected') {
-        console.warn("Character sheet failed", sheetResult.reason);
-      }
+        storyPlan = planWithSheet;
+        setPlan(planWithSheet);
+      });
 
-      if (storyPlan) setPlan(storyPlan);
-
-      const firstSegment = await startNewStory(selectedOptions, storyPlan);
-      setSegments([firstSegment]);
-      setView('reading');
+      void attachIllustrationAt(0, firstSegment, selectedOptions, storyPlan, sheetPromise);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -109,12 +131,21 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const nextSegment = await continueStory(options, segments, choice.nextPlotPoint, plan ?? undefined);
+      const nextSegment = await continueStoryText(options, segments, choice.nextPlotPoint, plan ?? undefined);
+      const insertIndex = segments.length;
       setSegments(prev => [...prev, nextSegment]);
+      setIsLoading(false);
+      // Illustration runs in the background; we already have the sheet in `plan`.
+      void attachIllustrationAt(
+        insertIndex,
+        nextSegment,
+        options,
+        plan ?? undefined,
+        Promise.resolve(plan?.characterSheetBase64)
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Oisann! Noe gikk galt når vi skulle bla om. Prøv å klikke igjen.");
-    } finally {
       setIsLoading(false);
     }
   };

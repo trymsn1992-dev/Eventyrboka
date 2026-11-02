@@ -21,26 +21,6 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function attachIllustration(
-  segment: StorySegment,
-  options: StoryOptions,
-  plan: StoryPlan | undefined
-): Promise<StorySegment> {
-  if (!segment.illustrationPrompt) return segment;
-  try {
-    const { base64 } = await postJson<{ base64: string | null }>("/api/image", {
-      prompt: segment.illustrationPrompt,
-      character: options.character,
-      characterSheet: plan?.characterSheetBase64,
-      sideCharacters: plan?.sideCharacters ?? [],
-    });
-    if (base64) segment.imageBase64 = base64;
-  } catch (error) {
-    console.warn("Illustration failed:", error);
-  }
-  return segment;
-}
-
 export const planStory = async (
   options: StoryOptions
 ): Promise<StoryPlan> => {
@@ -62,31 +42,53 @@ export const generateCharacterSheet = async (
   }
 };
 
-export const startNewStory = async (
+// Returns only the text + choices + illustration prompt. No image yet — let the
+// UI render the page as soon as this resolves so the reader is not left waiting
+// on the slower image call.
+export const startNewStoryText = async (
   options: StoryOptions,
   plan?: StoryPlan
 ): Promise<StorySegment> => {
-  const segment = await postJson<StorySegment>("/api/story", {
-    options,
-    plan,
-  });
-  return attachIllustration(segment, options, plan);
+  return postJson<StorySegment>("/api/story", { options, plan });
 };
 
-export const continueStory = async (
+export const continueStoryText = async (
   options: StoryOptions,
   previousSegments: StorySegment[],
   choiceSummary: string,
   plan?: StoryPlan
 ): Promise<StorySegment> => {
   const trimmed = previousSegments.map((s) => ({ text: s.text }));
-  const segment = await postJson<StorySegment>("/api/story", {
+  return postJson<StorySegment>("/api/story", {
     options,
     previousSegments: trimmed,
     choiceSummary,
     plan,
   });
-  return attachIllustration(segment, options, plan);
+};
+
+// Generates the illustration for a segment. Pass the plan so the image call can
+// use the character reference sheet and side-character bibles. Awaits a lazily
+// resolved character sheet promise so the sheet doesn't block the text path.
+export const generateIllustration = async (
+  segment: StorySegment,
+  options: StoryOptions,
+  plan: StoryPlan | undefined,
+  characterSheet: string | undefined
+): Promise<string | undefined> => {
+  if (!segment.illustrationPrompt) return undefined;
+  try {
+    const { base64 } = await postJson<{ base64: string | null }>("/api/image", {
+      prompt: segment.illustrationPrompt,
+      character: options.character,
+      characterSheet,
+      sideCharacters: plan?.sideCharacters ?? [],
+    });
+    return base64 ?? undefined;
+  } catch (error) {
+    console.warn("Illustration failed:", error);
+    return undefined;
+  }
 };
 
 export const generateSpeech = async (
