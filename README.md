@@ -1,4 +1,4 @@
-# Magiboka / Eventyrboka
+# Magiboka
 
 Interaktive AI-genererte barnebøker på norsk.
 

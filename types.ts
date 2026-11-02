@@ -21,11 +21,32 @@ export interface StorySegment {
   imageBase64?: string; // Added to store the generated image
 }
 
+export interface StoryBeat {
+  // Short label for the beat ("Åpning", "Møte med dilemma", "Vendepunkt", "Klimaks", "Slutt")
+  label: string;
+  // One sentence describing what happens at this beat
+  summary: string;
+}
+
+export interface StoryPlan {
+  // One-sentence hook describing the whole arc
+  logline: string;
+  // 2-3 sentence character voice/personality sketch to lock in consistency
+  characterVoice: string;
+  // 3-6 structural beats spread across the story
+  beats: StoryBeat[];
+  // How the metaphor is tested and resolved
+  moralArc: string;
+  // 2-3 sensory world details so segments share a consistent setting
+  settingSeeds: string[];
+}
+
 export interface SavedStory {
   id: string;
   createdAt: number;
   options: StoryOptions;
   segments: StorySegment[];
+  plan?: StoryPlan;
 }
 
 export interface StoryState {

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, DURATIONS, DURATION_ESTIMATES } from './types';
-import { startNewStory, continueStory } from './services/geminiService';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, DURATION_ESTIMATES } from './types';
+import { planStory, startNewStory, continueStory } from './services/geminiService';
 import { saveStoryToDB, getAllStoriesFromDB, deleteStoryFromDB } from './services/storage';
 import { AlertCircle, MessageSquare } from 'lucide-react';
 
@@ -19,6 +19,7 @@ const generateId = () => {
 const App: React.FC = () => {
   const [view, setView] = useState<'setup' | 'reading'>('setup');
   const [options, setOptions] = useState<StoryOptions | null>(null);
+  const [plan, setPlan] = useState<StoryPlan | null>(null);
   const [segments, setSegments] = useState<StorySegment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +57,20 @@ const App: React.FC = () => {
 
   const handleStartStory = async (selectedOptions: StoryOptions) => {
     setOptions(selectedOptions);
+    setPlan(null);
     setIsLoading(true);
     setError(null);
     try {
-      const firstSegment = await startNewStory(selectedOptions);
+      // Plan the whole arc first so every segment knows where it is going.
+      // If planning fails we fall back to flat generation rather than block the user.
+      let storyPlan: StoryPlan | undefined;
+      try {
+        storyPlan = await planStory(selectedOptions);
+        setPlan(storyPlan);
+      } catch (planErr) {
+        console.warn("Plan failed, falling back to unplanned generation", planErr);
+      }
+      const firstSegment = await startNewStory(selectedOptions, storyPlan);
       setSegments([firstSegment]);
       setView('reading');
     } catch (err) {
@@ -75,7 +86,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const nextSegment = await continueStory(options, segments, choice.nextPlotPoint);
+      const nextSegment = await continueStory(options, segments, choice.nextPlotPoint, plan ?? undefined);
       setSegments(prev => [...prev, nextSegment]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -88,6 +99,7 @@ const App: React.FC = () => {
   const handleRestart = () => {
     setSegments([]);
     setOptions(null);
+    setPlan(null);
     setView('setup');
     setError(null);
   };
@@ -99,7 +111,8 @@ const App: React.FC = () => {
       id: generateId(),
       createdAt: Date.now(),
       options: options,
-      segments: segments
+      segments: segments,
+      plan: plan ?? undefined,
     };
 
     try {
@@ -121,6 +134,7 @@ const App: React.FC = () => {
     }
 
     setOptions(storyOptions);
+    setPlan(story.plan ?? null);
     setSegments(story.segments);
     setView('reading');
   };

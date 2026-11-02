@@ -4,7 +4,7 @@ import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withRetry } from "./_lib/retry.js";
-import { StoryOptions } from "../types.js";
+import { StoryOptions, StoryPlan, DURATION_ESTIMATES } from "../types.js";
 
 export const maxDuration = 60;
 
@@ -60,7 +60,35 @@ VIKTIGE INNHOLDSREGLER (alltid):
 - For 6-8 år: litt mer handling og humor, fortsatt uten noe skummelt.
 `;
 
-function buildSystemInstruction(options: StoryOptions): string {
+function renderPlanBlock(plan: StoryPlan | undefined): string {
+  if (!plan) return "";
+  const beats = plan.beats
+    .map((b, i) => `  ${i + 1}. ${b.label}: ${b.summary}`)
+    .join("\n");
+  const settings = plan.settingSeeds.map((s) => `  - ${s}`).join("\n");
+  return `
+HISTORIEPLAN (hold deg til denne buen — ikke avvik, men gjør hvert beat levende):
+Logline: ${plan.logline}
+
+Karakterstemme (bruk konsekvent — samme stemme, særegenhet og måte å prate på hele veien):
+${plan.characterVoice}
+
+Beats i rekkefølge:
+${beats}
+
+Moralsk bue (hvordan metaforen testes og løses):
+${plan.moralArc}
+
+Sanselige verden-detaljer (hent opp igjen minst én i hvert segment når det er naturlig):
+${settings}
+`;
+}
+
+function buildSystemInstruction(
+  options: StoryOptions,
+  plan: StoryPlan | undefined
+): string {
+  const planBlock = renderPlanBlock(plan);
   return `Du er en varm, lekende norsk barnebokforfatter.
 Du skal skrive en interaktiv historie for barn i alderen ${options.ageGroup}.
 Språket skal være enkelt, lekent og engasjerende.
@@ -76,9 +104,11 @@ Tilpass lengden basert på varigheten:
 - "Middels (ca. 5 min · 8 sider)": ca 6-8 runder med valg.
 - "Lang (ca. 10 min · 15 sider)": ca 12-15 runder med valg.
 - "Ekstra lang (ca. 15 min · 25 sider)": ca 20+ runder med valg.
-
+${planBlock}
 Skriv historien i segmenter. Hvert segment skal være ca. 3-5 setninger.
+Bruk sanselige, konkrete detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.
 På slutten av hvert segment (unntatt slutten), gi leseren 2 eller 3 valg for å drive handlingen videre.
+Valgene skal være meningsfulle — helst to ulike måter å møte dilemmaet på, ikke bare "gå til venstre / gå til høyre".
 
 Inkluder en 'illustrationPrompt' på engelsk som beskriver scenen for en illustratør. Beskriv handlingen og omgivelsene, men du trenger ikke beskrive karakterens utseende i detalj hver gang, da illustratøren kjenner karakteren.
 
@@ -89,6 +119,44 @@ interface StoryRequestBody {
   options: unknown;
   previousSegments?: Array<{ text: string }>;
   choiceSummary?: string;
+  plan?: unknown;
+}
+
+function validatePlan(input: unknown): StoryPlan | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const p = input as Record<string, unknown>;
+  if (
+    typeof p.logline !== "string" ||
+    typeof p.characterVoice !== "string" ||
+    typeof p.moralArc !== "string" ||
+    !Array.isArray(p.beats) ||
+    !Array.isArray(p.settingSeeds)
+  ) {
+    return undefined;
+  }
+  const beats: StoryPlan["beats"] = [];
+  for (const b of p.beats.slice(0, 10)) {
+    if (!b || typeof b !== "object") continue;
+    const beat = b as Record<string, unknown>;
+    if (typeof beat.label === "string" && typeof beat.summary === "string") {
+      beats.push({
+        label: beat.label.slice(0, 60),
+        summary: beat.summary.slice(0, 300),
+      });
+    }
+  }
+  if (beats.length === 0) return undefined;
+  const settingSeeds = p.settingSeeds
+    .filter((s): s is string => typeof s === "string")
+    .slice(0, 6)
+    .map((s) => s.slice(0, 200));
+  return {
+    logline: p.logline.slice(0, 400),
+    characterVoice: p.characterVoice.slice(0, 600),
+    beats,
+    moralArc: p.moralArc.slice(0, 400),
+    settingSeeds,
+  };
 }
 
 export default async function handler(
@@ -129,18 +197,45 @@ export default async function handler(
         ? body.choiceSummary.slice(0, 500)
         : undefined;
 
-    const systemInstruction = buildSystemInstruction(options);
+    const plan = validatePlan(body.plan);
+
+    const systemInstruction = buildSystemInstruction(options, plan);
+
+    const totalPagesEstimate = DURATION_ESTIMATES[options.duration] ?? 8;
+    const segmentIndex = previousSegments.length; // 0 for the opener
+    const beatHint = plan
+      ? (() => {
+          const beats = plan.beats;
+          // Map segment index to a beat index proportionally.
+          const beatIdx = Math.min(
+            beats.length - 1,
+            Math.floor(
+              (segmentIndex / Math.max(1, totalPagesEstimate - 1)) *
+                beats.length
+            )
+          );
+          const current = beats[beatIdx];
+          const next = beats[beatIdx + 1];
+          return `\n\nDu er nå på side ${segmentIndex + 1} av ca. ${totalPagesEstimate}. Hovedbeatet nå er: "${current.label}: ${current.summary}".${
+            next ? ` Neste beat blir: "${next.label}: ${next.summary}".` : " Dette er sluttbeatet — rund av varmt og knytt tilbake til åpningen og metaforen."
+          }`;
+        })()
+      : "";
 
     let userPrompt: string;
     if (previousSegments.length === 0) {
-      userPrompt = "Start historien.";
+      userPrompt = `Start historien. Åpne med en konkret, sanselig scene — ikke en oppsummering. Introduser karakteren gjennom en handling som viser stemmen deres.${beatHint}`;
     } else {
       const storySoFar = previousSegments
         .map((s, i) => `Del ${i + 1}: ${s.text}`)
         .join("\n\n");
+      const endingNudge =
+        segmentIndex >= totalPagesEstimate - 1
+          ? " Historien nærmer seg slutten — avslutt nå ved å sette isEnding til true og knytt sløyfen tilbake til åpningen og metaforen."
+          : "";
       userPrompt = `Historien så langt:\n\n${storySoFar}\n\nBrukeren valgte nå: "${
         choiceSummary ?? "fortsett"
-      }". Fortsett historien basert på dette valget. Hvis historien føles ferdig basert på valgt varighet, eller metaforen er tydelig formidlet, kan du avslutte historien nå ved å sette isEnding til true. Husk 'illustrationPrompt' på engelsk.`;
+      }". Fortsett historien basert på dette valget.${endingNudge}${beatHint}\n\nHusk 'illustrationPrompt' på engelsk.`;
     }
 
     const response = await withRetry(() =>

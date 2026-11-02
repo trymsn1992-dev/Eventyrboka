@@ -1,4 +1,4 @@
-import { StoryOptions, StorySegment } from "../types";
+import { StoryOptions, StorySegment, StoryPlan } from "../types";
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -38,23 +38,35 @@ async function attachIllustration(
   return segment;
 }
 
-export const startNewStory = async (
+export const planStory = async (
   options: StoryOptions
+): Promise<StoryPlan> => {
+  return postJson<StoryPlan>("/api/plan", { options });
+};
+
+export const startNewStory = async (
+  options: StoryOptions,
+  plan?: StoryPlan
 ): Promise<StorySegment> => {
-  const segment = await postJson<StorySegment>("/api/story", { options });
+  const segment = await postJson<StorySegment>("/api/story", {
+    options,
+    plan,
+  });
   return attachIllustration(segment, options.character);
 };
 
 export const continueStory = async (
   options: StoryOptions,
   previousSegments: StorySegment[],
-  choiceSummary: string
+  choiceSummary: string,
+  plan?: StoryPlan
 ): Promise<StorySegment> => {
   const trimmed = previousSegments.map((s) => ({ text: s.text }));
   const segment = await postJson<StorySegment>("/api/story", {
     options,
     previousSegments: trimmed,
     choiceSummary,
+    plan,
   });
   return attachIllustration(segment, options.character);
 };
