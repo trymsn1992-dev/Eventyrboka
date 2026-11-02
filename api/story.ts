@@ -241,6 +241,7 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  const tStart = Date.now();
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
@@ -340,6 +341,7 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
       }". Fortsett slik at dette valget fargelegger scenen (stemning, tilnærming, detaljer), men hold deg til beatet planen krever.${beatHint}\n\nHusk 'illustrationPrompt' på engelsk.`;
     }
 
+    const tGemini = Date.now();
     const response = await withRetry(() =>
       ai.models.generateContent({
         model: "gemini-3.8-flash",
@@ -351,17 +353,30 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
         },
       })
     );
+    const geminiMs = Date.now() - tGemini;
 
     if (!response.text) {
       throw new Error("Tomt svar fra Gemini");
     }
 
     const segment = JSON.parse(response.text);
-    // Safety net: force the ending flag + empty choices on the final page.
     if (isFinalPage) {
       segment.isEnding = true;
       segment.choices = [];
     }
+    const totalMs = Date.now() - tStart;
+    const prepMs = totalMs - geminiMs;
+    const page = pageNumber;
+    const hasPlan = plan ? 1 : 0;
+    // Logged in Vercel runtime logs so we can see where seconds go.
+    console.log(
+      `story.timing page=${page} hasPlan=${hasPlan} total=${totalMs}ms gemini=${geminiMs}ms prep=${prepMs}ms`
+    );
+    // Browser DevTools surfaces this in the Network tab's "Timing" column.
+    res.setHeader(
+      "Server-Timing",
+      `prep;dur=${prepMs}, gemini;dur=${geminiMs}, total;dur=${totalMs}`
+    );
     return res.status(200).json(segment);
   } catch (error) {
     console.error("Story error:", error);
