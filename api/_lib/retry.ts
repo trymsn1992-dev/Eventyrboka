@@ -14,6 +14,9 @@ function isTransient(error: unknown): boolean {
   if (statusText === "UNAVAILABLE" || statusText === "RESOURCE_EXHAUSTED") return true;
   const msg = typeof e.message === "string" ? e.message : "";
   if (/UNAVAILABLE|high demand|try again later|timeout|timed out/i.test(msg)) return true;
+  // Empty-response errors from our own code — treat as transient so the model
+  // fallback chain can try the next model (safety filter, routing weirdness).
+  if (/tomt svar|empty response|no text|blocked/i.test(msg)) return true;
   return false;
 }
 

@@ -6,7 +6,7 @@ import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 import { StoryOptions, CHOICE_PAGES } from "../types.js";
 
-const TEXT_MODEL_CHAIN = ["gemini-flash-latest", "gemini-2.5-flash"];
+const TEXT_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest"];
 
 export const maxDuration = 60;
 

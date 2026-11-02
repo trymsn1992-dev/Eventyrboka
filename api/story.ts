@@ -5,10 +5,11 @@ import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 
-// Primary routes to the best-available Flash model; the pinned 2.5 fallback
-// kicks in if the alias is exhausted. See commit history (33c62aa, 3bcc55f):
-// both pins and aliases have hit capacity caps at different times.
-const TEXT_MODEL_CHAIN = ["gemini-flash-latest", "gemini-2.5-flash"];
+// 2.5-flash primary: it is the widely-stable Flash and returns structured JSON
+// predictably. The latest alias is kept as fallback — it sometimes routes to a
+// newer model that returns an empty text payload for this specific schema, in
+// which case our empty-response-as-transient rule triggers a model switch.
+const TEXT_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest"];
 import {
   StoryOptions,
   StoryPlan,
@@ -367,6 +368,25 @@ Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
     const geminiMs = Date.now() - tGemini;
 
     if (!response.text) {
+      // Log the full response shape once so we can see what the model
+      // actually returned when the convenience .text getter is empty.
+      try {
+        console.warn(
+          "story.empty-response",
+          JSON.stringify({
+            candidates: response.candidates?.map((c) => ({
+              finishReason: c.finishReason,
+              safetyRatings: c.safetyRatings,
+              partsKinds: c.content?.parts?.map((p) =>
+                Object.keys(p).filter((k) => k !== "text")
+              ),
+            })),
+            promptFeedback: (response as unknown as { promptFeedback?: unknown }).promptFeedback,
+          }).slice(0, 2000)
+        );
+      } catch {
+        // ignore
+      }
       throw new Error("Tomt svar fra Gemini");
     }
 
