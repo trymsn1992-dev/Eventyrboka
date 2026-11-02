@@ -2,10 +2,12 @@
 export interface StoryOptions {
   character: string;
   metaphor: string;
-  theme: string;
-  genre: string;
   ageGroup: string;
   duration: string;
+  // Legacy fields kept optional so saved stories from older versions still load.
+  // No longer collected from the user — the planner picks setting and genre naturally.
+  theme?: string;
+  genre?: string;
 }
 
 export interface Choice {
@@ -89,31 +91,22 @@ export const METAPHORS = [
   "Ærlighet varer lengst"
 ];
 
-export const THEMES = [
-  "Fjelltur",
-  "Fotballkamp",
-  "Bursdag",
-  "Dugnad",
-  "Skattejakt",
-  "Romreise",
-  "Undervannseventyr",
-  "Sirkus"
-];
-
-export const GENRES = [
-  "Spenning",
-  "Humor",
-  "Mysterium",
-  "Eventyr"
-];
-
 export const AGE_GROUPS = [
-  "1-2 år",
-  "2-3 år",
+  "Småbarn (1-3 år)",
   "3-4 år",
   "4-5 år",
   "6-8 år"
 ];
+
+// Older saved stories used split age groups. Accept them on the backend
+// and map them to the merged "Småbarn (1-3 år)" when loaded.
+export const LEGACY_AGE_GROUPS = ["1-2 år", "2-3 år"];
+
+export function normalizeAgeGroup(input: string | undefined): string {
+  if (!input) return AGE_GROUPS[1];
+  if (input === "1-2 år" || input === "2-3 år") return AGE_GROUPS[0];
+  return input;
+}
 
 export const DURATIONS = [
   "Kort (ca. 2,5 min · 5 sider)",

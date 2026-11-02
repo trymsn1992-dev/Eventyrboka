@@ -1,10 +1,10 @@
 import {
   CHARACTERS,
   METAPHORS,
-  THEMES,
-  GENRES,
   AGE_GROUPS,
+  LEGACY_AGE_GROUPS,
   DURATIONS,
+  normalizeAgeGroup,
   StoryOptions,
 } from "../../types.js";
 
@@ -20,9 +20,7 @@ const LEGACY_DURATIONS = [
 const ALLOWED = {
   character: new Set(CHARACTERS),
   metaphor: new Set(METAPHORS),
-  theme: new Set(THEMES),
-  genre: new Set(GENRES),
-  ageGroup: new Set(AGE_GROUPS),
+  ageGroup: new Set([...AGE_GROUPS, ...LEGACY_AGE_GROUPS]),
   duration: new Set([...DURATIONS, ...LEGACY_DURATIONS]),
 };
 
@@ -32,8 +30,6 @@ export function validateOptions(options: unknown): StoryOptions | null {
   if (
     typeof o.character !== "string" ||
     typeof o.metaphor !== "string" ||
-    typeof o.theme !== "string" ||
-    typeof o.genre !== "string" ||
     typeof o.ageGroup !== "string" ||
     typeof o.duration !== "string"
   ) {
@@ -42,8 +38,6 @@ export function validateOptions(options: unknown): StoryOptions | null {
   if (
     !ALLOWED.character.has(o.character) ||
     !ALLOWED.metaphor.has(o.metaphor) ||
-    !ALLOWED.theme.has(o.theme) ||
-    !ALLOWED.genre.has(o.genre) ||
     !ALLOWED.ageGroup.has(o.ageGroup) ||
     !ALLOWED.duration.has(o.duration)
   ) {
@@ -52,9 +46,7 @@ export function validateOptions(options: unknown): StoryOptions | null {
   return {
     character: o.character,
     metaphor: o.metaphor,
-    theme: o.theme,
-    genre: o.genre,
-    ageGroup: o.ageGroup,
+    ageGroup: normalizeAgeGroup(o.ageGroup),
     duration: o.duration,
   };
 }

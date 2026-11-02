@@ -199,7 +199,7 @@ const App: React.FC = () => {
           {view === 'reading' && options && (
             <div className="hidden md:flex text-sm text-gray-500 gap-4">
               <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
-              <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.theme}</span>
+              <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
             </div>
           )}
         </div>

@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { StoryOptions, CHARACTERS, METAPHORS, THEMES, GENRES, AGE_GROUPS, DURATIONS, SavedStory } from '../types';
+import { StoryOptions, CHARACTERS, METAPHORS, AGE_GROUPS, DURATIONS, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { BookOpen, Sparkles, User, Lightbulb, Map, Theater, Calendar, Library, Trash2, PlayCircle, Clock } from 'lucide-react';
+import { BookOpen, Sparkles, User, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
@@ -256,144 +256,6 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
   }
 };
 
-const ThemeIcon = ({ name, selected }: { name: string, selected: boolean }) => {
-  const bgClass = selected ? "scale-110 drop-shadow-xl filter saturate-110" : "grayscale-[0.3] hover:grayscale-0 hover:scale-105";
-  const transition = "transition-all duration-300 ease-in-out";
-
-  switch (name) {
-    case "Fjelltur":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-           <path d="M10 80 L40 30 L70 80 Z" fill="#90A4AE" stroke="#546E7A" strokeWidth="1"/>
-           <path d="M50 80 L75 40 L100 80 Z" fill="#B0BEC5" stroke="#78909C" strokeWidth="1"/>
-           {/* Snow */}
-           <path d="M40 30 L50 45 L45 50 L30 45 Z" fill="white"/>
-           <path d="M75 40 L85 55 L75 60 L65 55 Z" fill="white"/>
-           {/* Sun */}
-           <circle cx="85" cy="20" r="10" fill="#FDD835" />
-           <path d="M10 80 L90 80" stroke="#4CAF50" strokeWidth="4" strokeLinecap="round"/>
-        </svg>
-      );
-    case "Fotballkamp":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-          <circle cx="50" cy="50" r="30" fill="white" stroke="#212121" strokeWidth="2"/>
-          {/* Patches */}
-          <path d="M50 50 L60 43 L70 50 L70 62 L60 69 L50 62 Z" fill="#212121"/>
-          <path d="M50 50 L40 43 L30 50 L30 62 L40 69 L50 62 Z" fill="none" stroke="#212121" strokeWidth="1"/>
-          <path d="M60 43 L60 30" stroke="#212121" strokeWidth="2"/>
-          <path d="M40 43 L40 30" stroke="#212121" strokeWidth="2"/>
-          <path d="M30 50 L20 45" stroke="#212121" strokeWidth="2"/>
-          <path d="M70 50 L80 45" stroke="#212121" strokeWidth="2"/>
-          <path d="M50 69 L50 80" stroke="#212121" strokeWidth="2"/>
-          {/* Grass */}
-          <rect x="10" y="80" width="80" height="10" fill="#4CAF50" rx="5"/>
-        </svg>
-      );
-    case "Bursdag":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-          <rect x="20" y="50" width="60" height="30" rx="2" fill="#8D6E63" />
-          <rect x="15" y="50" width="70" height="10" rx="5" fill="#F48FB1" /> {/* Frosting */}
-          <rect x="30" y="30" width="40" height="20" rx="2" fill="#A1887F" />
-          <rect x="25" y="30" width="50" height="8" rx="4" fill="#F48FB1" />
-          {/* Candles */}
-          <rect x="40" y="15" width="4" height="15" fill="#E3F2FD" stroke="#90CAF9" />
-          <rect x="56" y="15" width="4" height="15" fill="#E3F2FD" stroke="#90CAF9" />
-          {/* Flames */}
-          <ellipse cx="42" cy="10" rx="3" ry="6" fill="#FF9800" />
-          <ellipse cx="58" cy="10" rx="3" ry="6" fill="#FF9800" />
-          {/* Confetti */}
-          <circle cx="15" cy="20" r="2" fill="#4CAF50"/>
-          <circle cx="85" cy="30" r="2" fill="#9C27B0"/>
-          <circle cx="80" cy="10" r="2" fill="#F44336"/>
-        </svg>
-      );
-    case "Dugnad":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-          {/* Trash bag */}
-          <path d="M60 40 C60 40 80 40 85 60 C90 80 80 90 60 90 C40 90 35 80 35 60 C35 40 60 40 60 40" fill="#424242" />
-          <path d="M55 35 L65 35" stroke="#424242" strokeWidth="4" strokeLinecap="round"/>
-          {/* Rake */}
-          <line x1="30" y1="90" x2="45" y2="20" stroke="#8D6E63" strokeWidth="4" strokeLinecap="round"/>
-          <path d="M35 20 L55 20" stroke="#388E3C" strokeWidth="2"/>
-          <path d="M35 20 L32 10 M40 20 L40 8 M45 20 L48 8 M50 20 L56 10" stroke="#388E3C" strokeWidth="2"/>
-          {/* Leaf */}
-          <path d="M20 80 Q10 70 20 60 Q30 70 20 80" fill="#FF5722" />
-        </svg>
-      );
-    case "Skattejakt":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-           {/* Map */}
-           <path d="M15 20 L85 20 L85 80 L15 80 Z" fill="#FFF176" stroke="#FBC02D" strokeWidth="2"/>
-           {/* Fold lines */}
-           <line x1="38" y1="20" x2="38" y2="80" stroke="#F9A825" strokeWidth="1" />
-           <line x1="62" y1="20" x2="62" y2="80" stroke="#F9A825" strokeWidth="1" />
-           {/* Trail */}
-           <path d="M25 70 Q35 50 50 60 T75 30" fill="none" stroke="#B71C1C" strokeWidth="2" strokeDasharray="4,2"/>
-           {/* X */}
-           <path d="M70 25 L80 35 M80 25 L70 35" stroke="#B71C1C" strokeWidth="3" strokeLinecap="round"/>
-        </svg>
-      );
-    case "Romreise":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-          {/* Background Planet */}
-          <circle cx="50" cy="50" r="35" fill="#1A237E" />
-          <circle cx="20" cy="20" r="2" fill="white" opacity="0.8"/>
-          <circle cx="80" cy="30" r="3" fill="white" opacity="0.6"/>
-          <circle cx="60" cy="80" r="2" fill="white" opacity="0.9"/>
-          
-          {/* Rocket */}
-          <path d="M45 70 L55 70 L55 40 Q50 25 45 40 Z" fill="#E0E0E0" />
-          <path d="M45 40 L55 40" fill="none" stroke="#BDBDBD" strokeWidth="1"/>
-          <circle cx="50" cy="45" r="3" fill="#29B6F6" stroke="#455A64" strokeWidth="1"/>
-          {/* Fins */}
-          <path d="M45 60 L40 70 L45 70" fill="#F44336" />
-          <path d="M55 60 L60 70 L55 70" fill="#F44336" />
-          {/* Flame */}
-          <path d="M48 70 L52 70 L50 80 Z" fill="#FF9800" />
-        </svg>
-      );
-    case "Undervannseventyr":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-           <rect x="10" y="10" width="80" height="80" rx="10" fill="#E0F7FA" stroke="#00BCD4" strokeWidth="2"/>
-           {/* Seaweed */}
-           <path d="M20 90 Q25 70 20 60 Q15 50 20 40" stroke="#4CAF50" strokeWidth="3" fill="none" />
-           <path d="M30 90 Q25 75 30 65" stroke="#8BC34A" strokeWidth="3" fill="none" />
-           {/* Bubbles */}
-           <circle cx="70" cy="30" r="3" fill="#B2EBF2" stroke="#00ACC1" strokeWidth="1"/>
-           <circle cx="65" cy="40" r="2" fill="#B2EBF2" stroke="#00ACC1" strokeWidth="1"/>
-           {/* Fish */}
-           <path d="M60 60 Q70 55 80 60 Q70 65 60 60 Z" fill="#FF9800" />
-           <path d="M80 60 L85 55 V65 Z" fill="#FF9800" />
-        </svg>
-      );
-    case "Sirkus":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-20 h-20 ${bgClass} ${transition}`}>
-          {/* Tent */}
-          <path d="M20 80 L50 30 L80 80 Z" fill="#F44336" />
-          <path d="M50 30 L50 80" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
-          <path d="M35 55 L35 80" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
-          <path d="M65 55 L65 80" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
-          <path d="M50 30 L35 55 L20 80 L80 80 L65 55 Z" fill="none" stroke="#D32F2F" strokeWidth="1"/>
-          {/* Stripes */}
-          <path d="M40 46 L45 80" stroke="white" strokeWidth="4"/>
-          <path d="M60 46 L55 80" stroke="white" strokeWidth="4"/>
-          {/* Flag */}
-          <path d="M50 30 L50 15" stroke="#333" strokeWidth="1"/>
-          <path d="M50 15 L65 20 L50 25" fill="#FFD600" />
-        </svg>
-      );
-    default:
-      return <Map className="w-10 h-10 text-gray-400" />;
-  }
-}
-
 export const SetupScreen: React.FC<SetupScreenProps> = ({ 
   onStart, 
   isLoading,
@@ -404,9 +266,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [options, setOptions] = useState<StoryOptions>({
     character: CHARACTERS[0],
     metaphor: METAPHORS[0],
-    theme: THEMES[0],
-    genre: GENRES[0],
-    ageGroup: AGE_GROUPS[2],
+    ageGroup: AGE_GROUPS[1],
     duration: DURATIONS[1]
   });
 
@@ -464,40 +324,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             </div>
           </div>
 
-          {/* 2. Theme Selection (Hvor skjer det?) - Now with SVG Icons */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b pb-2 border-gray-100">
-              <Map className="w-6 h-6 text-green-500" />
-              <h3 className="text-xl font-bold text-gray-800">Hvor skjer det?</h3>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {THEMES.map((theme) => {
-                const isSelected = options.theme === theme;
-                return (
-                  <button
-                    key={theme}
-                    type="button"
-                    onClick={() => handleChange('theme', theme)}
-                    className={`
-                      p-3 rounded-2xl text-left transition-all duration-200
-                      border-2 flex flex-col items-center justify-between text-center gap-2 h-full min-h-[140px]
-                      ${isSelected 
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-900 shadow-md ring-2 ring-indigo-200 ring-offset-2' 
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-gray-50'
-                      }
-                    `}
-                  >
-                    <div className="flex-grow flex items-center justify-center w-full">
-                      <ThemeIcon name={theme} selected={isSelected} />
-                    </div>
-                    <span className="text-sm font-bold leading-tight">{theme}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3. Metaphor Selection (Hva skal vi lære?) */}
+          {/* 2. Metaphor Selection (Hva skal vi lære?) */}
           <SelectionSection
             icon={<Lightbulb className="w-6 h-6 text-amber-500" />}
             title="Hva skal vi lære?"
@@ -506,30 +333,20 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             onChange={(v) => handleChange('metaphor', v)}
           />
 
-          {/* 4. Duration Selection (Hvor lenge skal vi lese?) */}
-          <SelectionSection
-             icon={<Clock className="w-6 h-6 text-blue-500" />}
-             title="Hvor lenge skal vi lese?"
-             options={DURATIONS}
-             value={options.duration}
-             onChange={(v) => handleChange('duration', v)}
-          />
-
-          {/* 5. Genre & Age Selection */}
+          {/* 3. Duration + Age */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <SelectionSection
-              icon={<Theater className="w-6 h-6 text-purple-500" />}
-              title="Sjanger"
-              options={GENRES}
-              value={options.genre}
-              onChange={(v) => handleChange('genre', v)}
+               icon={<Clock className="w-6 h-6 text-blue-500" />}
+               title="Hvor lenge skal vi lese?"
+               options={DURATIONS}
+               value={options.duration}
+               onChange={(v) => handleChange('duration', v)}
             />
-            
             <SelectionSection
               icon={<Calendar className="w-6 h-6 text-pink-500" />}
               title="Alder"
               options={AGE_GROUPS}
-              value={options.ageGroup}
+              value={normalizeAgeGroup(options.ageGroup)}
               onChange={(v) => handleChange('ageGroup', v)}
             />
           </div>
@@ -574,7 +391,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 <div className="mb-4 flex-grow">
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-1 rounded">
-                      {story.options.genre}
+                      {normalizeAgeGroup(story.options.ageGroup)}
                     </span>
                     <span className="text-xs text-gray-400">
                       {new Date(story.createdAt).toLocaleDateString('no-NO')}
@@ -584,7 +401,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     {story.options.character}
                   </h4>
                   <p className="text-sm text-gray-500 line-clamp-2">
-                     Tema: {story.options.theme}
+                     {story.options.metaphor}
                   </p>
                 </div>
 

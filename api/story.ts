@@ -112,7 +112,8 @@ Du skriver en interaktiv bok for barn i aldersgruppen ${options.ageGroup}.
 Språket skal være enkelt, lekent og engasjerende.
 
 Historien handler om: ${options.character}.
-Tema: ${options.theme}. Sjanger: ${options.genre}. Metafor: "${options.metaphor}".
+Metafor: "${options.metaphor}".
+Setting og sjanger er bestemt av planen under — hold deg til den.
 
 STRUKTUR:
 Boka har NØYAKTIG ${TOTAL_PAGES} sider: ${CHOICE_PAGES} valg-sider etterfulgt av 1 oppløsnings-side uten valg.
