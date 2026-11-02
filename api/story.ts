@@ -5,10 +5,20 @@ import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 
-// 3.8-flash is the currently-active Flash model for this account. Google
-// returns 404 "no longer available to new users" for 2.5-flash. The latest
-// alias stays as fallback for days when the pinned model has capacity holes.
-const TEXT_MODEL_CHAIN = ["gemini-3.8-flash", "gemini-flash-latest"];
+// Chain draws from separate capacity pools so an overload on one does not
+// knock out the whole service:
+//   - gemini-3.8-flash: newest Flash, best fit but hits capacity caps
+//   - gemini-flash-latest: alias, often the same pool as 3.8 but not always
+//   - gemini-flash-lite-latest: smaller Flash, different pool, lower quality
+//   - gemini-2.5-pro: older but almost always available; slower, pricier
+// isTransient() + 404 handling means we skip any that are retired without
+// bubbling 500 to the user.
+const TEXT_MODEL_CHAIN = [
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
+  "gemini-2.5-pro",
+];
 import {
   StoryOptions,
   StoryPlan,
