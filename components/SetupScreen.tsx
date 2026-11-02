@@ -427,9 +427,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             <BookOpen className="h-10 w-10 text-indigo-600" />
           </div>
           <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Lag ditt eventyr!</h2>
-          <p className="mt-3 text-lg text-gray-600">
-            Trykk på bildene under for å velge hva historien skal handle om.
-          </p>
         </div>
 
         <form className="mt-10 space-y-12" onSubmit={handleSubmit}>
