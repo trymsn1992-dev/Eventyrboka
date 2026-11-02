@@ -1,13 +1,57 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { ai, ART_STYLE, CHARACTER_DESCRIPTIONS } from "./_lib/gemini.js";
+import {
+  ai,
+  ART_STYLE,
+  CHARACTER_DESCRIPTIONS,
+  FRAMING_RULE,
+} from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { withRetry } from "./_lib/retry.js";
 
 export const maxDuration = 60;
 
+interface SideCharacterInput {
+  name: string;
+  bible: string;
+}
+
 interface ImageRequestBody {
   prompt?: unknown;
   character?: unknown;
+  // Base64 data URL of the canonical character sheet. Sent back on every call.
+  characterSheet?: unknown;
+  // Side characters that may appear in this scene; each carries a full visual bible.
+  sideCharacters?: unknown;
+}
+
+// Pulls the raw base64 payload out of a "data:image/*;base64,..." URL.
+// Returns null if the input isn't a well-formed base64 PNG/JPEG data URL.
+function parseDataUrl(
+  input: unknown
+): { mimeType: string; data: string } | null {
+  if (typeof input !== "string") return null;
+  const match = /^data:(image\/(png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
+    input
+  );
+  if (!match) return null;
+  const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+  return { mimeType, data: match[3] };
+}
+
+function parseSideCharacters(input: unknown): SideCharacterInput[] {
+  if (!Array.isArray(input)) return [];
+  const out: SideCharacterInput[] = [];
+  for (const item of input.slice(0, 3)) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.name === "string" && typeof row.bible === "string") {
+      out.push({
+        name: row.name.slice(0, 80),
+        bible: row.bible.slice(0, 1500),
+      });
+    }
+  }
+  return out;
 }
 
 export default async function handler(
@@ -40,18 +84,54 @@ export default async function handler(
       (character && CHARACTER_DESCRIPTIONS[character]) ||
       "a cute children's book character";
 
-    const fullPrompt = `
-      Style: ${ART_STYLE}
-      Character: ${characterVisuals}
-      Scene: ${prompt}
+    const sideCharacters = parseSideCharacters(body.sideCharacters);
+    const sideCharsBlock = sideCharacters.length
+      ? `\nSide characters in this scene (follow each bible exactly, same look on every page they appear):\n${sideCharacters
+          .map(
+            (s) =>
+              `  - ${s.name}:\n${s.bible
+                .split("\n")
+                .map((l) => `      ${l}`)
+                .join("\n")}`
+          )
+          .join("\n")}\n`
+      : "";
 
-      Ensure the character matches the description exactly. Maintain the watercolor art style. Keep the scene safe and age-appropriate for young children.
-    `;
+    const sheet = parseDataUrl(body.characterSheet);
+
+    const referenceNote = sheet
+      ? "\nA REFERENCE IMAGE of the main character is attached. The character in the scene MUST match this reference exactly — same colors, same clothing items, same accessories, same body proportions. Do not deviate.\n"
+      : "";
+
+    const fullPrompt = `
+Style: ${ART_STYLE}
+
+Main character bible (follow EXACTLY — never add, change or remove any item):
+${characterVisuals}
+${sideCharsBlock}${referenceNote}
+${FRAMING_RULE}
+
+Scene to illustrate: ${prompt}
+
+Rules:
+- Keep the main character visually identical to the reference and bible above.
+- Keep every side character identical to its bible each time it appears.
+- Keep the children's book watercolor style and consistent character scale.
+- Keep the scene safe and age-appropriate for young children.
+`;
+
+    const parts: Array<
+      { text: string } | { inlineData: { mimeType: string; data: string } }
+    > = [];
+    if (sheet) {
+      parts.push({ inlineData: sheet });
+    }
+    parts.push({ text: fullPrompt });
 
     const response = await withRetry(() =>
       ai.models.generateContent({
         model: "gemini-2.5-flash-image",
-        contents: { parts: [{ text: fullPrompt }] },
+        contents: { parts },
         config: {
           imageConfig: {
             aspectRatio: "3:4",

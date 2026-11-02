@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, DURATION_ESTIMATES } from './types';
-import { planStory, startNewStory, continueStory } from './services/geminiService';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
+import { planStory, generateCharacterSheet, startNewStory, continueStory } from './services/geminiService';
 import { saveStoryToDB, getAllStoriesFromDB, deleteStoryFromDB } from './services/storage';
 import { AlertCircle, MessageSquare } from 'lucide-react';
 
@@ -61,15 +61,38 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Plan the whole arc first so every segment knows where it is going.
-      // If planning fails we fall back to flat generation rather than block the user.
+      // Plan the arc and pre-generate the canonical character sheet in parallel.
+      // Both are quality enhancers — if either fails we proceed without blocking the user.
+      const [planResult, sheetResult] = await Promise.allSettled([
+        planStory(selectedOptions),
+        generateCharacterSheet(selectedOptions.character),
+      ]);
+
       let storyPlan: StoryPlan | undefined;
-      try {
-        storyPlan = await planStory(selectedOptions);
-        setPlan(storyPlan);
-      } catch (planErr) {
-        console.warn("Plan failed, falling back to unplanned generation", planErr);
+      if (planResult.status === 'fulfilled') {
+        storyPlan = planResult.value;
+      } else {
+        console.warn("Plan failed, continuing without plan", planResult.reason);
       }
+
+      if (sheetResult.status === 'fulfilled' && sheetResult.value) {
+        storyPlan = {
+          ...(storyPlan ?? {
+            logline: '',
+            characterVoice: '',
+            beats: [],
+            moralArc: '',
+            settingSeeds: [],
+            sideCharacters: [],
+          }),
+          characterSheetBase64: sheetResult.value,
+        };
+      } else if (sheetResult.status === 'rejected') {
+        console.warn("Character sheet failed", sheetResult.reason);
+      }
+
+      if (storyPlan) setPlan(storyPlan);
+
       const firstSegment = await startNewStory(selectedOptions, storyPlan);
       setSegments([firstSegment]);
       setView('reading');
@@ -152,8 +175,8 @@ const App: React.FC = () => {
   // Get the current segment (the last one in the array)
   const currentSegment = segments[segments.length - 1];
 
-  // Calculate estimated total pages based on selected duration
-  const estimatedPages = options?.duration ? DURATION_ESTIMATES[options.duration] : undefined;
+  // Every story is now exactly TOTAL_PAGES pages regardless of duration.
+  const estimatedPages = TOTAL_PAGES;
 
   return (
     <div className="min-h-screen bg-[#e8e6e1] flex flex-col">

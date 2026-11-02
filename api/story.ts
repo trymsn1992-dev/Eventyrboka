@@ -4,7 +4,13 @@ import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withRetry } from "./_lib/retry.js";
-import { StoryOptions, StoryPlan, DURATION_ESTIMATES } from "../types.js";
+import {
+  StoryOptions,
+  StoryPlan,
+  DURATION_DENSITY,
+  CHOICE_PAGES,
+  TOTAL_PAGES,
+} from "../types.js";
 
 export const maxDuration = 60;
 
@@ -14,7 +20,7 @@ const RESPONSE_SCHEMA = {
     text: {
       type: Type.STRING,
       description:
-        "The story segment text in Norwegian. Keep it engaging and appropriate for the age group.",
+        "The story segment text in Norwegian for this page. Length and density must match the pacing instructions.",
     },
     choices: {
       type: Type.ARRAY,
@@ -28,24 +34,25 @@ const RESPONSE_SCHEMA = {
           nextPlotPoint: {
             type: Type.STRING,
             description:
-              "A short summary of what happens next if this choice is made.",
+              "Short summary of HOW this choice colors the arrival at the next beat (never 'what new destination this choice leads to').",
           },
         },
         required: ["text", "nextPlotPoint"],
       },
-      description: "2 to 3 choices for the user to continue the story.",
+      description:
+        "Exactly 2 choices for the user. BOTH must lead to the same next beat but with different texture. Omit entirely on the final (ending) page.",
     },
     isEnding: {
       type: Type.BOOLEAN,
-      description: "True if the story has reached a natural conclusion.",
+      description: "True only on the final resolution page.",
     },
     illustrationPrompt: {
       type: Type.STRING,
       description:
-        "A detailed description of a visual scene to illustrate this part of the story (in English). Focus on the characters, setting, and action.",
+        "Visual scene description in English: the single most important moment of this page. Describe the action, setting and any side characters present. Do NOT describe the main character's clothing or body — the illustrator has a reference sheet.",
     },
   },
-  required: ["text", "choices", "isEnding"],
+  required: ["text", "isEnding"],
 };
 
 const SAFETY_RULES = `
@@ -60,27 +67,37 @@ VIKTIGE INNHOLDSREGLER (alltid):
 - For 6-8 år: litt mer handling og humor, fortsatt uten noe skummelt.
 `;
 
-function renderPlanBlock(plan: StoryPlan | undefined): string {
-  if (!plan) return "";
+function renderPlanBlock(plan: StoryPlan): string {
   const beats = plan.beats
-    .map((b, i) => `  ${i + 1}. ${b.label}: ${b.summary}`)
+    .map((b, i) => {
+      const marker = b.isMetaphorTest ? " ⭐ (metafor-test)" : "";
+      const choice = b.choicePrompt
+        ? `\n       Valg-dilemma: ${b.choicePrompt}`
+        : "\n       (ingen valg — oppløsning)";
+      return `  ${i + 1}. ${b.label}${marker}: ${b.summary}${choice}`;
+    })
     .join("\n");
   const settings = plan.settingSeeds.map((s) => `  - ${s}`).join("\n");
+  const sides = plan.sideCharacters?.length
+    ? "\nBikarakterer (bruk konsekvent — samme navn og rolle hver gang):\n" +
+      plan.sideCharacters.map((s) => `  - ${s.name}`).join("\n")
+    : "";
   return `
-HISTORIEPLAN (hold deg til denne buen — ikke avvik, men gjør hvert beat levende):
+HISTORIEPLAN (fast skjelett — ikke endre buen):
 Logline: ${plan.logline}
 
-Karakterstemme (bruk konsekvent — samme stemme, særegenhet og måte å prate på hele veien):
+Karakterstemme (bruk konsekvent gjennom hele boka):
 ${plan.characterVoice}
 
-Beats i rekkefølge:
+Beats (perle-struktur — ALLE grener fører til samme beat, valget farger bare HVORDAN):
 ${beats}
 
-Moralsk bue (hvordan metaforen testes og løses):
+Moralsk bue:
 ${plan.moralArc}
 
-Sanselige verden-detaljer (hent opp igjen minst én i hvert segment når det er naturlig):
+Sanselige verden-detaljer (hent opp igjen minst én hvor det passer):
 ${settings}
+${sides}
 `;
 }
 
@@ -88,30 +105,46 @@ function buildSystemInstruction(
   options: StoryOptions,
   plan: StoryPlan | undefined
 ): string {
-  const planBlock = renderPlanBlock(plan);
+  const density = DURATION_DENSITY[options.duration];
+  const planBlock = plan ? renderPlanBlock(plan) : "";
   return `Du er en varm, lekende norsk barnebokforfatter.
-Du skal skrive en interaktiv historie for barn i alderen ${options.ageGroup}.
+Du skriver en interaktiv bok for barn i aldersgruppen ${options.ageGroup}.
 Språket skal være enkelt, lekent og engasjerende.
 
-Historien skal handle om: ${options.character}.
-Temaet er: ${options.theme}.
-Sjangeren er: ${options.genre}.
-Den underliggende moralen/metaforen skal være: "${options.metaphor}".
+Historien handler om: ${options.character}.
+Tema: ${options.theme}. Sjanger: ${options.genre}. Metafor: "${options.metaphor}".
 
-Ønsket varighet for historien er: ${options.duration}.
-Tilpass lengden basert på varigheten:
-- "Kort (ca. 2,5 min · 5 sider)": ca 3-4 runder med valg før slutten.
-- "Middels (ca. 5 min · 8 sider)": ca 6-8 runder med valg.
-- "Lang (ca. 10 min · 15 sider)": ca 12-15 runder med valg.
-- "Ekstra lang (ca. 15 min · 25 sider)": ca 20+ runder med valg.
+STRUKTUR:
+Boka har NØYAKTIG ${TOTAL_PAGES} sider: ${CHOICE_PAGES} valg-sider etterfulgt av 1 oppløsnings-side uten valg.
+Hver side treffer sitt beat fra planen. Du blir fortalt hvilken side du skriver nå.
+
+TETTHET PR SIDE (varighet: ${options.duration}):
+- Omtrent ${density?.sentences ?? "4-6"} setninger pr side.
+- ${density?.miniScenes ?? 0} mini-scene(r) FØR valget på denne siden.
+- Pacing: ${density?.pacing ?? "balansert"}.
+En mini-scene er en liten, selvstendig hendelse som åpnes og lukkes før valget: en observasjon,
+en kort dialog, et sanselig øyeblikk, et lite møte med en bikarakter. Det er mini-scenene som
+gjør en lang bok god, ikke flere sider.
+
+PERLE-STRUKTUR — kritisk:
+Begge valgene MÅ lede til samme neste beat. De fargelegger HVORDAN (stemning, tilnærming,
+hvem vi møter), de endrer ikke HVOR vi havner. Når du fortsetter etter et valg, må du starte
+inne i den samme bue-posisjonen planen oppgir, bare farget av valget brukeren tok.
+
+VALG-KVALITET:
+- Nøyaktig 2 valg (unntatt på siste side, som ikke har valg).
+- Ingen "feil" valg. Begge er trygge og moralsk gyldige.
+- Begge uttrykker ulike tilnærminger eller verdier — ikke bare "venstre/høyre".
+- På beatet merket ⭐ (metafor-test) MÅ valgene være en konkret, levbar versjon av metaforen.
+
+SPRÅK:
+Bruk konkrete sanselige detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.
+"Han var redd" ❌  "Hjertet dunket som en lita tromme" ✓
+
+Inkluder en 'illustrationPrompt' på engelsk som beskriver scenens viktigste øyeblikk. Beskriv
+handlingen og omgivelsene, og nevn eventuelle bikarakterer ved navn. Beskriv IKKE hovedkarakterens
+klær eller kropp — illustratøren har et referanseark.
 ${planBlock}
-Skriv historien i segmenter. Hvert segment skal være ca. 3-5 setninger.
-Bruk sanselige, konkrete detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.
-På slutten av hvert segment (unntatt slutten), gi leseren 2 eller 3 valg for å drive handlingen videre.
-Valgene skal være meningsfulle — helst to ulike måter å møte dilemmaet på, ikke bare "gå til venstre / gå til høyre".
-
-Inkluder en 'illustrationPrompt' på engelsk som beskriver scenen for en illustratør. Beskriv handlingen og omgivelsene, men du trenger ikke beskrive karakterens utseende i detalj hver gang, da illustratøren kjenner karakteren.
-
 ${SAFETY_RULES}`;
 }
 
@@ -135,13 +168,18 @@ function validatePlan(input: unknown): StoryPlan | undefined {
     return undefined;
   }
   const beats: StoryPlan["beats"] = [];
-  for (const b of p.beats.slice(0, 10)) {
+  for (const b of p.beats.slice(0, 12)) {
     if (!b || typeof b !== "object") continue;
     const beat = b as Record<string, unknown>;
     if (typeof beat.label === "string" && typeof beat.summary === "string") {
       beats.push({
         label: beat.label.slice(0, 60),
-        summary: beat.summary.slice(0, 300),
+        summary: beat.summary.slice(0, 400),
+        choicePrompt:
+          typeof beat.choicePrompt === "string"
+            ? beat.choicePrompt.slice(0, 400)
+            : undefined,
+        isMetaphorTest: beat.isMetaphorTest === true,
       });
     }
   }
@@ -150,12 +188,26 @@ function validatePlan(input: unknown): StoryPlan | undefined {
     .filter((s): s is string => typeof s === "string")
     .slice(0, 6)
     .map((s) => s.slice(0, 200));
+  const sideCharacters: StoryPlan["sideCharacters"] = [];
+  if (Array.isArray(p.sideCharacters)) {
+    for (const s of p.sideCharacters.slice(0, 3)) {
+      if (!s || typeof s !== "object") continue;
+      const row = s as Record<string, unknown>;
+      if (typeof row.name === "string" && typeof row.bible === "string") {
+        sideCharacters.push({
+          name: row.name.slice(0, 80),
+          bible: row.bible.slice(0, 1500),
+        });
+      }
+    }
+  }
   return {
     logline: p.logline.slice(0, 400),
     characterVoice: p.characterVoice.slice(0, 600),
     beats,
     moralArc: p.moralArc.slice(0, 400),
     settingSeeds,
+    sideCharacters,
   };
 }
 
@@ -201,41 +253,48 @@ export default async function handler(
 
     const systemInstruction = buildSystemInstruction(options, plan);
 
-    const totalPagesEstimate = DURATION_ESTIMATES[options.duration] ?? 8;
     const segmentIndex = previousSegments.length; // 0 for the opener
-    const beatHint = plan
-      ? (() => {
-          const beats = plan.beats;
-          // Map segment index to a beat index proportionally.
-          const beatIdx = Math.min(
-            beats.length - 1,
-            Math.floor(
-              (segmentIndex / Math.max(1, totalPagesEstimate - 1)) *
-                beats.length
-            )
-          );
-          const current = beats[beatIdx];
-          const next = beats[beatIdx + 1];
-          return `\n\nDu er nå på side ${segmentIndex + 1} av ca. ${totalPagesEstimate}. Hovedbeatet nå er: "${current.label}: ${current.summary}".${
-            next ? ` Neste beat blir: "${next.label}: ${next.summary}".` : " Dette er sluttbeatet — rund av varmt og knytt tilbake til åpningen og metaforen."
-          }`;
-        })()
-      : "";
+    const pageNumber = segmentIndex + 1;
+    const isFinalPage = pageNumber >= TOTAL_PAGES;
+
+    // Direct 1:1 beat mapping. Page N hits beat N (if the plan has one).
+    const currentBeat = plan?.beats?.[segmentIndex];
+    const nextBeat = plan?.beats?.[segmentIndex + 1];
+    const beatHint = currentBeat
+      ? `\n\nDU SKRIVER SIDE ${pageNumber} AV ${TOTAL_PAGES}.
+Beatet du MÅ treffe nå: "${currentBeat.label}: ${currentBeat.summary}"${
+          currentBeat.isMetaphorTest
+            ? "\n⭐ Dette er METAFOR-TESTEN. Valgene MÅ være en konkret, levbar versjon av metaforen."
+            : ""
+        }${
+          currentBeat.choicePrompt
+            ? `\nValg-dilemma for denne siden: ${currentBeat.choicePrompt}`
+            : ""
+        }${
+          nextBeat
+            ? `\nNeste beat blir: "${nextBeat.label}: ${nextBeat.summary}". Begge valgene MÅ lede naturlig til dette beatet.`
+            : ""
+        }${
+          isFinalPage
+            ? "\nDette er oppløsningen. Ingen valg. Rund av varmt, knytt sløyfen tilbake til åpningen og metaforen. Sett isEnding=true og la 'choices' være en tom liste eller utelat den."
+            : ""
+        }`
+      : `\n\nDu skriver side ${pageNumber} av ${TOTAL_PAGES}.${
+          isFinalPage
+            ? " Dette er oppløsningen — rund av varmt og sett isEnding=true."
+            : ""
+        }`;
 
     let userPrompt: string;
     if (previousSegments.length === 0) {
       userPrompt = `Start historien. Åpne med en konkret, sanselig scene — ikke en oppsummering. Introduser karakteren gjennom en handling som viser stemmen deres.${beatHint}`;
     } else {
       const storySoFar = previousSegments
-        .map((s, i) => `Del ${i + 1}: ${s.text}`)
+        .map((s, i) => `Side ${i + 1}: ${s.text}`)
         .join("\n\n");
-      const endingNudge =
-        segmentIndex >= totalPagesEstimate - 1
-          ? " Historien nærmer seg slutten — avslutt nå ved å sette isEnding til true og knytt sløyfen tilbake til åpningen og metaforen."
-          : "";
       userPrompt = `Historien så langt:\n\n${storySoFar}\n\nBrukeren valgte nå: "${
         choiceSummary ?? "fortsett"
-      }". Fortsett historien basert på dette valget.${endingNudge}${beatHint}\n\nHusk 'illustrationPrompt' på engelsk.`;
+      }". Fortsett slik at dette valget fargelegger scenen (stemning, tilnærming, detaljer), men hold deg til beatet planen krever.${beatHint}\n\nHusk 'illustrationPrompt' på engelsk.`;
     }
 
     const response = await withRetry(() =>
@@ -255,6 +314,11 @@ export default async function handler(
     }
 
     const segment = JSON.parse(response.text);
+    // Safety net: force the ending flag + empty choices on the final page.
+    if (isFinalPage) {
+      segment.isEnding = true;
+      segment.choices = [];
+    }
     return res.status(200).json(segment);
   } catch (error) {
     console.error("Story error:", error);
