@@ -362,6 +362,16 @@ const App: React.FC = () => {
           )
         )}
       </main>
+
+      <footer className="bg-white/60 border-t border-gray-200 py-4 px-6 text-xs text-gray-500">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
+          <span>Nordgård</span>
+          <span className="hidden sm:inline">·</span>
+          <span>Org.nr. 937 095 082</span>
+          <span className="hidden sm:inline">·</span>
+          <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 underline">trymnord@gmail.com</a>
+        </div>
+      </footer>
     </div>
   );
 };
