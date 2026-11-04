@@ -4,8 +4,16 @@ import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
 import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration } from './services/geminiService';
-import { saveStoryToDB, getAllStoriesFromDB, deleteStoryFromDB } from './services/storage';
-import { AlertCircle, MessageSquare } from 'lucide-react';
+import {
+  AccountStatus,
+  deleteStory as deleteStoryAccount,
+  emptyStatus,
+  fetchStatus,
+  loadStories,
+  logout,
+  saveStory as saveStoryAccount,
+} from './services/account';
+import { AlertCircle, LogOut, MessageSquare } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -33,6 +41,10 @@ const App: React.FC = () => {
   // this so segment 2+ get the plan even if the user clicks before it lands.
   const pendingPlanRef = useRef<Promise<StoryPlan | undefined> | null>(null);
 
+  // Account state. Drives the header login/logout UI and decides whether
+  // story reads/writes go to Supabase or stay in the browser.
+  const [account, setAccount] = useState<AccountStatus>(emptyStatus());
+
   // Hide feedback banner + header on scroll down, reveal on scroll up.
   // Keeps the illustration prominent while reading, without permanently
   // losing access to the logo (restart) or feedback link.
@@ -57,35 +69,62 @@ const App: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Load stories from IndexedDB on mount
+  // Ask the server who we are. On success we also reload the story list,
+  // because logged-in users read from Supabase while guests read from
+  // IndexedDB, and we don't know which until the status lands.
   useEffect(() => {
-    const loadStories = async () => {
+    let cancelled = false;
+    (async () => {
+      const status = await fetchStatus();
+      if (cancelled) return;
+      setAccount(status);
       try {
-        // Migration: Check for stories in localStorage and move them to DB
-        const localStoriesJson = localStorage.getItem('eventyrboka_stories');
-        if (localStoriesJson) {
-          try {
-            const localStories = JSON.parse(localStoriesJson) as SavedStory[];
-            for (const s of localStories) {
-              await saveStoryToDB(s);
-            }
-            localStorage.removeItem('eventyrboka_stories');
-            console.log("Migrated stories from localStorage to IndexedDB");
-          } catch (e) {
-            console.warn("Failed to migrate local stories", e);
-          }
-        }
-
-        // Load from DB
-        const stories = await getAllStoriesFromDB();
-        setSavedStories(stories);
+        const stories = await loadStories(status.innlogget);
+        if (!cancelled) setSavedStories(stories);
       } catch (e) {
-        console.error("Failed to load stories", e);
-        setError("Kunne ikke laste lagrede historier.");
+        console.error('Failed to load stories', e);
+        if (!cancelled) setError('Kunne ikke laste lagrede historier.');
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    loadStories();
   }, []);
+
+  // Show a short confirmation when the user comes back from Vipps.
+  // ?vipps=ok / ?vipps=feil / ?vipps=avbrutt are set by /api/vipps/tilbake.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('vipps');
+    if (!code) return;
+    const message: Record<string, string> = {
+      ok: 'Du er logget inn.',
+      avbrutt: 'Vipps-innloggingen ble avbrutt.',
+      feil: 'Vipps-innloggingen feilet. Prøv igjen.',
+      'ikke-klar': 'Vipps-innlogging er ikke satt opp ennå.',
+      oppdater: 'Du må oppdatere Vipps-appen for å logge inn.',
+    };
+    const msg = message[code];
+    if (msg && code !== 'ok') setError(msg);
+    params.delete('vipps');
+    const url =
+      window.location.pathname +
+      (params.toString() ? `?${params.toString()}` : '') +
+      window.location.hash;
+    window.history.replaceState(null, '', url);
+  }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    setAccount({ ...account, innlogget: false, fornavn: '' });
+    // After sign-out, the user sees their local IndexedDB stories again.
+    try {
+      const stories = await loadStories(false);
+      setSavedStories(stories);
+    } catch {
+      setSavedStories([]);
+    }
+  };
 
   // Attaches the illustration for a segment in the background, updating state
   // in place when the image lands. The reader can start reading while this runs.
@@ -242,12 +281,15 @@ const App: React.FC = () => {
     };
 
     try {
-      await saveStoryToDB(newStory);
+      const ok = await saveStoryAccount(newStory, account.innlogget);
+      if (!ok) throw new Error('save-failed');
       setSavedStories(prev => [newStory, ...prev]);
       return true;
     } catch (e) {
       console.error("Save error:", e);
-      setError("Kunne ikke lagre eventyret. Det kan hende disken er full.");
+      setError(account.innlogget
+        ? "Kunne ikke lagre eventyret til kontoen din. Prøv igjen om litt."
+        : "Kunne ikke lagre eventyret. Det kan hende disken er full.");
       return false;
     }
   };
@@ -269,7 +311,7 @@ const App: React.FC = () => {
   const handleDeleteStory = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await deleteStoryFromDB(id);
+      await deleteStoryAccount(id, account.innlogget);
       setSavedStories(prev => prev.filter(s => s.id !== id));
     } catch (err) {
       setError("Kunne ikke slette historien.");
@@ -305,16 +347,38 @@ const App: React.FC = () => {
           </span>
         </a>
         <header className="bg-white shadow-sm py-4 px-6">
-          <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
             <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
               <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
             </button>
-            {view === 'reading' && options && (
-              <div className="hidden md:flex text-sm text-gray-500 gap-4">
-                <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
-                <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {view === 'reading' && options && (
+                <div className="hidden md:flex text-sm text-gray-500 gap-4">
+                  <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
+                  <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
+                </div>
+              )}
+              {account.innlogget ? (
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <span className="font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
+                  <button
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 hover:bg-gray-100"
+                    aria-label="Logg ut"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Logg ut</span>
+                  </button>
+                </div>
+              ) : account.vippsReady ? (
+                <a
+                  href="/api/vipps/start"
+                  className="inline-flex items-center px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base"
+                >
+                  Logg inn med Vipps
+                </a>
+              ) : null}
+            </div>
           </div>
         </header>
       </div>

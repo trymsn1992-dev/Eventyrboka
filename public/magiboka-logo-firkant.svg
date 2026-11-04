@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Kvadratisk Magiboka-logo for Vipps-salgsenheten. Varmt papir i bakgrunnen, så
+       logoen sitter godt uansett om Vipps viser den på lyst eller mørkt. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBF6EC"/>
+      <stop offset="1" stop-color="#F3E7CF"/>
+    </linearGradient>
+    <linearGradient id="bokvenstre" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1D3EBE"/>
+      <stop offset="1" stop-color="#4A6AD8"/>
+    </linearGradient>
+    <linearGradient id="bokhoyre" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2D5BE3"/>
+      <stop offset="1" stop-color="#6FA7F3"/>
+    </linearGradient>
+    <linearGradient id="arcGold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F8C66A"/>
+      <stop offset="1" stop-color="#F3A341"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Avrundet firkant som bakgrunn. Vipps klipper ikke, men mange flater avrundes,
+       så vi legger luft rundt. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="url(#bg)"/>
+
+  <!-- Trollstav-bue med stjerner og en gyllen hale, slik som i hovedlogoen. -->
+  <path
+    d="M 230 400
+       Q 512 160, 800 360"
+    fill="none" stroke="url(#arcGold)" stroke-width="22" stroke-linecap="round"/>
+  <!-- Småstjerner langs buen -->
+  <circle cx="275" cy="400" r="9" fill="#F3A341"/>
+  <circle cx="330" cy="340" r="7" fill="#F8C66A"/>
+  <circle cx="420" cy="275" r="6" fill="#F3A341"/>
+  <circle cx="620" cy="245" r="8" fill="#F8C66A"/>
+  <circle cx="720" cy="300" r="6" fill="#F3A341"/>
+
+  <!-- Stor stjerne til høyre, på enden av buen -->
+  <g transform="translate(790 358) scale(1.05)">
+    <polygon
+      points="0,-62 18,-19 62,-15 28,13 38,56 0,33 -38,56 -28,13 -62,-15 -18,-19"
+      fill="#F3A341" stroke="#C97A1E" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Oppslått bok i midten/nedre halvdel. To halvsider som møtes i en V. -->
+  <g transform="translate(512 720)">
+    <!-- Skygge under boken -->
+    <ellipse cx="0" cy="190" rx="300" ry="26" fill="#2A2317" opacity="0.08"/>
+
+    <!-- Venstre side -->
+    <path
+      d="M -340 -140
+         L -20 -90
+         L -20 170
+         L -340 110
+         Z"
+      fill="url(#bokvenstre)"/>
+    <!-- Lysere innside venstre -->
+    <path
+      d="M -325 -115
+         L -35 -70
+         L -35 150
+         L -325 90
+         Z"
+      fill="#8CC3FA" opacity="0.55"/>
+
+    <!-- Høyre side -->
+    <path
+      d="M 20 -90
+         L 340 -140
+         L 340 110
+         L 20 170
+         Z"
+      fill="url(#bokhoyre)"/>
+    <!-- Lysere innside høyre -->
+    <path
+      d="M 35 -70
+         L 325 -115
+         L 325 90
+         L 35 150
+         Z"
+      fill="#8CC3FA" opacity="0.55"/>
+
+    <!-- Midtfalsen -->
+    <path
+      d="M 0 -95
+         L 0 175"
+      stroke="#122A8A" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <!-- Navnet lagt under, tegnet som tekst i Quicksand-stil (brukes på siden).
+       Hvis Vipps komprimerer hardt, kan logoen brukes uten teksten. -->
+  <text
+    x="512" y="945"
+    font-family="'Quicksand', 'Avenir Next', 'Helvetica Neue', sans-serif"
+    font-weight="700" font-size="110"
+    text-anchor="middle" fill="#1D3EBE" letter-spacing="2">
+    Magiboka
+  </text>
+</svg>
