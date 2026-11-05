@@ -115,8 +115,7 @@ export function normalizeAgeGroup(input: string | undefined): string {
 export const DURATIONS = [
   "Kort (ca. 2,5 min)",
   "Middels (ca. 5 min)",
-  "Lang (ca. 10 min)",
-  "Ekstra lang (ca. 15 min)"
+  "Lang (ca. 10 min)"
 ];
 
 // Every story now has a fixed number of choice pages + one resolution page.
@@ -152,32 +151,6 @@ export const DURATION_DENSITY: Record<string, DurationDensity> = {
     miniScenes: 2,
     pacing: "fyldig — to mini-scener som bygger stemning og karakter før valget",
   },
-  "Ekstra lang (ca. 15 min)": {
-    sentences: "18-25",
-    miniScenes: 3,
-    pacing: "rik og detaljert — to-tre mini-scener, gjerne med en bikarakter-møte, før valget",
-  },
-  // Legacy aliases from older saved stories.
-  "Kort (ca. 2,5 min · 5 sider)": {
-    sentences: "3-5",
-    miniScenes: 0,
-    pacing: "stramt og raskt — rett på handlingen, ingen mini-scener før valget",
-  },
-  "Middels (ca. 5 min · 8 sider)": {
-    sentences: "6-10",
-    miniScenes: 1,
-    pacing: "rolig — én kort mini-scene (observasjon, dialog eller sanselig øyeblikk) før valget",
-  },
-  "Lang (ca. 10 min · 15 sider)": {
-    sentences: "12-18",
-    miniScenes: 2,
-    pacing: "fyldig — to mini-scener som bygger stemning og karakter før valget",
-  },
-  "Ekstra lang (ca. 15 min · 25 sider)": {
-    sentences: "18-25",
-    miniScenes: 3,
-    pacing: "rik og detaljert — to-tre mini-scener, gjerne med en bikarakter-møte, før valget",
-  },
 };
 
 // Kept for backward compatibility with code that references it.
@@ -186,9 +159,4 @@ export const DURATION_ESTIMATES: Record<string, number> = {
   "Kort (ca. 2,5 min)": TOTAL_PAGES,
   "Middels (ca. 5 min)": TOTAL_PAGES,
   "Lang (ca. 10 min)": TOTAL_PAGES,
-  "Ekstra lang (ca. 15 min)": TOTAL_PAGES,
-  "Kort (ca. 2,5 min · 5 sider)": TOTAL_PAGES,
-  "Middels (ca. 5 min · 8 sider)": TOTAL_PAGES,
-  "Lang (ca. 10 min · 15 sider)": TOTAL_PAGES,
-  "Ekstra lang (ca. 15 min · 25 sider)": TOTAL_PAGES,
 };

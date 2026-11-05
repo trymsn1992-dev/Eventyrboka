@@ -8,13 +8,12 @@ import {
   StoryOptions,
 } from "../../types.js";
 
-// Older client bundles and saved stories reference these legacy duration
-// labels. Accept them so a stale cache or an old saved story still works.
+// Older client bundles may still ship these legacy duration labels.
+// Accept them so a stale browser cache keeps working after we rename.
 const LEGACY_DURATIONS = [
   "Kort (ca. 2,5 min · 5 sider)",
   "Middels (ca. 5 min · 8 sider)",
   "Lang (ca. 10 min · 15 sider)",
-  "Ekstra lang (ca. 15 min · 25 sider)",
 ];
 
 const ALLOWED = {
