@@ -117,9 +117,17 @@ export interface GeneratedBook {
   plan: Omit<StoryPlan, "characterSheetBase64">;
   pages: StorySegment[];
 }
+// opener's choices (text + bridge of each option) are passed with the
+// text so the server can tell the big model to converge side 2 from
+// EITHER bridge. Without them side 2 was written blind and the reader
+// felt a disconnect between the bridge they just read and the scene
+// that followed. nextPlotPoint is dropped — the server doesn't need it.
 export const generateFullBook = async (
   options: StoryOptions,
-  opener?: { text: string }
+  opener?: {
+    text: string;
+    choices?: Array<{ text: string; bridge: string }>;
+  }
 ): Promise<GeneratedBook> => {
   const data = await postJson<{
     plan: GeneratedBook["plan"];

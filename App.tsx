@@ -242,9 +242,14 @@ const App: React.FC = () => {
 
       // Stage 2: the big call. Runs in the background while the reader
       // reads page 1. Pages 2–5 and the plan come back together.
+      // Pass the opener's choices (text + bridge of each option) so the
+      // model can write side 2 that converges from EITHER bridge.
       void (async () => {
         try {
-          const book = await generateFullBook(selectedOptions, { text: opener.text });
+          const book = await generateFullBook(selectedOptions, {
+            text: opener.text,
+            choices: opener.choices.map(c => ({ text: c.text, bridge: c.bridge ?? '' })),
+          });
 
           const continuationSegments: StorySegment[] = book.pages.map(p => ({
             text: p.text,

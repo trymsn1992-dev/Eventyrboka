@@ -212,10 +212,22 @@ VIKTIGE INNHOLDSREGLER (alltid):
 // still returns { plan, pages } — but pages is the *continuation*, of
 // length TOTAL_PAGES - 1, not the full book. The client prepends the
 // opener side 1.
+//
+// Side-1's two choices and their bridge sentences are passed in too so
+// the model can write side 2 that converges from EITHER bridge. Without
+// them side 2 would be written in the dark and the reader would feel a
+// gap between "what the bridge promised" and "what side 2 delivers".
+interface OpenerContext {
+  text: string;
+  choices?: Array<{
+    text: string;
+    bridge: string;
+  }>;
+}
 function buildSystemInstruction(
   options: StoryOptions,
   seed: number,
-  opener?: { text: string }
+  opener?: OpenerContext
 ): string {
   const density = DURATION_DENSITY[options.duration];
   const openingArchetype = pick(OPENING_ARCHETYPES, seed);
@@ -231,6 +243,28 @@ function buildSystemInstruction(
     ? "Det tredje beatet (side 3 totalt = den ANDRE siden du skriver nå) er METAFOR-TESTEN — sett isMetaphorTest=true på det beatet."
     : "Det tredje beatet (side 3) er METAFOR-TESTEN — sett isMetaphorTest=true på det beatet.";
 
+  const openerChoicesBlock =
+    opener && Array.isArray(opener.choices) && opener.choices.length === 2
+      ? `
+Leseren velger mellom disse to alternativene på slutten av side 1:
+
+<VALG A>
+Knapp: "${opener.choices[0].text}"
+Bridge (vises på side 1 rett etter klikk, før side 2): ${opener.choices[0].bridge}
+</VALG A>
+
+<VALG B>
+Knapp: "${opener.choices[1].text}"
+Bridge (vises på side 1 rett etter klikk, før side 2): ${opener.choices[1].bridge}
+</VALG B>
+
+KRITISK: Side 2 — den FØRSTE siden du selv skriver — må kunne lese seg naturlig etter BEGGE disse bridgene.
+Ikke anta at leseren har valgt A, ikke anta at leseren har valgt B. Begge bridgene MÅ lede troverdig inn i åpningen av side 2.
+Dette er perle-strukturen i praksis: valget og bridgen fargelegger stemningen leseren ankommer med, men side 2 starter samme sted uansett.
+Tenk konkret: hvis bridge A sier "Nils smetter ut gjennom katteluka" og bridge B sier "Nils mjauer til bestemor", så kan side 2 ikke anta at Nils er ute — den må kunne mottatt begge. Vanlig løsning: start side 2 på et sted eller en handling som begge bridger kan samles i.
+`
+      : "";
+
   const openerBlock = opener
     ? `
 SIDE 1 ER ALLEREDE SKREVET AV EN ANNEN MODELL. Du må ikke skrive den igjen.
@@ -239,10 +273,10 @@ Her er den ordrett, så du kan fortsette i samme stemme, verden og stemning:
 <SIDE 1>
 ${opener.text}
 </SIDE 1>
-
+${openerChoicesBlock}
 Du skriver nå planen + ${continuationPages} sider som FORTSETTER fra side 1 (altså sider 2–${TOTAL_PAGES}).
 Planen skal fortsatt ha ${TOTAL_PAGES} beats totalt, men den første beatet må passe med side 1 slik den er skrevet over.
-Første side du selv skriver er side 2 (beat 2) — den må lede naturlig videre fra åpningen du nettopp leste.
+Første side du selv skriver er side 2 (beat 2) — den må lede naturlig videre fra åpningen du nettopp leste${openerChoicesBlock ? " OG fra begge bridgene over" : ""}.
 `
     : `
 SIDE 1 åpner historien konkret og sanselig gjennom åpnings-arketypen.
@@ -317,9 +351,12 @@ interface BookRequestBody {
   options: unknown;
   // Optional fast-opener context. When present, the model writes
   // pages 2..TOTAL_PAGES as a continuation of this already-written
-  // side 1 (produced by /api/opener on the lite model).
+  // side 1 (produced by /api/opener on the lite model). The choices
+  // + bridges are passed in too so side 2 can be written to converge
+  // from EITHER of the bridge sentences the reader might read.
   opener?: {
     text?: unknown;
+    choices?: unknown;
   };
 }
 
@@ -362,7 +399,28 @@ export default async function handler(
       body.opener && typeof body.opener.text === "string"
         ? body.opener.text.slice(0, 4000)
         : undefined;
-    const opener = rawOpenerText ? { text: rawOpenerText } : undefined;
+    // Validate opener choices the same way: at most 2, each item must be
+    // an object with string text + bridge, each capped to a sane length.
+    let openerChoices: Array<{ text: string; bridge: string }> | undefined;
+    if (body.opener && Array.isArray(body.opener.choices)) {
+      const parsedChoices: Array<{ text: string; bridge: string }> = [];
+      for (const raw of body.opener.choices.slice(0, 2)) {
+        if (!raw || typeof raw !== "object") continue;
+        const row = raw as Record<string, unknown>;
+        if (typeof row.text === "string" && typeof row.bridge === "string") {
+          parsedChoices.push({
+            text: row.text.slice(0, 200),
+            bridge: row.bridge.slice(0, 800),
+          });
+        }
+      }
+      if (parsedChoices.length === 2) {
+        openerChoices = parsedChoices;
+      }
+    }
+    const opener = rawOpenerText
+      ? { text: rawOpenerText, choices: openerChoices }
+      : undefined;
     const pagesExpected = opener ? TOTAL_PAGES - 1 : TOTAL_PAGES;
 
     const systemInstruction = buildSystemInstruction(options, seed, opener);
