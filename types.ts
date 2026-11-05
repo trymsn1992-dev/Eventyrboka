@@ -91,7 +91,7 @@ export const METAPHORS = [
   "Fokuser på det du kan påvirke",
   "Vær snill mot andre",
   "Det lønner seg å spare",
-  "Vær modig selv om du er redd",
+  "Vær mot andre slik du vil at andre skal være mot deg",
   "Ærlighet varer lengst"
 ];
 

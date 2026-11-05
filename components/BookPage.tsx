@@ -81,12 +81,25 @@ export const BookPage: React.FC<BookPageProps> = ({
       .filter(Boolean);
   }, [activeSource]);
   const [chunksRevealed, setChunksRevealed] = useState(1);
+  // Desktop readers get the whole paragraph; the sentence-at-a-time frame is
+  // for small screens where text has to compete with the illustration.
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const update = () => setIsDesktop(mql.matches);
+    update();
+    mql.addEventListener?.('change', update);
+    return () => mql.removeEventListener?.('change', update);
+  }, []);
   // Whenever the active source switches (new page OR choice just picked)
   // restart at the first sentence.
   useEffect(() => {
     setChunksRevealed(1);
   }, [activeSource]);
-  const allChunksShown = chunksRevealed >= textChunks.length;
+  const allChunksShown = isDesktop || chunksRevealed >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -367,62 +380,85 @@ export const BookPage: React.FC<BookPageProps> = ({
               <style>{`
                 @keyframes chunkSwap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
               `}</style>
-              {/* Fixed-height text frame so the image never shifts when the
-                  current sentence changes. Tap anywhere to advance. */}
-              <button
-                type="button"
-                onClick={() =>
-                  !allChunksShown &&
-                  setChunksRevealed(c => Math.min(c + 1, textChunks.length))
-                }
-                disabled={allChunksShown}
-                aria-label={allChunksShown ? 'Siste setning' : 'Vis neste setning'}
-                className={`relative w-full text-left rounded-2xl px-5 py-6 lg:px-7 lg:py-8 min-h-[180px] lg:min-h-[220px] flex items-center justify-center border transition-colors ${
-                  allChunksShown
-                    ? 'border-transparent cursor-default'
-                    : 'border-amber-100 bg-amber-50/40 hover:bg-amber-50/80 active:bg-amber-100/80 cursor-pointer'
-                }`}
-              >
-                <div
-                  key={`${isReadingBridge ? 'b' : 's'}-${chunksRevealed}`}
-                  style={{ animation: 'chunkSwap 0.4s ease-out' }}
-                  className="w-full"
-                >
-                  {isReadingBridge && chunksRevealed === 1 && (
-                    <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
+              {isDesktop ? (
+                // Desktop: full paragraph, no tap-to-advance, no progress dots.
+                <div className="rounded-2xl px-5 py-6 lg:px-7 lg:py-8">
+                  {isReadingBridge && (
+                    <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3">
                       Du valgte: {chosenChoice?.text}
                     </p>
                   )}
                   <p
-                    className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl text-center ${
-                      chunksRevealed === 1 && !isReadingBridge
+                    className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl ${
+                      !isReadingBridge
                         ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                         : ''
                     }`}
+                    style={{ whiteSpace: 'pre-line' }}
                   >
-                    {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
+                    {activeSource}
                   </p>
                 </div>
-                {!allChunksShown && (
-                  <span className="absolute bottom-3 right-4 flex items-center gap-1 text-xs lg:text-sm text-amber-700/80 font-serif italic">
-                    Trykk <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                )}
-              </button>
-              {/* Progress dots: shows how far through the page we are */}
-              {textChunks.length > 1 && (
-                <div className="flex items-center justify-center gap-1.5 mt-3">
-                  {textChunks.map((_, idx) => (
-                    <span
-                      key={idx}
-                      className={`block h-1.5 rounded-full transition-all duration-300 ${
-                        idx < chunksRevealed
-                          ? 'w-6 bg-indigo-400'
-                          : 'w-3 bg-indigo-100'
-                      }`}
-                    />
-                  ))}
-                </div>
+              ) : (
+                <>
+                  {/* Mobile: fixed-height text frame so the image never shifts
+                      when the current sentence changes. Tap anywhere to advance. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      !allChunksShown &&
+                      setChunksRevealed(c => Math.min(c + 1, textChunks.length))
+                    }
+                    disabled={allChunksShown}
+                    aria-label={allChunksShown ? 'Siste setning' : 'Vis neste setning'}
+                    className={`relative w-full text-left rounded-2xl px-5 py-6 min-h-[180px] flex items-center justify-center border transition-colors ${
+                      allChunksShown
+                        ? 'border-transparent cursor-default'
+                        : 'border-amber-100 bg-amber-50/40 hover:bg-amber-50/80 active:bg-amber-100/80 cursor-pointer'
+                    }`}
+                  >
+                    <div
+                      key={`${isReadingBridge ? 'b' : 's'}-${chunksRevealed}`}
+                      style={{ animation: 'chunkSwap 0.4s ease-out' }}
+                      className="w-full"
+                    >
+                      {isReadingBridge && chunksRevealed === 1 && (
+                        <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
+                          Du valgte: {chosenChoice?.text}
+                        </p>
+                      )}
+                      <p
+                        className={`font-serif text-gray-800 leading-relaxed text-xl text-center ${
+                          chunksRevealed === 1 && !isReadingBridge
+                            ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                            : ''
+                        }`}
+                      >
+                        {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
+                      </p>
+                    </div>
+                    {!allChunksShown && (
+                      <span className="absolute bottom-3 right-4 flex items-center gap-1 text-xs text-amber-700/80 font-serif italic">
+                        Trykk <ArrowRight className="w-3.5 h-3.5" />
+                      </span>
+                    )}
+                  </button>
+                  {/* Progress dots: shows how far through the page we are */}
+                  {textChunks.length > 1 && (
+                    <div className="flex items-center justify-center gap-1.5 mt-3">
+                      {textChunks.map((_, idx) => (
+                        <span
+                          key={idx}
+                          className={`block h-1.5 rounded-full transition-all duration-300 ${
+                            idx < chunksRevealed
+                              ? 'w-6 bg-indigo-400'
+                              : 'w-3 bg-indigo-100'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
               {/* Les høyt sits under the text frame now so it does not compete
                   with the illustration for attention at the top. */}

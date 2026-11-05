@@ -68,11 +68,11 @@ const METAPHOR_ANGLES: Record<string, string[]> = {
     "ta vare på noe gammelt i stedet for å kaste det",
     "vente med å si noe til riktig øyeblikk",
   ],
-  "Vær modig selv om du er redd": [
-    "gjøre noe modig i det stille, uten applaus",
-    "si fra når noe ikke er greit",
-    "prøve en gang til etter å ha falt",
-    "være modig for en annens skyld",
+  "Vær mot andre slik du vil at andre skal være mot deg": [
+    "behandle noen slik en selv liker å bli behandlet",
+    "tenke seg om: hvordan ville jeg likt dette hvis det var meg?",
+    "bytte plass i tankene med en annen før en handler",
+    "gi det en selv ville satt pris på — et vennlig ord, en ekstra sjanse, en hjelpende hånd",
   ],
   "Ærlighet varer lengst": [
     "si sannheten selv om det blir pinlig",
