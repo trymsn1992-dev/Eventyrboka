@@ -20,7 +20,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
   switch (name) {
     case "Ninja-katten Nils":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
           <defs>
             <linearGradient id="catFur" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#FFD54F" />
@@ -51,7 +51,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
       );
     case "Kongekrabba Kim":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
           <defs>
             <radialGradient id="crabBody" cx="50%" cy="50%" r="50%" fx="40%" fy="40%">
               <stop offset="0%" stopColor="#FF8A80" />
@@ -95,7 +95,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
       );
     case "Rom-hunden Rex":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
           <defs>
             <linearGradient id="helmetGlass" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#E3F2FD" stopOpacity="0.4"/>
@@ -138,7 +138,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
       );
     case "Prinsesse Pølse":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
           <defs>
             <linearGradient id="sausageSkin" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#EF9A9A" />
@@ -174,7 +174,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
       );
     case "Dragen Dagros":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
           <defs>
             <linearGradient id="dragonBody" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#C8E6C9" />
@@ -214,7 +214,7 @@ const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }
       );
     case "Super-sneglen Sivert":
       return (
-        <svg viewBox="0 0 100 100" className={`w-24 h-24 ${bgClass} ${transition}`}>
+        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
            <defs>
             <linearGradient id="shell" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#D7CCC8" />
@@ -297,16 +297,16 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center pt-4 pb-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl border-4 border-indigo-100 dark:border-indigo-900 mb-12">
+    <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-4xl w-full space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-2xl border-2 sm:border-4 border-indigo-100 dark:border-indigo-900 mb-8 sm:mb-12">
         <div className="text-center">
-          <div className="mx-auto h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-            <BookOpen className="h-10 w-10 text-indigo-600" />
+          <div className="mx-auto h-14 w-14 sm:h-20 sm:w-20 bg-indigo-100 dark:bg-indigo-900/40 rounded-full flex items-center justify-center mb-3 sm:mb-4">
+            <BookOpen className="h-7 w-7 sm:h-10 sm:w-10 text-indigo-600 dark:text-indigo-300" />
           </div>
-          <h2 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">Lag din fortelling!</h2>
+          <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">Lag din fortelling!</h2>
         </div>
 
-        <form className="mt-10 space-y-12" onSubmit={handleSubmit}>
+        <form className="mt-6 sm:mt-10 space-y-8 sm:space-y-12" onSubmit={handleSubmit}>
           
           {/* 1. Character Selection Grid */}
           <div className="space-y-4">
@@ -323,9 +323,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     type="button"
                     onClick={() => handleChange('character', char)}
                     className={`
-                      p-4 rounded-2xl text-left transition-all duration-200
-                      border-2 flex flex-col items-center justify-between text-center gap-3 h-full min-h-[160px]
-                      ${isSelected 
+                      p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left transition-all duration-200
+                      border-2 flex flex-col items-center justify-between text-center gap-2 sm:gap-3 h-full min-h-[120px] sm:min-h-[160px]
+                      ${isSelected
                         ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-md ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-2 dark:ring-offset-gray-800'
                         : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-600'
                       }
@@ -452,32 +452,32 @@ const SelectionSection = ({ icon, title, options, value, onChange, iconMap }: {
   onChange: (val: string) => void,
   iconMap?: Record<string, string>
 }) => (
-  <div className="space-y-4">
-    <div className="flex items-center gap-2 border-b pb-2 border-gray-100">
+  <div className="space-y-3 sm:space-y-4">
+    <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
       {icon}
-      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h3>
+      <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h3>
     </div>
-    <div className="grid grid-cols-2 sm:grid-cols-2 gap-3"> {/* Force 2 columns for even grids */}
+    <div className="grid grid-cols-2 gap-2 sm:gap-3">
       {options.map((opt) => {
         const isSelected = value === opt;
         const itemIcon = iconMap ? iconMap[opt] : null;
-        
+
         return (
           <button
             key={opt}
             type="button"
             onClick={() => onChange(opt)}
             className={`
-              p-3 rounded-xl text-left transition-all duration-200
-              border-2 flex flex-col items-center justify-center text-center gap-2 h-full min-h-[100px]
-              ${isSelected 
+              p-2 sm:p-3 rounded-lg sm:rounded-xl text-left transition-all duration-200
+              border-2 flex flex-col items-center justify-center text-center gap-1 sm:gap-2 h-full min-h-[72px] sm:min-h-[100px]
+              ${isSelected
                 ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-md scale-105 ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-1 dark:ring-offset-gray-800'
                 : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-600'
               }
             `}
           >
-            {itemIcon && <span className="text-4xl mb-1">{itemIcon}</span>}
-            <span className="text-sm font-semibold">{opt}</span>
+            {itemIcon && <span className="text-2xl sm:text-4xl mb-0 sm:mb-1">{itemIcon}</span>}
+            <span className="text-xs sm:text-sm font-semibold">{opt}</span>
           </button>
         );
       })}
