@@ -3,7 +3,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
-import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration, generateFullBook, generateOpener } from './services/geminiService';
+import { generateCharacterSheet, generateIllustration, generateFullBook, generateOpener } from './services/geminiService';
 import {
   AccountStatus,
   deleteStory as deleteStoryAccount,
@@ -36,18 +36,6 @@ const App: React.FC = () => {
   // they click "Neste side"; the segments array can grow underneath while
   // they read the bridge on the current page.
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-
-  // Pending plan while it generates in the background. handleChoice awaits
-  // this so segment 2+ get the plan even if the user clicks before it lands.
-  const pendingPlanRef = useRef<Promise<StoryPlan | undefined> | null>(null);
-
-  // Experimental one-shot flow: entire book generated in a single Gemini call
-  // and all images fetched in parallel. Toggle with ?nyflyt=1 in the URL.
-  // Read once per session so we can A/B against the default flow.
-  const useBookMode = useRef<boolean>(
-    typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('nyflyt') === '1'
-  );
 
   // Account state. Drives the header login/logout UI and decides whether
   // story reads/writes go to Supabase or stay in the browser.
@@ -153,61 +141,7 @@ const App: React.FC = () => {
     });
   };
 
-  const handleStartStory = async (selectedOptions: StoryOptions) => {
-    setOptions(selectedOptions);
-    setPlan(null);
-    setCurrentPageIndex(0);
-    setIsLoading(true);
-    setError(null);
-
-    if (useBookMode.current) {
-      await handleStartStoryBookMode(selectedOptions);
-      return;
-    }
-
-    try {
-      // Fire plan + sheet in the background. Neither blocks the first segment.
-      // The plan is used from segment 2 onward; the sheet is used by every
-      // illustration call. Both finish while the reader is on segment 1.
-      const planPromise = planStory(selectedOptions).catch(err => {
-        console.warn("Plan failed, continuing without plan", err);
-        return undefined;
-      });
-      const sheetPromise = generateCharacterSheet(selectedOptions.character);
-      pendingPlanRef.current = planPromise;
-
-      // Start segment 1 immediately. The server-side opener picks an archetype
-      // seed itself so the opening stays varied without needing the plan.
-      const firstSegment = await startNewStoryText(selectedOptions, undefined);
-      setSegments([firstSegment]);
-      setView('reading');
-      setIsLoading(false);
-
-      // Compose plan + sheet into state as they land, so segment 2+ have both.
-      void Promise.all([planPromise, sheetPromise]).then(([p, sheet]) => {
-        if (!p && !sheet) return;
-        const composed: StoryPlan = {
-          logline: p?.logline ?? '',
-          characterVoice: p?.characterVoice ?? '',
-          beats: p?.beats ?? [],
-          moralArc: p?.moralArc ?? '',
-          settingSeeds: p?.settingSeeds ?? [],
-          sideCharacters: p?.sideCharacters ?? [],
-          characterSheetBase64: sheet,
-        };
-        setPlan(composed);
-      });
-
-      // Illustrate segment 1 in the background. It only needs the sheet, not the plan.
-      void attachIllustrationAt(0, firstSegment, selectedOptions, undefined, sheetPromise);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
-      setIsLoading(false);
-    }
-  };
-
-  // Hybrid two-stage flow behind ?nyflyt=1.
+  // Hybrid two-stage flow — the one and only path.
   //
   // Stage 1 — Fast opener (lite model, ~3-5s): writes page 1 so the reader
   // sees a scene immediately. The character sheet and page 1's image start
@@ -220,7 +154,12 @@ const App: React.FC = () => {
   // time they tap to the next page, everything is already in state.
   //
   // On choice click no server round trip happens — see handleChoice.
-  const handleStartStoryBookMode = async (selectedOptions: StoryOptions) => {
+  const handleStartStory = async (selectedOptions: StoryOptions) => {
+    setOptions(selectedOptions);
+    setPlan(null);
+    setCurrentPageIndex(0);
+    setIsLoading(true);
+    setError(null);
     try {
       // Fire the sheet immediately so it is ready by the time any image
       // call wants it. It does not block anything downstream.
@@ -305,80 +244,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleChoice = async (choice: Choice) => {
-    if (!options) return;
-    // In book mode every page is already in `segments` from the initial
-    // one-shot call. The bridge is shown locally by BookPage; the "Neste
-    // side" button advances `currentPageIndex`. No server round trip.
-    if (useBookMode.current) {
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      // If the plan is still generating, wait for it before continuing.
-      // By the time a reader clicks a choice this is almost always a no-op.
-      let activePlan = plan ?? undefined;
-      if (!activePlan && pendingPlanRef.current) {
-        activePlan = (await pendingPlanRef.current) ?? undefined;
-      }
-      const nextSegment = await continueStoryText(options, segments, choice.nextPlotPoint, activePlan);
-      const insertIndex = segments.length;
-      setSegments(prev => [...prev, nextSegment]);
-      setIsLoading(false);
-      void attachIllustrationAt(
-        insertIndex,
-        nextSegment,
-        options,
-        activePlan,
-        Promise.resolve(activePlan?.characterSheetBase64)
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      setError(msg || "Oisann! Noe gikk galt når vi skulle bla om. Prøv å klikke igjen.");
-      setIsLoading(false);
-    }
+  // Every page is already in `segments` from the two-stage generation.
+  // The bridge is shown locally by BookPage; the "Neste side" button
+  // advances `currentPageIndex`. No server round trip on choice click.
+  const handleChoice = async (_choice: Choice) => {
+    // No-op by design.
   };
 
-  // Parent escape hatch: next page becomes the resolution regardless of plan position.
+  // Parent escape hatch: next page becomes the resolution regardless of
+  // where we are in the arc. The resolution is already written as the
+  // last segment; splice it right after the current page so the next
+  // tap lands on it.
   const handleWrapUp = async () => {
-    if (!options) return;
-    // In book mode the resolution is already written as the last segment.
-    // Splice it in right after the current page so the next tap lands on it.
-    if (useBookMode.current && segments.length > 0) {
-      const last = segments[segments.length - 1];
-      setSegments(prev => [...prev.slice(0, currentPageIndex + 1), last]);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      let activePlan = plan ?? undefined;
-      if (!activePlan && pendingPlanRef.current) {
-        activePlan = (await pendingPlanRef.current) ?? undefined;
-      }
-      const nextSegment = await continueStoryText(
-        options,
-        segments,
-        "avslutt historien varmt nå",
-        activePlan,
-        true,
-      );
-      const insertIndex = segments.length;
-      setSegments(prev => [...prev, nextSegment]);
-      setIsLoading(false);
-      void attachIllustrationAt(
-        insertIndex,
-        nextSegment,
-        options,
-        activePlan,
-        Promise.resolve(activePlan?.characterSheetBase64)
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      setError(msg || "Klarte ikke å avslutte historien akkurat nå. Prøv igjen.");
-      setIsLoading(false);
-    }
+    if (!options || segments.length === 0) return;
+    const last = segments[segments.length - 1];
+    setSegments(prev => [...prev.slice(0, currentPageIndex + 1), last]);
   };
 
   const handleRestart = () => {
