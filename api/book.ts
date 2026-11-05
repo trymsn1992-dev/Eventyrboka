@@ -11,16 +11,17 @@ import {
   TOTAL_PAGES,
 } from "../types.js";
 
-// /api/book writes plan + all 5 pages in one call. The lite model
-// finishes this batch markedly faster than 3.8-flash in our production
-// tests, and the output quality for the structured book schema has
-// been good enough in children's-book use. Keep the heavier models as
-// fallback in case lite is unavailable or chokes on the JSON schema.
+// Back to the full Flash chain. The lite model was quick (~8s) but the
+// story prose was noticeably flatter — the children's-book voice
+// collapsed into generic storytelling. Full Flash takes ~50s for the
+// one-shot book call; worth it for the voice. Keep lite as a last-
+// resort fallback so an outage of the big models still produces a
+// book, even a plainer one.
 const TEXT_MODEL_CHAIN = [
-  "gemini-flash-lite-latest",
   "gemini-3.8-flash",
   "gemini-flash-latest",
   "gemini-2.5-pro",
+  "gemini-flash-lite-latest",
 ];
 
 // Rotated per-request so stories don't all open the same way.
