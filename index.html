@@ -42,6 +42,12 @@
       html.dark .page-curl {
         background: linear-gradient(to right, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 5%, rgba(0,0,0,0) 95%, rgba(255,255,255,0.03) 100%);
       }
+      /* The Magiboka logo file has a white backdrop baked in. In dark
+         mode we blend the white into the page so only the coloured
+         marks of the logo are visible — no floating white badge. */
+      html.dark .logo-blend {
+        mix-blend-mode: screen;
+      }
       .font-serif {
         font-family: 'Lora', serif;
       }

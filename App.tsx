@@ -384,7 +384,7 @@ const App: React.FC = () => {
           <header className="bg-white dark:bg-gray-900 shadow-sm py-4 px-6">
             <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
               <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
-                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
+                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto logo-blend" />
               </button>
               <div className="flex items-center gap-3">
                 <button
@@ -430,7 +430,7 @@ const App: React.FC = () => {
             aria-label="Til forsiden"
             className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 shadow-md backdrop-blur-sm rounded-full p-2 text-gray-700 dark:text-gray-200 transition-colors"
           >
-            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-6 w-auto" />
+            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-6 w-auto logo-blend" />
           </button>
           <button
             onClick={toggleTheme}
