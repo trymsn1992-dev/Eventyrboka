@@ -3,7 +3,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
-import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration } from './services/geminiService';
+import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration, generateFullBook } from './services/geminiService';
 import {
   AccountStatus,
   deleteStory as deleteStoryAccount,
@@ -40,6 +40,14 @@ const App: React.FC = () => {
   // Pending plan while it generates in the background. handleChoice awaits
   // this so segment 2+ get the plan even if the user clicks before it lands.
   const pendingPlanRef = useRef<Promise<StoryPlan | undefined> | null>(null);
+
+  // Experimental one-shot flow: entire book generated in a single Gemini call
+  // and all images fetched in parallel. Toggle with ?nyflyt=1 in the URL.
+  // Read once per session so we can A/B against the default flow.
+  const useBookMode = useRef<boolean>(
+    typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nyflyt') === '1'
+  );
 
   // Account state. Drives the header login/logout UI and decides whether
   // story reads/writes go to Supabase or stay in the browser.
@@ -151,6 +159,12 @@ const App: React.FC = () => {
     setCurrentPageIndex(0);
     setIsLoading(true);
     setError(null);
+
+    if (useBookMode.current) {
+      await handleStartStoryBookMode(selectedOptions);
+      return;
+    }
+
     try {
       // Fire plan + sheet in the background. Neither blocks the first segment.
       // The plan is used from segment 2 onward; the sheet is used by every
@@ -193,8 +207,68 @@ const App: React.FC = () => {
     }
   };
 
+  // Experimental one-shot flow. Fires /api/book + character sheet in parallel.
+  // As soon as the book lands, the reader sees page 1 AND all 5 illustrations
+  // start generating at once. Subsequent page turns are instant — no API
+  // calls are made on choice click.
+  const handleStartStoryBookMode = async (selectedOptions: StoryOptions) => {
+    try {
+      const sheetPromise = generateCharacterSheet(selectedOptions.character);
+      const book = await generateFullBook(selectedOptions);
+
+      const initialSegments: StorySegment[] = book.pages.map(p => ({
+        text: p.text,
+        choices: p.choices,
+        isEnding: p.isEnding,
+        illustrationPrompt: p.illustrationPrompt,
+      }));
+
+      setSegments(initialSegments);
+      setView('reading');
+      setIsLoading(false);
+
+      // Fold the character sheet into the plan as soon as it lands.
+      // All image calls below receive the same sheet promise, so each waits
+      // for it individually before firing — they still start in parallel.
+      void sheetPromise.then(sheet => {
+        const composed: StoryPlan = {
+          ...book.plan,
+          characterSheetBase64: sheet,
+        };
+        setPlan(composed);
+      });
+
+      const planForImages: StoryPlan = {
+        ...book.plan,
+        characterSheetBase64: undefined,
+      };
+
+      // Fire all 5 illustration calls in parallel. Each page's image lands
+      // independently into state via attachIllustrationAt.
+      initialSegments.forEach((segment, i) => {
+        void attachIllustrationAt(
+          i,
+          segment,
+          selectedOptions,
+          planForImages,
+          sheetPromise,
+        );
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
+      setIsLoading(false);
+    }
+  };
+
   const handleChoice = async (choice: Choice) => {
     if (!options) return;
+    // In book mode every page is already in `segments` from the initial
+    // one-shot call. The bridge is shown locally by BookPage; the "Neste
+    // side" button advances `currentPageIndex`. No server round trip.
+    if (useBookMode.current) {
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -225,6 +299,13 @@ const App: React.FC = () => {
   // Parent escape hatch: next page becomes the resolution regardless of plan position.
   const handleWrapUp = async () => {
     if (!options) return;
+    // In book mode the resolution is already written as the last segment.
+    // Splice it in right after the current page so the next tap lands on it.
+    if (useBookMode.current && segments.length > 0) {
+      const last = segments[segments.length - 1];
+      setSegments(prev => [...prev.slice(0, currentPageIndex + 1), last]);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {

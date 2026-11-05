@@ -93,6 +93,37 @@ export const generateIllustration = async (
   }
 };
 
+// Experimental one-shot path: generates the full book (plan + all pages with
+// text, choices, bridges and illustration prompts) in a single Gemini call.
+// Returns pages shaped as StorySegments ready to drop into the reader, plus
+// the plan with its sideCharacters so image generation can run in parallel.
+export interface GeneratedBook {
+  plan: Omit<StoryPlan, "characterSheetBase64">;
+  pages: StorySegment[];
+}
+export const generateFullBook = async (
+  options: StoryOptions
+): Promise<GeneratedBook> => {
+  const data = await postJson<{
+    plan: GeneratedBook["plan"];
+    pages: Array<{
+      text: string;
+      isEnding: boolean;
+      illustrationPrompt: string;
+      choices: Array<{ text: string; nextPlotPoint: string; bridge: string }>;
+    }>;
+  }>("/api/book", { options });
+  return {
+    plan: data.plan,
+    pages: data.pages.map((p) => ({
+      text: p.text,
+      choices: p.choices,
+      isEnding: p.isEnding,
+      illustrationPrompt: p.illustrationPrompt,
+    })),
+  };
+};
+
 export const generateSpeech = async (
   text: string
 ): Promise<string | undefined> => {
