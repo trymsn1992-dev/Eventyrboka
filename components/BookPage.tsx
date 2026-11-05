@@ -278,7 +278,7 @@ export const BookPage: React.FC<BookPageProps> = ({
   const progress = totalPages ? Math.min((pageNumber / totalPages) * 100, 100) : 0;
 
   return (
-    <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] rounded-xl lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden border-r-4 border-gray-200">
+    <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 rounded-xl lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden border-r-4 border-gray-200 dark:border-gray-700">
       
       {/* Book Spine visual - Hidden on Mobile to save space */}
       <div className="hidden lg:block absolute left-0 top-0 bottom-0 w-6 md:w-10 bg-gradient-to-r from-gray-300 via-gray-100 to-[#fdfbf7] z-10 shadow-inner"></div>
@@ -286,9 +286,9 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 border-dashed lg:page-curl bg-indigo-50/30 transition-all duration-500 ease-out`}>
-          <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 lg:rounded-lg lg:p-6 lg:bg-white lg:shadow-inner">
-             <div className={`relative w-full flex-1 bg-white lg:bg-gray-50 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating && !chosenChoice ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
+        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
+          <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
+             <div className={`relative w-full flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating && !chosenChoice ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
                     animation keeps running; it fades out as the image fades in. */}
                 <div
@@ -311,7 +311,7 @@ export const BookPage: React.FC<BookPageProps> = ({
         </div>
 
         {/* Right Page: Text and Choices (Bottom on Mobile) */}
-        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
+        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
 
           {/* Waiting Panel - only when generating with no choice picked yet
               (legacy fallback; the Neste-side button handles the main case). */}
@@ -389,9 +389,9 @@ export const BookPage: React.FC<BookPageProps> = ({
                     </p>
                   )}
                   <p
-                    className={`font-serif text-gray-800 leading-relaxed text-xl lg:text-2xl ${
+                    className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl lg:text-2xl ${
                       !isReadingBridge
-                        ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                        ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                         : ''
                     }`}
                     style={{ whiteSpace: 'pre-line' }}
@@ -428,7 +428,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                         </p>
                       )}
                       <p
-                        className={`font-serif text-gray-800 leading-relaxed text-xl text-center ${
+                        className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
                           chunksRevealed === 1 && !isReadingBridge
                             ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                             : ''
@@ -620,7 +620,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                         setChosenChoice(choice);
                         onChoice(choice);
                       }}
-                      className="w-full group relative p-4 lg:p-5 bg-white border-2 border-indigo-100 rounded-xl lg:rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 hover:shadow-lg transition-all duration-300 text-left group transform hover:-translate-y-1 active:scale-95"
+                      className="w-full group relative p-4 lg:p-5 bg-white dark:bg-gray-700 border-2 border-indigo-100 dark:border-indigo-900 rounded-xl lg:rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-gray-600 dark:hover:border-indigo-600 hover:shadow-lg transition-all duration-300 text-left group transform hover:-translate-y-1 active:scale-95"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-gray-700 group-hover:text-indigo-800 text-lg lg:text-xl font-serif pr-4">
@@ -661,7 +661,7 @@ export const BookPage: React.FC<BookPageProps> = ({
 
           {/* Progress Bar at the very bottom */}
           {totalPages && totalPages > 0 && (
-             <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-100">
+             <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-100 dark:bg-gray-700">
                 <div 
                   className="h-full bg-gradient-to-r from-indigo-400 to-purple-400 transition-all duration-500 ease-out"
                   style={{ width: `${progress}%` }}

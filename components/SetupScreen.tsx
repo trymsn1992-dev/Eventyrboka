@@ -298,12 +298,12 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center pt-4 pb-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl w-full space-y-8 bg-white p-8 rounded-3xl shadow-2xl border-4 border-indigo-100 mb-12">
+      <div className="max-w-4xl w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl border-4 border-indigo-100 dark:border-indigo-900 mb-12">
         <div className="text-center">
           <div className="mx-auto h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
             <BookOpen className="h-10 w-10 text-indigo-600" />
           </div>
-          <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Lag din fortelling!</h2>
+          <h2 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">Lag din fortelling!</h2>
         </div>
 
         <form className="mt-10 space-y-12" onSubmit={handleSubmit}>
@@ -312,7 +312,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2 border-b pb-2 border-gray-100">
               <User className="w-6 h-6 text-indigo-500" />
-              <h3 className="text-xl font-bold text-gray-800">Hvem er helten?</h3>
+              <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">Hvem er helten?</h3>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {CHARACTERS.map((char) => {
@@ -326,8 +326,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                       p-4 rounded-2xl text-left transition-all duration-200
                       border-2 flex flex-col items-center justify-between text-center gap-3 h-full min-h-[160px]
                       ${isSelected 
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-900 shadow-md ring-2 ring-indigo-200 ring-offset-2' 
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-gray-50'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-md ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-2 dark:ring-offset-gray-800'
+                        : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-600'
                       }
                     `}
                   >
@@ -393,7 +393,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
         <div className="max-w-5xl w-full animate-fade-in-up pb-12">
           <div className="flex items-center gap-3 mb-6">
             <Library className="w-8 h-8 text-indigo-700" />
-            <h3 className="text-3xl font-bold text-gray-800 font-serif">Mitt Bibliotek</h3>
+            <h3 className="text-3xl font-bold text-gray-800 dark:text-gray-100 font-serif">Mitt Bibliotek</h3>
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -401,7 +401,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
               <div 
                 key={story.id}
                 onClick={() => onLoadStory && onLoadStory(story)}
-                className="group bg-white rounded-xl p-5 shadow-md border border-indigo-50 hover:shadow-xl hover:border-indigo-200 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col"
+                className="group bg-white dark:bg-gray-800 rounded-xl p-5 shadow-md border border-indigo-50 dark:border-indigo-900 hover:shadow-xl hover:border-indigo-200 dark:hover:border-indigo-700 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col"
               >
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-400 to-purple-400"></div>
                 
@@ -414,7 +414,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                       {new Date(story.createdAt).toLocaleDateString('no-NO')}
                     </span>
                   </div>
-                  <h4 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-indigo-700 transition-colors">
+                  <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
                     {story.options.character}
                   </h4>
                   <p className="text-sm text-gray-500 line-clamp-2">
@@ -455,7 +455,7 @@ const SelectionSection = ({ icon, title, options, value, onChange, iconMap }: {
   <div className="space-y-4">
     <div className="flex items-center gap-2 border-b pb-2 border-gray-100">
       {icon}
-      <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h3>
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-2 gap-3"> {/* Force 2 columns for even grids */}
       {options.map((opt) => {
@@ -471,8 +471,8 @@ const SelectionSection = ({ icon, title, options, value, onChange, iconMap }: {
               p-3 rounded-xl text-left transition-all duration-200
               border-2 flex flex-col items-center justify-center text-center gap-2 h-full min-h-[100px]
               ${isSelected 
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-900 shadow-md scale-105 ring-2 ring-indigo-200 ring-offset-1' 
-                : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-gray-50'
+                ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-md scale-105 ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-1 dark:ring-offset-gray-800'
+                : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-600'
               }
             `}
           >

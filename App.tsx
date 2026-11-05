@@ -13,7 +13,7 @@ import {
   logout,
   saveStory as saveStoryAccount,
 } from './services/account';
-import { AlertCircle, LogOut, MessageSquare } from 'lucide-react';
+import { AlertCircle, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -36,6 +36,30 @@ const App: React.FC = () => {
   // they click "Neste side"; the segments array can grow underneath while
   // they read the bridge on the current page.
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
+  // Theme state. The initial `dark` class is set by an inline script in
+  // index.html that reads localStorage + prefers-color-scheme before React
+  // mounts, so the page doesn't flash the wrong background on cold load.
+  // We mirror that into React state here so the toggle button can flip it.
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof document === 'undefined') return 'light';
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  });
+  const toggleTheme = () => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('dark', next === 'dark');
+      }
+      try {
+        localStorage.setItem('magiboka_theme', next);
+      } catch {
+        // localStorage blocked in private mode — the class is still set,
+        // the preference just won't survive reload. Fine for this session.
+      }
+      return next;
+    });
+  };
 
   // Account state. Drives the header login/logout UI and decides whether
   // story reads/writes go to Supabase or stay in the browser.
@@ -336,7 +360,7 @@ const App: React.FC = () => {
   const isReading = view === 'reading';
 
   return (
-    <div className={`${isReading ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-[#e8e6e1] flex flex-col`}>
+    <div className={`${isReading ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-[#e8e6e1] dark:bg-[#15161a] text-gray-900 dark:text-gray-100 transition-colors flex flex-col`}>
       {/* Chrome (feedback banner + header) only on the setup view.
           Reading gets the full viewport for the book, with a small
           floating Hjem button in the corner as the only control. */}
@@ -357,18 +381,25 @@ const App: React.FC = () => {
               Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
             </span>
           </a>
-          <header className="bg-white shadow-sm py-4 px-6">
+          <header className="bg-white dark:bg-gray-900 shadow-sm py-4 px-6">
             <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
               <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
                 <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
               </button>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleTheme}
+                  aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
                 {account.innlogget ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                     <span className="font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
                     <button
                       onClick={handleLogout}
-                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 hover:bg-gray-100"
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                       aria-label="Logg ut"
                     >
                       <LogOut className="w-4 h-4" />
@@ -389,16 +420,26 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Floating Hjem button while reading — the only way back to
-          setup once the chrome is hidden. Small, unobtrusive, top-left. */}
+      {/* Floating controls while reading — the only chrome visible once
+          the banner and header are hidden. Hjem returns to setup; the
+          sun/moon toggles theme without leaving the story. */}
       {isReading && (
-        <button
-          onClick={handleRestart}
-          aria-label="Til forsiden"
-          className="fixed top-3 left-3 z-40 bg-white/80 hover:bg-white shadow-md backdrop-blur-sm rounded-full p-2 text-gray-700 hover:text-gray-900 transition-colors"
-        >
-          <img src="/magiboka-logo.webp" alt="Magiboka" className="h-6 w-auto" />
-        </button>
+        <div className="fixed top-3 left-3 z-40 flex items-center gap-2">
+          <button
+            onClick={handleRestart}
+            aria-label="Til forsiden"
+            className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 shadow-md backdrop-blur-sm rounded-full p-2 text-gray-700 dark:text-gray-200 transition-colors"
+          >
+            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-6 w-auto" />
+          </button>
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
+            className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 shadow-md backdrop-blur-sm rounded-full p-2 text-gray-700 dark:text-gray-200 transition-colors"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        </div>
       )}
 
       <main className={`flex-grow flex items-center justify-center relative ${isReading ? 'p-2 lg:p-4' : 'p-4 md:p-8 items-start'}`}>
