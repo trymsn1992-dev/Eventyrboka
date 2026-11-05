@@ -3,7 +3,18 @@
 // function to its 300s cap.
 
 const DELAYS_MS = [500, 1500];
-const PER_ATTEMPT_TIMEOUT_MS = 20_000;
+// Default per-attempt timeout. Sized for the per-page story call
+// (one page, ~500 tokens of structured JSON). Larger calls — the
+// one-shot /api/book that writes all 5 pages + plan in one go —
+// override this via the timeoutMs option so we don't kill a call
+// that is still happily generating.
+const DEFAULT_PER_ATTEMPT_TIMEOUT_MS = 20_000;
+
+export interface RetryOptions {
+  // Override per-attempt timeout (ms). The whole call still retries
+  // up to DELAYS_MS.length + 1 times inside withRetry.
+  timeoutMs?: number;
+}
 
 function isTransient(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -43,11 +54,15 @@ function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
   });
 }
 
-export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PER_ATTEMPT_TIMEOUT_MS;
   let lastError: unknown;
   for (let attempt = 0; attempt <= DELAYS_MS.length; attempt++) {
     try {
-      return await withTimeout(fn, PER_ATTEMPT_TIMEOUT_MS);
+      return await withTimeout(fn, timeoutMs);
     } catch (error) {
       lastError = error;
       if (attempt === DELAYS_MS.length || !isTransient(error)) {
@@ -64,12 +79,13 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 // Non-transient errors (e.g. invalid request) throw straight away.
 export async function withModelFallback<T>(
   models: string[],
-  fn: (model: string) => Promise<T>
+  fn: (model: string) => Promise<T>,
+  options: RetryOptions = {}
 ): Promise<T> {
   let lastError: unknown;
   for (const model of models) {
     try {
-      return await withRetry(() => fn(model));
+      return await withRetry(() => fn(model), options);
     } catch (error) {
       lastError = error;
       if (!isTransient(error)) throw error;

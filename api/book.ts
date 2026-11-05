@@ -307,18 +307,26 @@ export default async function handler(
     const userPrompt = `Lag hele boka nå. Returner JSON etter skjemaet med én plan og nøyaktig ${TOTAL_PAGES} sider.`;
 
     const tGemini = Date.now();
-    const response = await withModelFallback(TEXT_MODEL_CHAIN, (model) =>
-      ai.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-          temperature: 1.05,
-          topP: 0.95,
-        },
-      })
+    // One-shot generation of plan + all 5 pages is a much larger
+    // response than a single /api/story page (~3000+ tokens of
+    // structured JSON vs ~500). The default 20s per-attempt timeout
+    // was killing calls that were still generating — raise to 60s
+    // here so the model has room to finish.
+    const response = await withModelFallback(
+      TEXT_MODEL_CHAIN,
+      (model) =>
+        ai.models.generateContent({
+          model,
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
+            temperature: 1.05,
+            topP: 0.95,
+          },
+        }),
+      { timeoutMs: 60_000 }
     );
     const geminiMs = Date.now() - tGemini;
 
