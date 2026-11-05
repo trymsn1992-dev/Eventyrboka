@@ -333,62 +333,75 @@ const App: React.FC = () => {
   // Every story is now exactly TOTAL_PAGES pages regardless of duration.
   const estimatedPages = TOTAL_PAGES;
 
-  return (
-    <div className="min-h-screen bg-[#e8e6e1] flex flex-col">
-      <div
-        className={`sticky top-0 z-30 transition-transform duration-300 ease-out ${
-          chromeVisible ? 'translate-y-0' : '-translate-y-full'
-        }`}
-      >
-        <a
-          href={FEEDBACK_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
-        >
-          <MessageSquare className="w-4 h-4 shrink-0" />
-          <span className="text-center">
-            Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
-          </span>
-        </a>
-        <header className="bg-white shadow-sm py-4 px-6">
-          <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
-            <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
-              <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
-            </button>
-            <div className="flex items-center gap-3">
-              {view === 'reading' && options && (
-                <div className="hidden md:flex text-sm text-gray-500 gap-4">
-                  <span className="bg-indigo-50 px-3 py-1 rounded-full text-indigo-700">{options.character}</span>
-                  <span className="bg-amber-50 px-3 py-1 rounded-full text-amber-700">{options.metaphor}</span>
-                </div>
-              )}
-              {account.innlogget ? (
-                <div className="flex items-center gap-2 text-sm text-gray-700">
-                  <span className="font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
-                  <button
-                    onClick={handleLogout}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 hover:bg-gray-100"
-                    aria-label="Logg ut"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden sm:inline">Logg ut</span>
-                  </button>
-                </div>
-              ) : account.vippsReady ? (
-                <a
-                  href="/api/vipps/start"
-                  className="inline-flex items-center px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base"
-                >
-                  Logg inn med Vipps
-                </a>
-              ) : null}
-            </div>
-          </div>
-        </header>
-      </div>
+  const isReading = view === 'reading';
 
-      <main className="flex-grow flex items-start justify-center p-4 md:p-8 relative">
+  return (
+    <div className={`${isReading ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-[#e8e6e1] flex flex-col`}>
+      {/* Chrome (feedback banner + header) only on the setup view.
+          Reading gets the full viewport for the book, with a small
+          floating Hjem button in the corner as the only control. */}
+      {!isReading && (
+        <div
+          className={`sticky top-0 z-30 transition-transform duration-300 ease-out ${
+            chromeVisible ? 'translate-y-0' : '-translate-y-full'
+          }`}
+        >
+          <a
+            href={FEEDBACK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
+          >
+            <MessageSquare className="w-4 h-4 shrink-0" />
+            <span className="text-center">
+              Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
+            </span>
+          </a>
+          <header className="bg-white shadow-sm py-4 px-6">
+            <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
+              <button onClick={handleRestart} className="flex items-center cursor-pointer" aria-label="Magiboka — til forsiden">
+                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-10 md:h-12 w-auto" />
+              </button>
+              <div className="flex items-center gap-3">
+                {account.innlogget ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <span className="font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
+                    <button
+                      onClick={handleLogout}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 hover:bg-gray-100"
+                      aria-label="Logg ut"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span className="hidden sm:inline">Logg ut</span>
+                    </button>
+                  </div>
+                ) : account.vippsReady ? (
+                  <a
+                    href="/api/vipps/start"
+                    className="inline-flex items-center px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base"
+                  >
+                    Logg inn med Vipps
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </header>
+        </div>
+      )}
+
+      {/* Floating Hjem button while reading — the only way back to
+          setup once the chrome is hidden. Small, unobtrusive, top-left. */}
+      {isReading && (
+        <button
+          onClick={handleRestart}
+          aria-label="Til forsiden"
+          className="fixed top-3 left-3 z-40 bg-white/80 hover:bg-white shadow-md backdrop-blur-sm rounded-full p-2 text-gray-700 hover:text-gray-900 transition-colors"
+        >
+          <img src="/magiboka-logo.webp" alt="Magiboka" className="h-6 w-auto" />
+        </button>
+      )}
+
+      <main className={`flex-grow flex items-center justify-center relative ${isReading ? 'p-2 lg:p-4' : 'p-4 md:p-8 items-start'}`}>
         {error && (
            <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center shadow-lg">
              <AlertCircle className="w-5 h-5 mr-2" />
