@@ -188,7 +188,7 @@ const RESPONSE_SCHEMA = {
         },
         required: ["text", "isEnding", "illustrationPrompt", "choices"],
       },
-      description: `Nøyaktig ${TOTAL_PAGES} sider i rekkefølge: ${CHOICE_PAGES} valg-sider etterfulgt av 1 oppløsnings-side uten valg.`,
+      description: `Sidene du skriver nå, i rekkefølge. Antall styres av systeminstruksjonen: enten alle ${TOTAL_PAGES} sider (full bok), eller sider 2–${TOTAL_PAGES} som fortsettelse av en allerede skrevet åpning. Siste side er oppløsningen uten valg.`,
     },
   },
   required: ["plan", "pages"],
@@ -206,15 +206,50 @@ VIKTIGE INNHOLDSREGLER (alltid):
 - For 6-8 år: litt mer handling og humor, fortsatt uten noe skummelt.
 `;
 
-function buildSystemInstruction(options: StoryOptions, seed: number): string {
+// opener: when given, side 1 has already been written (by /api/opener,
+// the fast lite-model path). The model then plans the arc and writes
+// sides 2–${TOTAL_PAGES} that continue from that opener. The response
+// still returns { plan, pages } — but pages is the *continuation*, of
+// length TOTAL_PAGES - 1, not the full book. The client prepends the
+// opener side 1.
+function buildSystemInstruction(
+  options: StoryOptions,
+  seed: number,
+  opener?: { text: string }
+): string {
   const density = DURATION_DENSITY[options.duration];
   const openingArchetype = pick(OPENING_ARCHETYPES, seed);
   const climaxPattern = pick(CLIMAX_PATTERNS, seed >> 3);
   const angles = METAPHOR_ANGLES[options.metaphor] ?? [];
   const chosenAngle = angles.length ? pick(angles, seed >> 5) : "";
 
+  const continuationPages = opener ? TOTAL_PAGES - 1 : TOTAL_PAGES;
+  // In opener mode the model writes beats 2..TOTAL_PAGES, so the
+  // metaphor test (beat 3) lands on index 1 of what the model writes
+  // (the SECOND page it produces). Call it out explicitly either way.
+  const metaphorTestNote = opener
+    ? "Det tredje beatet (side 3 totalt = den ANDRE siden du skriver nå) er METAFOR-TESTEN — sett isMetaphorTest=true på det beatet."
+    : "Det tredje beatet (side 3) er METAFOR-TESTEN — sett isMetaphorTest=true på det beatet.";
+
+  const openerBlock = opener
+    ? `
+SIDE 1 ER ALLEREDE SKREVET AV EN ANNEN MODELL. Du må ikke skrive den igjen.
+Her er den ordrett, så du kan fortsette i samme stemme, verden og stemning:
+
+<SIDE 1>
+${opener.text}
+</SIDE 1>
+
+Du skriver nå planen + ${continuationPages} sider som FORTSETTER fra side 1 (altså sider 2–${TOTAL_PAGES}).
+Planen skal fortsatt ha ${TOTAL_PAGES} beats totalt, men den første beatet må passe med side 1 slik den er skrevet over.
+Første side du selv skriver er side 2 (beat 2) — den må lede naturlig videre fra åpningen du nettopp leste.
+`
+    : `
+SIDE 1 åpner historien konkret og sanselig gjennom åpnings-arketypen.
+`;
+
   return `Du er en varm, lekende norsk barnebokforfatter og dramaturg.
-Du planlegger OG skriver hele den interaktive boka i én omgang.
+${opener ? "Du bygger videre på en åpning en annen forfatter nettopp skrev, og fullfører den interaktive boka." : "Du planlegger OG skriver hele den interaktive boka i én omgang."}
 
 Karakter: ${options.character}. Metafor: "${options.metaphor}". Aldersgruppe: ${options.ageGroup}.
 
@@ -229,12 +264,12 @@ FRØ (bruk — ikke avvik):
 Du bestemmer setting og sjanger selv. Velg noe spesifikt og uventet.
 
 STRUKTUR:
-Boka har NØYAKTIG ${TOTAL_PAGES} sider: ${CHOICE_PAGES} valg-sider etterfulgt av 1 oppløsnings-side uten valg.
+Boka har NØYAKTIG ${TOTAL_PAGES} sider totalt: ${CHOICE_PAGES} valg-sider etterfulgt av 1 oppløsnings-side uten valg.
 Planen definerer ${CHOICE_PAGES + 1} beats. Side N treffer beat N.
-Det tredje beatet (side 3) er METAFOR-TESTEN — sett isMetaphorTest=true på det beatet.
+${metaphorTestNote}
 Siste beat/side er oppløsningen, uten valg, isEnding=true, choices=[].
-
-PERLE-STRUKTUR (kritisk — dette er HELE poenget med at hele boka skrives samtidig):
+${openerBlock}
+PERLE-STRUKTUR (kritisk):
 Hver side står på egne ben og leder til NESTE SIDE SLIK DEN ER SKREVET, uansett hvilket valg leseren tar.
 Begge valgene på en side farger HVORDAN scenen oppleves (stemning, tilnærming, farger),
 men IKKE HVA som faktisk skjer på neste side. Neste side er allerede skrevet — valget må lede dit.
@@ -268,13 +303,24 @@ BIKARAKTERER:
 0-2 navngitte bikarakterer, med grundig visuell bible på ENGELSK (farger, klær, tilbehør eksplisitt).
 Bruk samme navn konsekvent gjennom boka hvis de dukker opp flere ganger.
 
-SIDE 1 åpner historien konkret og sanselig gjennom åpnings-arketypen.
 SIDE ${TOTAL_PAGES} (siste) runder av varmt, knytter sløyfen tilbake til åpningen og metaforen, ingen valg, isEnding=true, choices er en tom liste.
+
+I 'pages'-arrayet returnerer du NØYAKTIG ${continuationPages} sider i rekkefølge: ${
+    opener
+      ? `sider 2–${TOTAL_PAGES} (siste er oppløsningen uten valg).`
+      : `sider 1–${TOTAL_PAGES} (siste er oppløsningen uten valg).`
+  }
 ${SAFETY_RULES}`;
 }
 
 interface BookRequestBody {
   options: unknown;
+  // Optional fast-opener context. When present, the model writes
+  // pages 2..TOTAL_PAGES as a continuation of this already-written
+  // side 1 (produced by /api/opener on the lite model).
+  opener?: {
+    text?: unknown;
+  };
 }
 
 export default async function handler(
@@ -307,8 +353,22 @@ export default async function handler(
     }
 
     const seed = Math.floor(Math.random() * 1_000_000);
-    const systemInstruction = buildSystemInstruction(options, seed);
-    const userPrompt = `Lag hele boka nå. Returner JSON etter skjemaet med én plan og nøyaktig ${TOTAL_PAGES} sider.`;
+
+    // Opener context: if the client already got side 1 from /api/opener,
+    // it passes that text here so we can continue from it rather than
+    // re-writing side 1. Bound the text so a hostile client can't send
+    // arbitrary volume into the prompt.
+    const rawOpenerText =
+      body.opener && typeof body.opener.text === "string"
+        ? body.opener.text.slice(0, 4000)
+        : undefined;
+    const opener = rawOpenerText ? { text: rawOpenerText } : undefined;
+    const pagesExpected = opener ? TOTAL_PAGES - 1 : TOTAL_PAGES;
+
+    const systemInstruction = buildSystemInstruction(options, seed, opener);
+    const userPrompt = opener
+      ? `Fortsett boka nå. Returner JSON etter skjemaet med én plan og nøyaktig ${pagesExpected} sider (sider 2–${TOTAL_PAGES}).`
+      : `Lag hele boka nå. Returner JSON etter skjemaet med én plan og nøyaktig ${TOTAL_PAGES} sider.`;
 
     const tGemini = Date.now();
     // One-shot generation of plan + all 5 pages is a much larger
@@ -340,25 +400,29 @@ export default async function handler(
 
     const parsed = JSON.parse(response.text);
 
-    // Belt-and-suspenders: clamp to exactly TOTAL_PAGES pages so the client
-    // can always trust `pages.length === TOTAL_PAGES` and does not have to
-    // guard against a model that produced one too many or one too few.
-    const pages = Array.isArray(parsed.pages) ? parsed.pages.slice(0, TOTAL_PAGES) : [];
-    while (pages.length < TOTAL_PAGES) {
+    // Belt-and-suspenders: clamp to exactly pagesExpected pages so the
+    // client can always trust pages.length and does not have to guard
+    // against a model that produced one too many or one too few.
+    // pagesExpected is TOTAL_PAGES when the client did not supply an
+    // opener, and TOTAL_PAGES - 1 when it did (opener is side 1).
+    const pages = Array.isArray(parsed.pages)
+      ? parsed.pages.slice(0, pagesExpected)
+      : [];
+    while (pages.length < pagesExpected) {
       pages.push({
         text: "…",
-        isEnding: pages.length === TOTAL_PAGES - 1,
+        isEnding: pages.length === pagesExpected - 1,
         illustrationPrompt: "a cozy children's book scene",
         choices: [],
       });
     }
     // Force the last page shape: isEnding + no choices.
-    const last = pages[TOTAL_PAGES - 1];
+    const last = pages[pagesExpected - 1];
     last.isEnding = true;
     last.choices = [];
-    // Non-final pages must have exactly 2 choices; if the model shorted us,
-    // drop in a safe pair that still advances to the already-written next page.
-    for (let i = 0; i < TOTAL_PAGES - 1; i++) {
+    // Non-final pages must have exactly 2 choices; if the model shorted
+    // us, drop in a safe pair that still advances to the next written page.
+    for (let i = 0; i < pagesExpected - 1; i++) {
       const p = pages[i];
       p.isEnding = false;
       if (!Array.isArray(p.choices) || p.choices.length < 2) {
@@ -382,7 +446,7 @@ export default async function handler(
     const totalMs = Date.now() - tStart;
     const prepMs = totalMs - geminiMs;
     console.log(
-      `book.timing total=${totalMs}ms gemini=${geminiMs}ms prep=${prepMs}ms pages=${pages.length}`
+      `book.timing total=${totalMs}ms gemini=${geminiMs}ms prep=${prepMs}ms pages=${pages.length} opener=${opener ? 1 : 0}`
     );
     res.setHeader(
       "Server-Timing",

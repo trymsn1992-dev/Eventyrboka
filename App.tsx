@@ -3,7 +3,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
-import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration, generateFullBook } from './services/geminiService';
+import { planStory, generateCharacterSheet, startNewStoryText, continueStoryText, generateIllustration, generateFullBook, generateOpener } from './services/geminiService';
 import {
   AccountStatus,
   deleteStory as deleteStoryAccount,
@@ -207,53 +207,92 @@ const App: React.FC = () => {
     }
   };
 
-  // Experimental one-shot flow. Fires /api/book + character sheet in parallel.
-  // As soon as the book lands, the reader sees page 1 AND all 5 illustrations
-  // start generating at once. Subsequent page turns are instant — no API
-  // calls are made on choice click.
+  // Hybrid two-stage flow behind ?nyflyt=1.
+  //
+  // Stage 1 — Fast opener (lite model, ~3-5s): writes page 1 so the reader
+  // sees a scene immediately. The character sheet and page 1's image start
+  // generating in parallel at the moment the user clicks Start, so they
+  // have the longest possible head start.
+  //
+  // Stage 2 — Full book (big model, ~40-50s): called with the opener as
+  // context so it writes pages 2–5 that continue naturally from page 1.
+  // This runs in the background while the reader reads page 1; by the
+  // time they tap to the next page, everything is already in state.
+  //
+  // On choice click no server round trip happens — see handleChoice.
   const handleStartStoryBookMode = async (selectedOptions: StoryOptions) => {
     try {
+      // Fire the sheet immediately so it is ready by the time any image
+      // call wants it. It does not block anything downstream.
       const sheetPromise = generateCharacterSheet(selectedOptions.character);
-      const book = await generateFullBook(selectedOptions);
 
-      const initialSegments: StorySegment[] = book.pages.map(p => ({
-        text: p.text,
-        choices: p.choices,
-        isEnding: p.isEnding,
-        illustrationPrompt: p.illustrationPrompt,
-      }));
+      // Stage 1: opener. Blocks until page 1 is ready — the single wait
+      // the reader experiences before seeing the book.
+      const opener = await generateOpener(selectedOptions);
 
-      setSegments(initialSegments);
+      setSegments([opener]);
       setView('reading');
       setIsLoading(false);
 
-      // Fold the character sheet into the plan as soon as it lands.
-      // All image calls below receive the same sheet promise, so each waits
-      // for it individually before firing — they still start in parallel.
-      void sheetPromise.then(sheet => {
-        const composed: StoryPlan = {
-          ...book.plan,
-          characterSheetBase64: sheet,
-        };
-        setPlan(composed);
-      });
+      // Fire page 1's illustration as early as possible. We do not yet
+      // have the sideCharacters list from the plan, so pass undefined;
+      // page 1 rarely needs them and if it does the next pages' images
+      // will catch the full plan.
+      void attachIllustrationAt(0, opener, selectedOptions, undefined, sheetPromise);
 
-      const planForImages: StoryPlan = {
-        ...book.plan,
-        characterSheetBase64: undefined,
-      };
+      // Stage 2: the big call. Runs in the background while the reader
+      // reads page 1. Pages 2–5 and the plan come back together.
+      void (async () => {
+        try {
+          const book = await generateFullBook(selectedOptions, { text: opener.text });
 
-      // Fire all 5 illustration calls in parallel. Each page's image lands
-      // independently into state via attachIllustrationAt.
-      initialSegments.forEach((segment, i) => {
-        void attachIllustrationAt(
-          i,
-          segment,
-          selectedOptions,
-          planForImages,
-          sheetPromise,
-        );
-      });
+          const continuationSegments: StorySegment[] = book.pages.map(p => ({
+            text: p.text,
+            choices: p.choices,
+            isEnding: p.isEnding,
+            illustrationPrompt: p.illustrationPrompt,
+          }));
+
+          // Append sides 2–5 to the segments the reader is browsing.
+          // currentPageIndex stays put — they advance manually with "Neste side".
+          setSegments(prev => [...prev, ...continuationSegments]);
+
+          // Fold the character sheet into the plan as soon as it lands
+          // so saved stories and image calls alike have a full plan.
+          void sheetPromise.then(sheet => {
+            const composed: StoryPlan = {
+              ...book.plan,
+              characterSheetBase64: sheet,
+            };
+            setPlan(composed);
+          });
+
+          const planForImages: StoryPlan = {
+            ...book.plan,
+            characterSheetBase64: undefined,
+          };
+
+          // Fire the remaining illustration calls in parallel. Offset by
+          // 1 because opener occupies index 0.
+          continuationSegments.forEach((segment, offset) => {
+            const index = 1 + offset;
+            void attachIllustrationAt(
+              index,
+              segment,
+              selectedOptions,
+              planForImages,
+              sheetPromise,
+            );
+          });
+        } catch (err) {
+          // Stage 2 failure is recoverable — the reader already sees
+          // page 1. Surface the error so they know to try again or back
+          // out before they hit the end of what we have.
+          const msg = err instanceof Error ? err.message : "";
+          console.warn("Book continuation failed:", err);
+          setError(msg || "Klarte ikke å lage resten av historien. Prøv igjen.");
+        }
+      })();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");

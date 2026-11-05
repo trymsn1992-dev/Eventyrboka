@@ -93,16 +93,33 @@ export const generateIllustration = async (
   }
 };
 
-// Experimental one-shot path: generates the full book (plan + all pages with
-// text, choices, bridges and illustration prompts) in a single Gemini call.
-// Returns pages shaped as StorySegments ready to drop into the reader, plus
-// the plan with its sideCharacters so image generation can run in parallel.
+// Fast opener: the tiny first-page call made by the lite model. Writes
+// side 1 only — text, two choices with bridges and an illustration
+// prompt — so the reader sees something within ~3-5s while the heavier
+// /api/book call writes the rest in parallel.
+export const generateOpener = async (
+  options: StoryOptions
+): Promise<StorySegment> => {
+  return postJson<StorySegment>("/api/opener", { options });
+};
+
+// Generates the full book (plan + pages with text, choices, bridges and
+// illustration prompts) in a single Gemini call.
+//
+// When `opener` is supplied, the server knows side 1 has already been
+// written (by generateOpener). It then returns a plan plus pages 2..N
+// as a continuation of that opener. The caller is responsible for
+// prepending the opener as segment 0.
+//
+// When `opener` is omitted, the server writes the full book (all N
+// pages) as the standalone one-shot flow.
 export interface GeneratedBook {
   plan: Omit<StoryPlan, "characterSheetBase64">;
   pages: StorySegment[];
 }
 export const generateFullBook = async (
-  options: StoryOptions
+  options: StoryOptions,
+  opener?: { text: string }
 ): Promise<GeneratedBook> => {
   const data = await postJson<{
     plan: GeneratedBook["plan"];
@@ -112,7 +129,7 @@ export const generateFullBook = async (
       illustrationPrompt: string;
       choices: Array<{ text: string; nextPlotPoint: string; bridge: string }>;
     }>;
-  }>("/api/book", { options });
+  }>("/api/book", { options, opener });
   return {
     plan: data.plan,
     pages: data.pages.map((p) => ({
