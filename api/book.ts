@@ -11,12 +11,15 @@ import {
   TOTAL_PAGES,
 } from "../types.js";
 
-// Same fallback pool as /api/plan and /api/story. See those files for notes
-// on why the order is what it is.
+// /api/book writes plan + all 5 pages in one call. The lite model
+// finishes this batch markedly faster than 3.8-flash in our production
+// tests, and the output quality for the structured book schema has
+// been good enough in children's-book use. Keep the heavier models as
+// fallback in case lite is unavailable or chokes on the JSON schema.
 const TEXT_MODEL_CHAIN = [
+  "gemini-flash-lite-latest",
   "gemini-3.8-flash",
   "gemini-flash-latest",
-  "gemini-flash-lite-latest",
   "gemini-2.5-pro",
 ];
 
