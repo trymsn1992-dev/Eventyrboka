@@ -73,10 +73,12 @@ Dobbeltklikk `Legg inn Vipps-nøkler.command` i Finder, og lim inn de fire verdi
 Skriptet setter også automatisk **VIPPS_MILJO = test** og lager en **SESSION_SECRET** (hvis den ikke finnes fra før).
 
 ### 2f. Når dere er klare for produksjon
-1. Få godkjent «Logg inn med Vipps» i portalen (de sender e-post).
-2. Legg til produksjonens tilbakeadresse i salgsenheten, akkurat som i steg 2c.
-3. Hent **produksjonsnøklene** under **Utvikler → API-nøkler → Produksjon**.
-4. Dobbeltklikk `Bytt til Vipps-produksjon.command`.
+1. Få godkjent «Logg inn med Vipps» i portalen (de sender e-post). ✅ Godkjent 11. nov. 2026 for salgsstedet «Magiboka», MSN 1190365.
+2. I bedriftsportalen: **For utviklere** → salgsenheten **Magiboka** → **Konfigurer innlogging**. Legg inn tilbakeadressen nøyaktig slik, uten skråstrek på slutten:
+   `https://www.magiboka.no/api/vipps/tilbake`
+   (Bruk `www.` — `magiboka.no` sender alle videre til `www.magiboka.no`, så det er den adressen Vipps ser.)
+3. Trykk **Vis nøkler** og ha **Client ID** og **Client Secret** klare.
+4. Dobbeltklikk `Bytt til Vipps-produksjon.command`. Skriptet setter `VIPPS_MILJO = prod`, legger inn nøklene, lager `SESSION_SECRET` hvis den mangler, publiserer på nytt og sjekker at innloggingen svarer klar.
 
 ---
 
