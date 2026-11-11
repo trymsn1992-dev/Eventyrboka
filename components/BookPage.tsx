@@ -430,7 +430,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                       <p
                         className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
                           chunksRevealed === 1 && !isReadingBridge
-                            ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                            ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                             : ''
                         }`}
                       >
@@ -588,7 +588,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                       className={`w-full group relative p-4 lg:p-5 rounded-xl lg:rounded-2xl border-2 transition-all duration-500 ease-out ${
                         isNextPageReady
                           ? 'bg-indigo-600 border-indigo-700 text-white hover:bg-indigo-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:scale-95 cursor-pointer'
-                          : 'bg-white border-indigo-100 text-gray-400 cursor-wait'
+                          : 'bg-white border-indigo-100 text-gray-400 dark:bg-gray-700 dark:border-indigo-900 dark:text-gray-300 cursor-wait'
                       }`}
                       style={isNextPageReady ? { animation: 'nextReady 1.6s ease-out' } : undefined}
                     >
@@ -597,7 +597,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                           {isNextPageReady ? 'Neste side' : 'Neste side blir til…'}
                         </span>
                         <div className={`rounded-full p-2 transition-colors shrink-0 ${
-                          isNextPageReady ? 'bg-white/20' : 'bg-indigo-50'
+                          isNextPageReady ? 'bg-white/20' : 'bg-indigo-50 dark:bg-gray-600'
                         }`}>
                           {isNextPageReady ? (
                             <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6 text-white group-hover:translate-x-1 transition-transform" />
@@ -623,7 +623,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                       className="w-full group relative p-4 lg:p-5 bg-white dark:bg-gray-700 border-2 border-indigo-100 dark:border-indigo-900 rounded-xl lg:rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-gray-600 dark:hover:border-indigo-600 hover:shadow-lg transition-all duration-300 text-left group transform hover:-translate-y-1 active:scale-95"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-gray-700 group-hover:text-indigo-800 text-lg lg:text-xl font-serif pr-4">
+                        <span className="font-bold text-gray-700 group-hover:text-indigo-800 dark:text-gray-100 dark:group-hover:text-white text-lg lg:text-xl font-serif pr-4">
                           {choice.text}
                         </span>
                         <div className="bg-indigo-100 rounded-full p-2 group-hover:bg-indigo-200 transition-colors shrink-0">
