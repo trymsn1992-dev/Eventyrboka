@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, DURATIONS, TOTAL_PAGES } from './types';
-import { generateCharacterSheet, generateIllustration, generateFullBook, generateOpener } from './services/geminiService';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, TOTAL_PAGES } from './types';
+import { generateCharacterSheet, generateIllustration, generateOpener, generatePage } from './services/geminiService';
 import {
   AccountStatus,
   deleteStory as deleteStoryAccount,
@@ -32,10 +32,19 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
-  // Which segment the reader is currently viewing. We only advance this when
-  // they click "Neste side"; the segments array can grow underneath while
-  // they read the bridge on the current page.
+  // The page on screen. `segments` is the path the reader has taken.
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  // What the reader picked on each page (page index -> choice index, -1 for
+  // "Avslutt historien"). Folded into the segments when the story is saved.
+  const [chosenByPage, setChosenByPage] = useState<Record<number, number>>({});
+  // Shared by every page of the current story: the seed every page is
+  // written with, and the premise (the problem the story is about).
+  const [storyMeta, setStoryMeta] = useState<{ seed: number; premise: string } | null>(null);
+  // Label of the choice whose page is still being written, if any.
+  const [waitingFor, setWaitingFor] = useState<string | null>(null);
+  // Set while re-reading a saved story, so saving again updates that story
+  // (same id, same stored illustrations) instead of making a copy.
+  const [loadedStory, setLoadedStory] = useState<{ id: string; createdAt: number } | null>(null);
 
   // Theme state. The initial `dark` class is set by an inline script in
   // index.html that reads localStorage + prefers-color-scheme before React
@@ -146,173 +155,248 @@ const App: React.FC = () => {
     }
   };
 
-  // Attaches the illustration for a segment in the background, updating state
-  // in place when the image lands. The reader can start reading while this runs.
+  // ---- Story flow ---------------------------------------------------------
+  //
+  // Page 1 comes from /api/opener (fast). From then on, whenever the reader is
+  // on the last page of the path, BOTH possible next pages are written in the
+  // background (/api/side, one per choice), each knowing exactly what was
+  // chosen. Tapping a choice turns the page at once if it's ready, otherwise
+  // "Neste side blir til…" shows until it is. Only the page the reader
+  // actually lands on gets an illustration.
+
+  // Bumped for every new story, load and restart; async results that belong
+  // to an older run are dropped.
+  const runRef = useRef(0);
+  // Character sheet for the current story. Made up front for new stories,
+  // lazily for saved ones (only needed if the reader takes a new branch).
+  const sheetRef = useRef<Promise<string | undefined> | null>(null);
+  // Next-page requests, keyed by run + branch point + choice.
+  const branchCache = useRef(new Map<string, Promise<StorySegment>>());
+
+  const resetFlow = () => {
+    runRef.current += 1;
+    branchCache.current.clear();
+    sheetRef.current = null;
+    setWaitingFor(null);
+  };
+
+  const getSheet = (opts: StoryOptions) => {
+    if (!sheetRef.current) sheetRef.current = generateCharacterSheet(opts.character);
+    return sheetRef.current;
+  };
+
+  // Every named side character along the path up to and including page `upTo`.
+  const sideCharactersAlong = (segs: StorySegment[], upTo: number): SideCharacter[] => {
+    const seen = new Map<string, SideCharacter>();
+    const add = (s: SideCharacter) => {
+      const key = s.name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, s);
+    };
+    (plan?.sideCharacters ?? []).forEach(add);
+    segs.slice(0, upTo + 1).forEach(seg => (seg.sideCharacters ?? []).forEach(add));
+    return [...seen.values()];
+  };
+
+  // The image endpoint takes at most 3 side characters: send the ones this
+  // page mentions, falling back to the first few.
+  const sideCharactersFor = (segment: StorySegment, all: SideCharacter[]) => {
+    const haystack = `${segment.illustrationPrompt ?? ''} ${segment.text}`.toLowerCase();
+    const named = all.filter(s => haystack.includes(s.name.toLowerCase()));
+    return (named.length ? named : all).slice(0, 3);
+  };
+
+  // Fetches the illustration for page `index` and attaches it when it lands —
+  // unless the reader has since started another story or taken another branch.
   const attachIllustrationAt = async (
     index: number,
     segment: StorySegment,
     opts: StoryOptions,
-    activePlan: StoryPlan | undefined,
-    sheetPromise: Promise<string | undefined>
+    sideCharacters: SideCharacter[]
   ) => {
-    const sheet = await sheetPromise;
-    const image = await generateIllustration(segment, opts, activePlan, sheet);
-    if (!image) return;
+    const run = runRef.current;
+    const sheet = await getSheet(opts);
+    const image = await generateIllustration(
+      segment,
+      opts,
+      sideCharactersFor(segment, sideCharacters),
+      sheet
+    );
+    if (!image || runRef.current !== run) return;
     setSegments(prev => {
+      if (prev[index]?.text !== segment.text) return prev;
       const next = [...prev];
-      if (next[index]) next[index] = { ...next[index], imageBase64: image };
+      next[index] = { ...next[index], imageBase64: image };
       return next;
     });
   };
 
-  // Hybrid two-stage flow — the one and only path.
-  //
-  // Stage 1 — Fast opener (lite model, ~3-5s): writes page 1 so the reader
-  // sees a scene immediately. The character sheet and page 1's image start
-  // generating in parallel at the moment the user clicks Start, so they
-  // have the longest possible head start.
-  //
-  // Stage 2 — Full book (big model, ~40-50s): called with the opener as
-  // context so it writes pages 2–5 that continue naturally from page 1.
-  // This runs in the background while the reader reads page 1; by the
-  // time they tap to the next page, everything is already in state.
-  //
-  // On choice click no server round trip happens — see handleChoice.
-  const handleStartStory = async (selectedOptions: StoryOptions) => {
-    setOptions(selectedOptions);
-    setPlan(null);
-    setCurrentPageIndex(0);
-    setIsLoading(true);
+  // Starts (or reuses) the request for the page behind choice `choiceIdx` on
+  // page `i`. choiceIdx -1 is the grown-up's "end the story on the next page".
+  const requestBranch = (
+    segs: StorySegment[],
+    chosen: Record<number, number>,
+    i: number,
+    choiceIdx: number
+  ): Promise<StorySegment> => {
+    const key = `${runRef.current}|${i}|${choiceIdx}|${segs[i].text}`;
+    const cached = branchCache.current.get(key);
+    if (cached) return cached;
+    if (!options || !storyMeta) return Promise.reject(new Error('Ingen historie å fortsette.'));
+    const path = segs.slice(0, i + 1).map((s, j) => {
+      const c = j === i ? choiceIdx : chosen[j];
+      return { text: s.text, choice: c !== undefined && c >= 0 ? s.choices[c] : undefined };
+    });
+    const promise = generatePage({
+      options,
+      seed: storyMeta.seed,
+      premise: storyMeta.premise,
+      path,
+      sideCharacters: sideCharactersAlong(segs, i),
+      forceEnding: choiceIdx === -1,
+    });
+    branchCache.current.set(key, promise);
+    // Forget a failed request, so tapping again retries it.
+    promise.catch(() => {
+      if (branchCache.current.get(key) === promise) branchCache.current.delete(key);
+    });
+    return promise;
+  };
+
+  // While the reader is on the last page of the path, write both next pages.
+  useEffect(() => {
+    if (view !== 'reading') return;
+    const i = currentPageIndex;
+    const seg = segments[i];
+    if (!seg || seg.isEnding || i !== segments.length - 1) return;
+    seg.choices.forEach((_, k) => {
+      requestBranch(segments, chosenByPage, i, k).catch(() => undefined);
+    });
+    // requestBranch is recreated every render; the cache makes repeats free.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, currentPageIndex, segments, chosenByPage, storyMeta, options]);
+
+  // Turn to the page behind `choiceIdx` on page `i`, waiting for it if needed.
+  const goToBranch = async (i: number, choiceIdx: number, label: string) => {
+    if (!options) return;
+    const run = runRef.current;
+    const segs = segments.slice(0, i + 1);
+    const chosen: Record<number, number> = {};
+    for (let j = 0; j < i; j++) {
+      if (chosenByPage[j] !== undefined) chosen[j] = chosenByPage[j];
+    }
+    chosen[i] = choiceIdx;
+    setWaitingFor(label);
     setError(null);
     try {
-      // Fire the sheet immediately so it is ready by the time any image
-      // call wants it. It does not block anything downstream.
-      const sheetPromise = generateCharacterSheet(selectedOptions.character);
+      const next = await requestBranch(segs, chosen, i, choiceIdx);
+      if (runRef.current !== run) return;
+      setSegments(prev => [...prev.slice(0, i + 1), next]);
+      setChosenByPage(chosen);
+      setCurrentPageIndex(i + 1);
+      void attachIllustrationAt(i + 1, next, options, sideCharactersAlong([...segs, next], i + 1));
+    } catch (err) {
+      if (runRef.current !== run) return;
+      const msg = err instanceof Error ? err.message : '';
+      setError(msg || 'Klarte ikke å lage neste side. Prøv igjen.');
+    } finally {
+      if (runRef.current === run) setWaitingFor(null);
+    }
+  };
 
-      // Stage 1: opener. Blocks until page 1 is ready — the single wait
-      // the reader experiences before seeing the book.
-      const opener = await generateOpener(selectedOptions);
-
+  const handleStartStory = async (selectedOptions: StoryOptions) => {
+    resetFlow();
+    const run = runRef.current;
+    setOptions(selectedOptions);
+    setPlan(null);
+    setStoryMeta(null);
+    setSegments([]);
+    setCurrentPageIndex(0);
+    setChosenByPage({});
+    setLoadedStory(null);
+    setIsLoading(true);
+    setError(null);
+    const seed = Math.floor(Math.random() * 1_000_000_000);
+    try {
+      // Start the character sheet now so it's ready for page 1's picture.
+      void getSheet(selectedOptions);
+      const { segment: opener, premise } = await generateOpener(selectedOptions, seed);
+      if (runRef.current !== run) return;
+      setStoryMeta({ seed, premise });
       setSegments([opener]);
       setView('reading');
       setIsLoading(false);
-
-      // Fire page 1's illustration as early as possible. We do not yet
-      // have the sideCharacters list from the plan, so pass undefined;
-      // page 1 rarely needs them and if it does the next pages' images
-      // will catch the full plan.
-      void attachIllustrationAt(0, opener, selectedOptions, undefined, sheetPromise);
-
-      // Stage 2: the big call. Runs in the background while the reader
-      // reads page 1. Pages 2–5 and the plan come back together.
-      // Pass the opener's choices (text + bridge of each option) so the
-      // model can write side 2 that converges from EITHER bridge.
-      void (async () => {
-        try {
-          const book = await generateFullBook(selectedOptions, {
-            text: opener.text,
-            choices: opener.choices.map(c => ({ text: c.text, bridge: c.bridge ?? '' })),
-          });
-
-          const continuationSegments: StorySegment[] = book.pages.map(p => ({
-            text: p.text,
-            choices: p.choices,
-            isEnding: p.isEnding,
-            illustrationPrompt: p.illustrationPrompt,
-          }));
-
-          // Append sides 2–5 to the segments the reader is browsing.
-          // currentPageIndex stays put — they advance manually with "Neste side".
-          setSegments(prev => [...prev, ...continuationSegments]);
-
-          // Fold the character sheet into the plan as soon as it lands
-          // so saved stories and image calls alike have a full plan.
-          void sheetPromise.then(sheet => {
-            const composed: StoryPlan = {
-              ...book.plan,
-              characterSheetBase64: sheet,
-            };
-            setPlan(composed);
-          });
-
-          const planForImages: StoryPlan = {
-            ...book.plan,
-            characterSheetBase64: undefined,
-          };
-
-          // Fire the remaining illustration calls in parallel. Offset by
-          // 1 because opener occupies index 0.
-          continuationSegments.forEach((segment, offset) => {
-            const index = 1 + offset;
-            void attachIllustrationAt(
-              index,
-              segment,
-              selectedOptions,
-              planForImages,
-              sheetPromise,
-            );
-          });
-        } catch (err) {
-          // Stage 2 failure is recoverable — the reader already sees
-          // page 1. Surface the error so they know to try again or back
-          // out before they hit the end of what we have.
-          const msg = err instanceof Error ? err.message : "";
-          console.warn("Book continuation failed:", err);
-          setError(msg || "Klarte ikke å lage resten av historien. Prøv igjen.");
-        }
-      })();
+      void attachIllustrationAt(0, opener, selectedOptions, opener.sideCharacters ?? []);
     } catch (err) {
+      if (runRef.current !== run) return;
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
       setIsLoading(false);
     }
   };
 
-  // Every page is already in `segments` from the two-stage generation.
-  // The bridge is shown locally by BookPage; the "Neste side" button
-  // advances `currentPageIndex`. No server round trip on choice click.
-  const handleChoice = async (_choice: Choice) => {
-    // No-op by design.
+  const handleChoice = (choice: Choice) => {
+    const i = currentPageIndex;
+    const seg = segments[i];
+    const k = seg ? seg.choices.indexOf(choice) : -1;
+    if (!seg || k < 0 || waitingFor) return;
+    // Re-reading a saved story along the same path — or a story saved before
+    // choices mattered, where every choice led to the same page: just turn.
+    const prior = chosenByPage[i];
+    if (segments[i + 1] && (prior === k || prior === undefined)) {
+      setChosenByPage(prev => ({ ...prev, [i]: k }));
+      setCurrentPageIndex(i + 1);
+      return;
+    }
+    void goToBranch(i, k, choice.text);
   };
 
-  // Parent escape hatch: next page becomes the resolution regardless of
-  // where we are in the arc. The resolution is already written as the
-  // last segment; splice it right after the current page so the next
-  // tap lands on it.
-  const handleWrapUp = async () => {
-    if (!options || segments.length === 0) return;
-    const last = segments[segments.length - 1];
-    setSegments(prev => [...prev.slice(0, currentPageIndex + 1), last]);
+  // Parent escape hatch: the next page becomes the ending.
+  const handleWrapUp = () => {
+    const i = currentPageIndex;
+    if (!segments[i] || waitingFor) return;
+    if (segments[i + 1]?.isEnding && chosenByPage[i] === -1) {
+      setCurrentPageIndex(i + 1);
+      return;
+    }
+    void goToBranch(i, -1, 'Avslutt historien');
   };
 
   const handleRestart = () => {
+    resetFlow();
     setSegments([]);
     setOptions(null);
     setPlan(null);
+    setStoryMeta(null);
     setCurrentPageIndex(0);
+    setChosenByPage({});
+    setLoadedStory(null);
     setView('setup');
     setError(null);
-  };
-
-  const handleNextPage = () => {
-    setCurrentPageIndex(i => Math.min(i + 1, segments.length - 1));
   };
 
   const handleSaveStory = async (): Promise<boolean> => {
     if (!options || segments.length === 0) return false;
 
     const newStory: SavedStory = {
-      id: generateId(),
-      createdAt: Date.now(),
+      id: loadedStory?.id ?? generateId(),
+      createdAt: loadedStory?.createdAt ?? Date.now(),
       options: options,
-      segments: segments,
+      segments: segments.map((s, i) =>
+        chosenByPage[i] !== undefined ? { ...s, chosenIndex: chosenByPage[i] } : s
+      ),
       plan: plan ?? undefined,
+      premise: storyMeta?.premise,
+      seed: storyMeta?.seed,
     };
 
     try {
       const ok = await saveStoryAccount(newStory, account.innlogget);
       if (!ok) throw new Error('save-failed');
-      setSavedStories(prev => [newStory, ...prev]);
+      setSavedStories(prev =>
+        prev.some(s => s.id === newStory.id)
+          ? prev.map(s => (s.id === newStory.id ? newStory : s))
+          : [newStory, ...prev]
+      );
       return true;
     } catch (e) {
       console.error("Save error:", e);
@@ -324,16 +408,30 @@ const App: React.FC = () => {
   };
 
   const handleLoadStory = (story: SavedStory) => {
+    resetFlow();
     // Backward compatibility for stories saved before duration was added
     const storyOptions = { ...story.options };
     if (!storyOptions.duration) {
       storyOptions.duration = DURATIONS[1]; // Default to 5 min
     }
+    const chosen: Record<number, number> = {};
+    story.segments.forEach((s, i) => {
+      if (typeof s.chosenIndex === 'number') chosen[i] = s.chosenIndex;
+    });
+    if (story.plan?.characterSheetBase64) {
+      sheetRef.current = Promise.resolve(story.plan.characterSheetBase64);
+    }
 
     setOptions(storyOptions);
     setPlan(story.plan ?? null);
+    setStoryMeta({
+      seed: story.seed ?? Math.floor(Math.random() * 1_000_000_000),
+      premise: story.premise ?? story.plan?.logline ?? '',
+    });
     setSegments(story.segments);
     setCurrentPageIndex(0);
+    setChosenByPage(chosen);
+    setLoadedStory({ id: story.id, createdAt: story.createdAt });
     setView('reading');
   };
 
@@ -347,12 +445,13 @@ const App: React.FC = () => {
     }
   };
 
-  // The segment the reader is actually viewing. Separate from segments.length
-  // so the next segment can be ready in the background while the reader
-  // finishes the bridge text on the current page.
   const currentSegment = segments[currentPageIndex];
-  // True when the next segment has arrived but the reader has not advanced yet.
-  const isNextPageReady = currentPageIndex < segments.length - 1;
+  // The choice that led to the page on screen, shown as "Du valgte: …".
+  const prevChoice = currentPageIndex > 0 ? chosenByPage[currentPageIndex - 1] : undefined;
+  const arrivedVia =
+    prevChoice !== undefined && prevChoice >= 0
+      ? segments[currentPageIndex - 1]?.choices[prevChoice]?.text
+      : undefined;
 
   // Every story is now exactly TOTAL_PAGES pages regardless of duration.
   const estimatedPages = TOTAL_PAGES;
@@ -480,9 +579,9 @@ const App: React.FC = () => {
               onRestart={handleRestart}
               onSave={handleSaveStory}
               onWrapUp={handleWrapUp}
-              onNextPage={handleNextPage}
+              waitingFor={waitingFor}
+              arrivedVia={arrivedVia}
               isGenerating={isLoading}
-              isNextPageReady={isNextPageReady}
               pageNumber={currentPageIndex + 1}
               totalPages={estimatedPages}
             />

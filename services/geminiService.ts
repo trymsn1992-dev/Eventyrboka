@@ -1,4 +1,4 @@
-import { StoryOptions, StorySegment, StoryPlan } from "../types";
+import { Choice, SideCharacter, StoryOptions, StorySegment } from "../types";
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -21,12 +21,6 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const planStory = async (
-  options: StoryOptions
-): Promise<StoryPlan> => {
-  return postJson<StoryPlan>("/api/plan", { options });
-};
-
 export const generateCharacterSheet = async (
   character: string
 ): Promise<string | undefined> => {
@@ -42,40 +36,12 @@ export const generateCharacterSheet = async (
   }
 };
 
-// Returns only the text + choices + illustration prompt. No image yet — let the
-// UI render the page as soon as this resolves so the reader is not left waiting
-// on the slower image call.
-export const startNewStoryText = async (
-  options: StoryOptions,
-  plan?: StoryPlan
-): Promise<StorySegment> => {
-  return postJson<StorySegment>("/api/story", { options, plan });
-};
-
-export const continueStoryText = async (
-  options: StoryOptions,
-  previousSegments: StorySegment[],
-  choiceSummary: string,
-  plan?: StoryPlan,
-  forceEnding?: boolean
-): Promise<StorySegment> => {
-  const trimmed = previousSegments.map((s) => ({ text: s.text }));
-  return postJson<StorySegment>("/api/story", {
-    options,
-    previousSegments: trimmed,
-    choiceSummary,
-    plan,
-    forceEnding,
-  });
-};
-
-// Generates the illustration for a segment. Pass the plan so the image call can
-// use the character reference sheet and side-character bibles. Awaits a lazily
-// resolved character sheet promise so the sheet doesn't block the text path.
+// Generates the illustration for a page. The character sheet locks the main
+// character's look; side-character bibles lock everyone else's.
 export const generateIllustration = async (
   segment: StorySegment,
   options: StoryOptions,
-  plan: StoryPlan | undefined,
+  sideCharacters: SideCharacter[],
   characterSheet: string | undefined
 ): Promise<string | undefined> => {
   if (!segment.illustrationPrompt) return undefined;
@@ -84,7 +50,7 @@ export const generateIllustration = async (
       prompt: segment.illustrationPrompt,
       character: options.character,
       characterSheet,
-      sideCharacters: plan?.sideCharacters ?? [],
+      sideCharacters,
     });
     return base64 ?? undefined;
   } catch (error) {
@@ -93,59 +59,70 @@ export const generateIllustration = async (
   }
 };
 
-// Fast opener: the tiny first-page call made by the lite model. Writes
-// side 1 only — text, two choices with bridges and an illustration
-// prompt — so the reader sees something within ~3-5s while the heavier
-// /api/book call writes the rest in parallel.
+interface PageResponse {
+  text: string;
+  choices: Choice[];
+  isEnding: boolean;
+  illustrationPrompt: string;
+}
+
+// Page 1, written fast (~3-5 s). `seed` is shared with every later page of
+// the same story; `premise` is the problem the whole story is about.
 export const generateOpener = async (
-  options: StoryOptions
-): Promise<StorySegment> => {
-  return postJson<StorySegment>("/api/opener", { options });
+  options: StoryOptions,
+  seed: number
+): Promise<{ segment: StorySegment; premise: string }> => {
+  const data = await postJson<
+    PageResponse & { premise?: string; sideCharacters?: SideCharacter[] }
+  >("/api/opener", { options, seed });
+  return {
+    segment: {
+      text: data.text,
+      choices: data.choices,
+      isEnding: false,
+      illustrationPrompt: data.illustrationPrompt,
+      sideCharacters: data.sideCharacters ?? [],
+    },
+    premise: data.premise ?? "",
+  };
 };
 
-// Generates the full book (plan + pages with text, choices, bridges and
-// illustration prompts) in a single Gemini call.
-//
-// When `opener` is supplied, the server knows side 1 has already been
-// written (by generateOpener). It then returns a plan plus pages 2..N
-// as a continuation of that opener. The caller is responsible for
-// prepending the opener as segment 0.
-//
-// When `opener` is omitted, the server writes the full book (all N
-// pages) as the standalone one-shot flow.
-export interface GeneratedBook {
-  plan: Omit<StoryPlan, "characterSheetBase64">;
-  pages: StorySegment[];
+export interface PageRequest {
+  options: StoryOptions;
+  seed: number;
+  premise: string;
+  // The pages so far, each with the choice the reader made on it. The last
+  // entry's choice is the one this new page follows (none for a wrap-up).
+  path: Array<{ text: string; choice?: Choice }>;
+  sideCharacters: SideCharacter[];
+  // A grown-up pressed "Avslutt historien på neste side".
+  forceEnding?: boolean;
 }
-// opener's choices (text + bridge of each option) are passed with the
-// text so the server can tell the big model to converge side 2 from
-// EITHER bridge. Without them side 2 was written blind and the reader
-// felt a disconnect between the bridge they just read and the scene
-// that followed. nextPlotPoint is dropped — the server doesn't need it.
-export const generateFullBook = async (
-  options: StoryOptions,
-  opener?: {
-    text: string;
-    choices?: Array<{ text: string; bridge: string }>;
-  }
-): Promise<GeneratedBook> => {
-  const data = await postJson<{
-    plan: GeneratedBook["plan"];
-    pages: Array<{
-      text: string;
-      isEnding: boolean;
-      illustrationPrompt: string;
-      choices: Array<{ text: string; nextPlotPoint: string; bridge: string }>;
-    }>;
-  }>("/api/book", { options, opener });
+
+// The next page behind one choice. Called for both choices while the reader
+// is still on the current page.
+export const generatePage = async (req: PageRequest): Promise<StorySegment> => {
+  const data = await postJson<PageResponse & { newSideCharacters?: SideCharacter[] }>(
+    "/api/side",
+    {
+      options: req.options,
+      seed: req.seed,
+      premise: req.premise,
+      pages: req.path.map((p) => ({
+        text: p.text,
+        choice: p.choice?.text,
+        choiceDirection: p.choice?.nextPlotPoint,
+      })),
+      sideCharacters: req.sideCharacters,
+      forceEnding: req.forceEnding === true,
+    }
+  );
   return {
-    plan: data.plan,
-    pages: data.pages.map((p) => ({
-      text: p.text,
-      choices: p.choices,
-      isEnding: p.isEnding,
-      illustrationPrompt: p.illustrationPrompt,
-    })),
+    text: data.text,
+    choices: data.choices,
+    isEnding: data.isEnding,
+    illustrationPrompt: data.illustrationPrompt,
+    sideCharacters: data.newSideCharacters ?? [],
   };
 };
 

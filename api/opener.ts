@@ -4,11 +4,21 @@ import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
+import {
+  SAFETY_RULES,
+  parseSeed,
+  parseSideCharacters,
+  storySeeds,
+} from "./_lib/story-seeds.js";
 import { StoryOptions, DURATION_DENSITY, TOTAL_PAGES } from "../types.js";
 
 // Fast opener endpoint. Writes ONLY page 1 so the reader sees an
-// opening scene within ~3–5s. The slower, higher-quality /api/book
-// call runs in parallel and writes pages 2–5 continuing from here.
+// opening scene within ~3–5s. While they read it, the client asks
+// /api/side for the next page behind each of the two choices.
+//
+// Besides the page it returns a one-sentence premise — the problem the
+// story is about — which every later page is written against, so the
+// thread from page 1 is never dropped.
 //
 // Lite is the primary because:
 //  - Page 1 is just an opening scene (3–5 sensory sentences + 2 choices),
@@ -20,19 +30,6 @@ const TEXT_MODEL_CHAIN = [
   "gemini-3.8-flash",
   "gemini-flash-latest",
   "gemini-2.5-pro",
-];
-
-const OPENING_ARCHETYPES = [
-  "midt i noe uventet som allerede skjer",
-  "like etter at noe akkurat har gått galt eller rart",
-  "med en mystisk fremmed som dukker opp",
-  "på vei vekk fra noe trygt og kjent",
-  "like før en viktig hendelse de har gledet seg til",
-  "ved at karakteren mister noe de bryr seg om",
-  "ved at karakteren finner noe de ikke forventet",
-  "med at karakteren føler seg utenfor eller glemt",
-  "med en drøm som farger stemningen for det som kommer",
-  "midt i en helt vanlig morgen — som bryter sammen på overraskende vis",
 ];
 
 export const maxDuration = 30;
@@ -63,57 +60,68 @@ const RESPONSE_SCHEMA = {
           nextPlotPoint: {
             type: Type.STRING,
             description:
-              "Short summary of HOW this choice colors the arrival at the next beat.",
-          },
-          bridge: {
-            type: Type.STRING,
-            description:
-              "1-2 Norwegian sentences shown on THIS page right after the choice is clicked — the immediate, concrete, sensory consequence.",
+              "One Norwegian sentence: what the character does and what it leads to if this is chosen.",
           },
         },
-        required: ["text", "nextPlotPoint", "bridge"],
+        required: ["text", "nextPlotPoint"],
       },
       description: "Exactly 2 choices.",
     },
+    premise: {
+      type: Type.STRING,
+      description:
+        "1-2 Norwegian sentences: what the main character wants or which problem must be solved by the last page. The thread that holds the whole story together.",
+    },
+    sideCharacters: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          bible: {
+            type: Type.STRING,
+            description: "Thorough visual description in English: species, colors, clothes, accessories.",
+          },
+        },
+        required: ["name", "bible"],
+      },
+      description: "Named side characters introduced on this page (0-2). Empty list if none.",
+    },
   },
-  required: ["text", "illustrationPrompt", "choices"],
+  required: ["text", "illustrationPrompt", "choices", "premise", "sideCharacters"],
 };
-
-const SAFETY_RULES = `
-VIKTIGE INNHOLDSREGLER:
-- For barn og familier. Ingen vold, trusler, død eller skumle monstre.
-- Ingen voksne temaer.
-- Milde følelser, varm tone.
-`;
-
-function pick<T>(arr: T[], seed: number): T {
-  return arr[seed % arr.length];
-}
 
 function buildSystemInstruction(options: StoryOptions, seed: number): string {
   const density = DURATION_DENSITY[options.duration];
-  const openingArchetype = pick(OPENING_ARCHETYPES, seed);
+  const { openingArchetype, metaphorAngle } = storySeeds(seed, options.metaphor);
   return `Du er en varm, lekende norsk barnebokforfatter.
 Du skriver ÅPNINGEN til en interaktiv bok for barn (aldersgruppe ${options.ageGroup}).
 
 Karakter: ${options.character}. Metafor: "${options.metaphor}".
 
-DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Senere sider skrives av en annen modell som fortsetter herfra — hold deg til åpningen, ikke oppsummer eller konkluder.
+DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Hver senere side skrives ut fra valget barnet tar — valgene betyr virkelig noe.
 
 Åpne historien ${openingArchetype}.
 Introduser karakteren gjennom en konkret, sanselig handling som viser stemmen deres.
-Antyd dilemmaet metaforen vil teste, men løs ingenting.
+Sett opp ETT tydelig problem eller ønske som historien skal handle om, og som løses på siste side.
+Antyd dilemmaet metaforen vil teste${metaphorAngle ? ` (vinkel: ${metaphorAngle})` : ""}, men løs ingenting.
 
 TETTHET (varighet: ${options.duration}):
 - Omtrent ${density?.sentences ?? "4-6"} setninger.
 - Pacing: ${density?.pacing ?? "balansert"}.
 
 VALG-KVALITET:
-- Nøyaktig 2 valg.
+- Nøyaktig 2 valg som handler om problemet du nettopp satte opp.
 - "text" er en KORT knapp-label på norsk: 2-5 ord, maks ~30 tegn. En rask handling.
-- "nextPlotPoint" oppsummerer hvordan valget farger neste beat.
-- "bridge" er 1-2 setninger på norsk som vises etter klikk — umiddelbar sanselig konsekvens.
-- Begge valg skal lede naturlig videre.
+- De to valgene må være ulike handlinger som fører til ulike ting.
+- "nextPlotPoint" er én setning om hva karakteren gjør og hva det fører til.
+
+PREMISS:
+'premise' er 1-2 setninger om hva hovedkarakteren vil eller hvilket problem som må løses innen siste side.
+Det er tråden som holder hele boka sammen.
+
+BIKARAKTERER:
+Navngitte bikarakterer på denne siden (0-2) legges i 'sideCharacters' med en grundig visuell bible på ENGELSK.
 
 SPRÅK:
 Konkrete sanselige detaljer, ikke abstrakte følelser.
@@ -124,6 +132,8 @@ ${SAFETY_RULES}`;
 
 interface OpenerRequestBody {
   options: unknown;
+  // Shared with every /api/side call of the same story (see story-seeds.ts).
+  seed?: unknown;
 }
 
 export default async function handler(
@@ -155,7 +165,7 @@ export default async function handler(
       return res.status(400).json({ error: "Ugyldige historievalg." });
     }
 
-    const seed = Math.floor(Math.random() * 1_000_000);
+    const seed = parseSeed(body.seed);
     const systemInstruction = buildSystemInstruction(options, seed);
     const userPrompt =
       "Skriv åpningen nå. Konkret, sanselig scene — ikke oppsummering. Returner JSON etter skjemaet.";
@@ -185,16 +195,12 @@ export default async function handler(
     if (!Array.isArray(parsed.choices) || parsed.choices.length < 2) {
       parsed.choices = [
         {
-          text: "Fortsett rolig",
-          nextPlotPoint: "går videre med rolig stemning",
-          bridge:
-            "Hen trakk pusten og gikk videre, nysgjerrig på hva som ventet.",
+          text: "Gå forsiktig fram",
+          nextPlotPoint: "går rolig og forsiktig videre for å se hva som skjer",
         },
         {
-          text: "Fortsett ivrig",
-          nextPlotPoint: "går videre med ivrig stemning",
-          bridge:
-            "Hen smilte bredt og tok et steg videre, ivrig etter å se hva som kom.",
+          text: "Hopp rett i det",
+          nextPlotPoint: "kaster seg ivrig ut i det med en gang",
         },
       ];
     } else {
@@ -213,9 +219,14 @@ export default async function handler(
 
     return res.status(200).json({
       text: parsed.text,
-      choices: parsed.choices,
+      choices: parsed.choices.map((c: { text?: string; nextPlotPoint?: string }) => ({
+        text: c.text ?? "",
+        nextPlotPoint: c.nextPlotPoint ?? "",
+      })),
       isEnding: false,
       illustrationPrompt: parsed.illustrationPrompt,
+      premise: typeof parsed.premise === "string" ? parsed.premise : "",
+      sideCharacters: parseSideCharacters(parsed.sideCharacters).slice(0, 2),
     });
   } catch (error) {
     console.error("Opener error:", error);

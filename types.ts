@@ -16,6 +16,8 @@ export interface Choice {
   // 1-2 sentence continuation shown on the CURRENT page right after this
   // choice is picked. Keeps the reader occupied while the next page generates,
   // and makes the chosen path feel like a real consequence instead of a jump.
+  // Legacy: stories written before choices had real consequences showed this
+  // sentence after the click. No longer generated.
   bridge?: string;
 }
 
@@ -29,6 +31,13 @@ export interface StorySegment {
   // Storage under this key ("side-<index>"), and imageBase64 is then a
   // short-lived signed URL rather than a data URL.
   imageKey?: string;
+  // Index into `choices` of the option the reader picked on this page.
+  // Written when the story is saved, so re-reading shows "Valgt sist".
+  // -1 means a grown-up used "Avslutt historien på neste side" here.
+  chosenIndex?: number;
+  // Named side characters introduced on this page (with visual bibles), so
+  // later pages and illustrations keep them consistent along this path.
+  sideCharacters?: SideCharacter[];
 }
 
 export interface StoryBeat {
@@ -71,7 +80,12 @@ export interface SavedStory {
   createdAt: number;
   options: StoryOptions;
   segments: StorySegment[];
+  // Legacy one-shot stories carried a full plan.
   plan?: StoryPlan;
+  // What the story is about (from page 1) and the seed every page was written
+  // with — needed to write a new branch when re-reading picks the other option.
+  premise?: string;
+  seed?: number;
 }
 
 export interface StoryState {

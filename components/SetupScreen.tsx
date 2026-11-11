@@ -281,8 +281,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
         // ignore
       }
     };
-    warm('/api/plan');
-    warm('/api/story');
+    warm('/api/opener');
+    warm('/api/side');
     warm('/api/image');
     warm('/api/character-sheet');
   }, []);

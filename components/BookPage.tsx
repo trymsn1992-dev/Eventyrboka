@@ -42,9 +42,12 @@ interface BookPageProps {
   onRestart: () => void;
   onSave: () => Promise<boolean>;
   onWrapUp?: () => void;
-  onNextPage?: () => void;
+  // Label of the choice whose page is still being written. While set, the
+  // choices are replaced by a "Neste side blir til…" indicator.
+  waitingFor?: string | null;
+  // The choice that led to this page, shown as "Du valgte: …" above the text.
+  arrivedVia?: string;
   isGenerating: boolean;
-  isNextPageReady?: boolean;
   pageNumber: number;
   totalPages?: number; // Total estimated pages
 }
@@ -55,24 +58,18 @@ export const BookPage: React.FC<BookPageProps> = ({
   onRestart,
   onSave,
   onWrapUp,
-  onNextPage,
+  waitingFor,
+  arrivedVia,
   isGenerating,
-  isNextPageReady,
   pageNumber,
   totalPages
 }) => {
-  // The choice the reader just picked on THIS page. While set, we show the
-  // bridge text and a "Neste side" button in place of the choice buttons.
-  const [chosenChoice, setChosenChoice] = useState<Choice | null>(null);
-
-  // Chunked text reveal: whichever text is currently active (the segment or,
-  // after a choice is picked, that choice's bridge) is split into one-sentence
-  // chunks and shown one at a time in a fixed-height frame. Keeps text small
-  // so the illustration stays prominent on mobile and the layout never shifts.
-  const activeSource = chosenChoice?.bridge?.trim()
-    ? chosenChoice.bridge
-    : segment.text;
-  const isReadingBridge = Boolean(chosenChoice?.bridge?.trim());
+  // Chunked text reveal: the page text is split into one-sentence chunks and
+  // shown one at a time in a fixed-height frame on mobile. Keeps text small
+  // so the illustration stays prominent and the layout never shifts.
+  // (Older saved stories carry a "bridge" sentence per choice; it is no
+  // longer shown — the next page now opens with what the choice led to.)
+  const activeSource = segment.text;
   const textChunks = React.useMemo(() => {
     return activeSource
       .split('\n')
@@ -157,8 +154,6 @@ export const BookPage: React.FC<BookPageProps> = ({
     // Stop audio when turning pages
     stopAudio();
 
-    // Reset the chosen-choice overlay whenever we land on a new page.
-    setChosenChoice(null);
     setChunksRevealed(1);
   }, [segment]);
 
@@ -286,9 +281,9 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
+        <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
-             <div className={`relative w-full flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating && !chosenChoice ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
+             <div className={`relative w-full flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
                     animation keeps running; it fades out as the image fades in. */}
                 <div
@@ -311,11 +306,11 @@ export const BookPage: React.FC<BookPageProps> = ({
         </div>
 
         {/* Right Page: Text and Choices (Bottom on Mobile) */}
-        <div className={`w-full ${isGenerating && !chosenChoice ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
+        <div className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
 
           {/* Waiting Panel - only when generating with no choice picked yet
               (legacy fallback; the Neste-side button handles the main case). */}
-          {isGenerating && !chosenChoice && (
+          {isGenerating && (
             <div className="h-full flex flex-col items-center justify-center px-6 py-8 lg:p-8 text-center min-h-[280px]">
               <div className="w-full max-w-sm bg-white border-2 border-indigo-100 rounded-2xl p-5 lg:p-6 shadow-md mb-5 lg:mb-6">
                 <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3">
@@ -373,7 +368,7 @@ export const BookPage: React.FC<BookPageProps> = ({
           )}
           
           {/* Scrollable content container (hidden while next page is generating) */}
-          {(!isGenerating || chosenChoice) && (
+          {!isGenerating && (
           <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto scroll-smooth" ref={textContainerRef}>
             
             <div className="mb-6 lg:mb-10">
@@ -383,17 +378,13 @@ export const BookPage: React.FC<BookPageProps> = ({
               {isDesktop ? (
                 // Desktop: full paragraph, no tap-to-advance, no progress dots.
                 <div className="rounded-2xl px-5 py-6 lg:px-7 lg:py-8">
-                  {isReadingBridge && (
+                  {arrivedVia && (
                     <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3">
-                      Du valgte: {chosenChoice?.text}
+                      Du valgte: {arrivedVia}
                     </p>
                   )}
                   <p
-                    className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl lg:text-2xl ${
-                      !isReadingBridge
-                        ? 'first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
-                        : ''
-                    }`}
+                    className="font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl lg:text-2xl first-letter:text-5xl lg:first-letter:text-6xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2"
                     style={{ whiteSpace: 'pre-line' }}
                   >
                     {activeSource}
@@ -418,18 +409,18 @@ export const BookPage: React.FC<BookPageProps> = ({
                     }`}
                   >
                     <div
-                      key={`${isReadingBridge ? 'b' : 's'}-${chunksRevealed}`}
+                      key={`${pageNumber}-${chunksRevealed}`}
                       style={{ animation: 'chunkSwap 0.4s ease-out' }}
                       className="w-full"
                     >
-                      {isReadingBridge && chunksRevealed === 1 && (
+                      {arrivedVia && chunksRevealed === 1 && (
                         <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
-                          Du valgte: {chosenChoice?.text}
+                          Du valgte: {arrivedVia}
                         </p>
                       )}
                       <p
                         className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
-                          chunksRevealed === 1 && !isReadingBridge
+                          chunksRevealed === 1
                             ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                             : ''
                         }`}
@@ -573,40 +564,22 @@ export const BookPage: React.FC<BookPageProps> = ({
                   </div>
                 </div>
               ) : !allChunksShown ? null : (
-                chosenChoice ? (
-                  // Choice has been picked. The bridge text is now shown
-                  // chunk-by-chunk inside the main text frame (above).
-                  // Here we only render the Neste side button.
-                  <div className="space-y-5 animate-[fadeIn_0.4s_ease-out]">
-                    <style>{`
-                      @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-                      @keyframes nextReady { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5); } 70% { box-shadow: 0 0 0 12px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); } }
-                    `}</style>
-                    <button
-                      onClick={() => isNextPageReady && onNextPage?.()}
-                      disabled={!isNextPageReady}
-                      className={`w-full group relative p-4 lg:p-5 rounded-xl lg:rounded-2xl border-2 transition-all duration-500 ease-out ${
-                        isNextPageReady
-                          ? 'bg-indigo-600 border-indigo-700 text-white hover:bg-indigo-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:scale-95 cursor-pointer'
-                          : 'bg-white border-indigo-100 text-gray-400 dark:bg-gray-700 dark:border-indigo-900 dark:text-gray-300 cursor-wait'
-                      }`}
-                      style={isNextPageReady ? { animation: 'nextReady 1.6s ease-out' } : undefined}
-                    >
+                waitingFor ? (
+                  // A choice was tapped and its page is still being written.
+                  <div className="space-y-3" role="status" aria-live="polite">
+                    <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold text-center">
+                      Du valgte: {waitingFor}
+                    </p>
+                    <div className="w-full p-4 lg:p-5 rounded-xl lg:rounded-2xl border-2 bg-white border-indigo-100 text-gray-400 dark:bg-gray-700 dark:border-indigo-900 dark:text-gray-300 cursor-wait">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-lg lg:text-xl font-serif">
-                          {isNextPageReady ? 'Neste side' : 'Neste side blir til…'}
+                          {waitingFor === 'Avslutt historien' ? 'Siste side blir til…' : 'Neste side blir til…'}
                         </span>
-                        <div className={`rounded-full p-2 transition-colors shrink-0 ${
-                          isNextPageReady ? 'bg-white/20' : 'bg-indigo-50 dark:bg-gray-600'
-                        }`}>
-                          {isNextPageReady ? (
-                            <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6 text-white group-hover:translate-x-1 transition-transform" />
-                          ) : (
-                            <Loader2 className="w-5 h-5 lg:w-6 lg:h-6 text-indigo-400 animate-spin" />
-                          )}
+                        <div className="rounded-full p-2 shrink-0 bg-indigo-50 dark:bg-gray-600">
+                          <Loader2 className="w-5 h-5 lg:w-6 lg:h-6 text-indigo-400 animate-spin" />
                         </div>
                       </div>
-                    </button>
+                    </div>
                   </div>
                 ) : (
                 <div className="space-y-4">
@@ -616,16 +589,26 @@ export const BookPage: React.FC<BookPageProps> = ({
                   {segment.choices.map((choice, idx) => (
                     <button
                       key={idx}
-                      onClick={() => {
-                        setChosenChoice(choice);
-                        onChoice(choice);
-                      }}
-                      className="w-full group relative p-4 lg:p-5 bg-white dark:bg-gray-700 border-2 border-indigo-100 dark:border-indigo-900 rounded-xl lg:rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-gray-600 dark:hover:border-indigo-600 hover:shadow-lg transition-all duration-300 text-left group transform hover:-translate-y-1 active:scale-95"
+                      onClick={() => onChoice(choice)}
+                      className={`w-full group relative p-4 lg:p-5 bg-white dark:bg-gray-700 border-2 ${
+                        segment.chosenIndex === idx
+                          ? 'border-indigo-400 dark:border-indigo-400'
+                          : 'border-indigo-100 dark:border-indigo-900'
+                      } rounded-xl lg:rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-gray-600 dark:hover:border-indigo-600 hover:shadow-lg transition-all duration-300 text-left group transform hover:-translate-y-1 active:scale-95`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-gray-700 group-hover:text-indigo-800 dark:text-gray-100 dark:group-hover:text-white text-lg lg:text-xl font-serif pr-4">
-                          {choice.text}
-                        </span>
+                        <div className="pr-4">
+                          {/* Re-reading a saved story: mark what was picked last time. */}
+                          {segment.chosenIndex === idx && (
+                            <p className="flex items-center gap-1 mb-1 text-[11px] lg:text-xs uppercase tracking-widest font-bold text-indigo-500 dark:text-indigo-300">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Valgt sist
+                            </p>
+                          )}
+                          <span className="font-bold text-gray-700 group-hover:text-indigo-800 dark:text-gray-100 dark:group-hover:text-white text-lg lg:text-xl font-serif">
+                            {choice.text}
+                          </span>
+                        </div>
                         <div className="bg-indigo-100 rounded-full p-2 group-hover:bg-indigo-200 transition-colors shrink-0">
                           <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6 text-indigo-600 group-hover:translate-x-1 transition-transform" />
                         </div>
@@ -635,16 +618,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                   {onWrapUp && (
                     <div className="pt-4 flex justify-center">
                       <button
-                        onClick={() => {
-                          // Treat wrap-up as a "chosen choice" so the next-page
-                          // button pattern is identical for the parent escape.
-                          setChosenChoice({
-                            text: 'Avslutter historien',
-                            nextPlotPoint: 'ending',
-                            bridge: 'Siste side blir til…',
-                          });
-                          onWrapUp();
-                        }}
+                        onClick={onWrapUp}
                         className="text-xs lg:text-sm text-gray-400 hover:text-indigo-600 underline decoration-dotted underline-offset-4 transition-colors"
                         title="For voksne: hopp rett til slutten på neste side"
                       >
