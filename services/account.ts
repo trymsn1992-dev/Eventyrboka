@@ -92,14 +92,80 @@ export async function loadStories(innlogget: boolean): Promise<SavedStory[]> {
   return list.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// Re-encode an illustration as JPEG, capped at 1280 px. Gemini returns PNGs
+// of 1.5–2 MB; as JPEG they are a tenth of that, which makes saving fast on
+// mobile and keeps every upload far under Vercel's 4.5 MB request limit.
+// Falls back to the original if the browser can't do it or it isn't smaller.
+export async function compressImage(dataUrl: string): Promise<string> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const scale = Math.min(
+      1,
+      1280 / Math.max(img.naturalWidth, img.naturalHeight)
+    );
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    // JPEG has no transparency — paint white underneath, like a book page.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const jpeg = canvas.toDataURL("image/jpeg", 0.85);
+    return jpeg.startsWith("data:image/jpeg") && jpeg.length < dataUrl.length
+      ? jpeg
+      : dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
+// Each illustration goes up on its own (/api/bilde), then the story is saved
+// as text with a storage key per page. A whole story with inline images is
+// ~10 MB and Vercel rejects anything over 4.5 MB.
 async function saveStoryRemote(story: SavedStory): Promise<boolean> {
-  const r = await fetch("/api/stories", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(story),
-  });
-  return r.ok;
+  try {
+    const segments = await Promise.all(
+      story.segments.map(async (seg, idx) => {
+        const { imageBase64, ...rest } = seg;
+        // Already in storage (a story loaded from the account and saved
+        // again): keep the key, drop the signed URL.
+        if (!imageBase64 || !imageBase64.startsWith("data:")) return rest;
+        const key = `side-${idx}`;
+        const r = await fetch("/api/bilde", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storyId: story.id,
+            key,
+            bilde: await compressImage(imageBase64),
+          }),
+        });
+        if (!r.ok) throw new Error(`bilde ${idx + 1}: HTTP ${r.status}`);
+        return { ...rest, imageKey: key };
+      })
+    );
+    const plan = story.plan
+      ? (({ characterSheetBase64: _sheet, ...p }) => p)(story.plan)
+      : undefined;
+    const r = await fetch("/api/stories", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...story, segments, plan }),
+    });
+    if (!r.ok) throw new Error(`historien: HTTP ${r.status}`);
+    return true;
+  } catch (err) {
+    console.warn("Kunne ikke lagre eventyret til kontoen:", err);
+    return false;
+  }
 }
 
 export async function saveStory(

@@ -25,6 +25,10 @@ export interface StorySegment {
   isEnding: boolean;
   illustrationPrompt?: string;
   imageBase64?: string; // Added to store the generated image
+  // Set on stories saved to the account: the illustration lives in Supabase
+  // Storage under this key ("side-<index>"), and imageBase64 is then a
+  // short-lived signed URL rather than a data URL.
+  imageKey?: string;
 }
 
 export interface StoryBeat {
