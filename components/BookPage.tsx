@@ -287,7 +287,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 rounded-xl lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden border-r-4 border-gray-200 dark:border-gray-700">
       
       {/* Book Spine visual - Hidden on Mobile to save space */}
-      <div className="hidden lg:block absolute left-0 top-0 bottom-0 w-6 md:w-10 bg-gradient-to-r from-gray-300 via-gray-100 to-[#fdfbf7] z-10 shadow-inner"></div>
+      <div className="hidden lg:block absolute left-0 top-0 bottom-0 w-6 md:w-10 bg-gradient-to-r from-gray-300 via-gray-100 to-[#fdfbf7] dark:from-gray-950 dark:via-gray-900 dark:to-gray-800 z-10 shadow-inner"></div>
       
       {/* Content Container */}
       
