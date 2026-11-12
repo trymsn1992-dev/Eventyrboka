@@ -534,10 +534,12 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
               <button
                 onClick={handleRestart}
-                className="flex items-center cursor-pointer bg-white rounded-xl px-2 py-1 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700"
+                className="flex items-center cursor-pointer bg-white dark:bg-[#000c31] rounded-xl px-2 py-1 dark:p-0 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-indigo-900"
                 aria-label="Magiboka — til forsiden"
               >
-                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-8 md:h-10 w-auto" />
+                {/* The dark logo carries its own night-blue background and padding. */}
+                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-8 md:h-10 w-auto dark:hidden" />
+                <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-10 md:h-12 w-auto" />
               </button>
               <div className="flex items-center gap-2 sm:gap-3">
                 <button
@@ -598,9 +600,10 @@ const App: React.FC = () => {
           <button
             onClick={handleRestart}
             aria-label="Til forsiden"
-            className="bg-white hover:bg-white shadow-md rounded-full p-1.5 ring-1 ring-gray-200 dark:ring-gray-700 transition-colors"
+            className="bg-white dark:bg-[#000c31] shadow-md rounded-full p-1.5 dark:p-0 overflow-hidden ring-1 ring-gray-200 dark:ring-indigo-900 transition-colors"
           >
-            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-5 w-auto" />
+            <img src="/magiboka-logo.webp" alt="Magiboka" className="h-5 w-auto dark:hidden" />
+            <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-8 w-auto" />
           </button>
           <button
             onClick={toggleTheme}
