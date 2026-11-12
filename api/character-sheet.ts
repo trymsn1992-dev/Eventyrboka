@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   ai,
-  ART_STYLE,
+  artStyleFor,
   CHARACTER_DESCRIPTIONS,
   FRAMING_RULE,
 } from "./_lib/gemini.js";
@@ -12,6 +12,8 @@ export const maxDuration = 60;
 
 interface CharacterSheetRequestBody {
   character?: unknown;
+  // Drawing style picked for this story (label from ART_STYLES).
+  artStyle?: unknown;
 }
 
 // Generates a single canonical "character sheet" image for the main character.
@@ -53,7 +55,7 @@ This is a CHARACTER REFERENCE SHEET for a children's picture book. Draw ONE char
 front view, standing centered on a plain white background, full body visible from head to toe.
 Neutral friendly pose, calm expression, soft natural lighting.
 
-Style: ${ART_STYLE}
+Style: ${artStyleFor(body.artStyle)}
 
 Character bible (follow EXACTLY, do not add or omit anything):
 ${bible}

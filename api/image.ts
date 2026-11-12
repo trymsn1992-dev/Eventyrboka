@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   ai,
-  ART_STYLE,
+  artStyleFor,
   CHARACTER_DESCRIPTIONS,
   FRAMING_RULE,
 } from "./_lib/gemini.js";
@@ -22,6 +22,8 @@ interface ImageRequestBody {
   characterSheet?: unknown;
   // Side characters that may appear in this scene; each carries a full visual bible.
   sideCharacters?: unknown;
+  // Drawing style picked for this story (label from ART_STYLES).
+  artStyle?: unknown;
 }
 
 // Pulls the raw base64 payload out of a "data:image/*;base64,..." URL.
@@ -108,7 +110,7 @@ export default async function handler(
       : "";
 
     const fullPrompt = `
-Style: ${ART_STYLE}
+Style: ${artStyleFor(body.artStyle)}
 
 Main character bible (follow EXACTLY — never add, change or remove any item):
 ${characterVisuals}
@@ -120,7 +122,7 @@ Scene to illustrate: ${prompt}
 Rules:
 - Keep the main character visually identical to the reference and bible above.
 - Keep every side character identical to its bible each time it appears.
-- Keep the children's book watercolor style and consistent character scale.
+- Keep the art style described under "Style" above, the same on every page, and consistent character scale.
 - Keep the scene safe and age-appropriate for young children.
 - If the scene has a sentence starting with "Reader's choice:", the reader picked that look for this book. Always show it clearly. It is the one allowed addition to the character bible (for example a scarf in the chosen colour), and it overrides the "clean white background" style when it is about weather or time of day.
 `;

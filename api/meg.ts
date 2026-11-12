@@ -1,7 +1,8 @@
 // GET: tells the client whether the user is logged in, whether login is wired
 // up at all, and which setup choices the user has saved. The response shape
 // drives the login/logout button in the header.
-// POST: saves the setup choices (age group and reading length) to the account.
+// POST: saves the setup choices (age group, reading length and drawing style)
+// to the account.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   SESSION_LIFETIME_SEC,
@@ -14,7 +15,7 @@ import {
   savePreferences,
   supabaseReady,
 } from "./_lib/supabase.js";
-import { AGE_GROUPS, DURATIONS } from "../types.js";
+import { AGE_GROUPS, ART_STYLES, DURATIONS } from "../types.js";
 
 const DAY_SEC = 24 * 60 * 60;
 
@@ -28,6 +29,9 @@ function cleanPreferences(raw: unknown): Record<string, string> {
   }
   if (typeof r.duration === "string" && DURATIONS.includes(r.duration)) {
     out.duration = r.duration;
+  }
+  if (typeof r.artStyle === "string" && ART_STYLES.includes(r.artStyle)) {
+    out.artStyle = r.artStyle;
   }
   return out;
 }

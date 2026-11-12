@@ -29,6 +29,6 @@ create index if not exists fortellinger_vipps_sub_idx
 alter table public.brukere       enable row level security;
 alter table public.fortellinger  enable row level security;
 
--- Valg brukeren vil ha husket på oppsett-siden (alder og lengde).
+-- Valg brukeren vil ha husket på oppsett-siden (alder, lengde og tegnestil).
 alter table public.brukere
   add column if not exists innstillinger jsonb not null default '{}'::jsonb;

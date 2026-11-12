@@ -6,6 +6,7 @@ import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 import {
   SAFETY_RULES,
+  heroAndMoralNotes,
   parseSeed,
   parseSideCharacters,
   storySeeds,
@@ -98,7 +99,7 @@ function buildSystemInstruction(options: StoryOptions, seed: number): string {
 Du skriver ÅPNINGEN til en interaktiv bok for barn (aldersgruppe ${options.ageGroup}).
 
 Karakter: ${options.character}. Metafor: "${options.metaphor}".
-
+${heroAndMoralNotes(options)}
 DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Senere sider skrives ut fra valgene barnet tar.
 
 SIDE 1 ER BARE EN INTRODUKSJON (viktig — barnet vet ingenting ennå):

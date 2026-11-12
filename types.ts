@@ -4,6 +4,9 @@ export interface StoryOptions {
   metaphor: string;
   ageGroup: string;
   duration: string;
+  // Drawing style for the illustrations (one of ART_STYLES). Missing on
+  // stories saved before the choice existed — those are watercolour.
+  artStyle?: string;
   // Legacy fields kept optional so saved stories from older versions still load.
   // No longer collected from the user — the planner picks setting and genre naturally.
   theme?: string;
@@ -104,6 +107,42 @@ export const CHARACTERS = [
   "Super-sneglen Sivert"
 ];
 
+// A little personality for each hero. `tagline` is shown on the hero card;
+// `personality` goes into the story prompts so the hero sounds like
+// themselves on every page.
+export const CHARACTER_TRAITS: Record<string, { tagline: string; personality: string }> = {
+  "Ninja-katten Nils": {
+    tagline: "Modig og lynrask – men redd for vann",
+    personality:
+      "Modig, ivrig og rask som lynet, men litt for utålmodig. Sniker seg på tå selv når det ikke trengs. Redd for å bli våt. Roper gjerne «Hai-ja!».",
+  },
+  "Kongekrabba Kim": {
+    tagline: "Høytidelig konge som elsker å danse",
+    personality:
+      "Høytidelig og litt selvhøytidelig konge som egentlig er kjempesnill. Går alltid sidelengs, elsker å danse, og klipper med klørne når han er glad. Sier gjerne «Kongelig klipp-klapp!».",
+  },
+  "Rom-hunden Rex": {
+    tagline: "Nysgjerrig oppdager som snuser på alt",
+    personality:
+      "Nysgjerrig, glad og logrende. Må snuse på alt som er nytt, og blir lett distrahert av ting som svever forbi. Sier gjerne «Voff og vekk!».",
+  },
+  "Prinsesse Pølse": {
+    tagline: "Tøff prinsesse med masse humor",
+    personality:
+      "Selvsikker, morsom og litt sjefete, men raus og varm. Elsker fest og fine ting, og liker ikke å bli kalt liten. Sier «Du store sennep!» når hun blir overrasket.",
+  },
+  "Dragen Dagros": {
+    tagline: "Snill og litt sjenert – bjella klinger når hun ler",
+    personality:
+      "Snill, rolig og litt sjenert. Sier «mø» når hun tenker seg om, og kubjella klinger når hun ler. Elsker blomster og vil at alle skal ha det bra.",
+  },
+  "Super-sneglen Sivert": {
+    tagline: "Treig, men gir aldri opp",
+    personality:
+      "Tålmodig og evig optimist. Veldig, veldig treg, men tror selv at han er lynrask. Gir aldri opp. Sier gjerne «Sakte, men super!».",
+  },
+};
+
 export const METAPHORS = [
   "Det lønner seg å dele",
   "Fokuser på det du kan påvirke",
@@ -112,6 +151,31 @@ export const METAPHORS = [
   "Vær mot andre slik du vil at andre skal være mot deg",
   "Ærlighet varer lengst"
 ];
+
+// Drawing styles the reader can pick between. The prompt for each lives in
+// api/_lib/gemini.ts; the first one is the default.
+export const ART_STYLES = [
+  "Akvarell",
+  "Fargestifter",
+  "Papirklipp",
+  "Tegnefilm"
+];
+export const DEFAULT_ART_STYLE = ART_STYLES[0];
+
+// A grown-up can type their own moral instead of picking one. It ends up
+// inside the story prompts, so only plain text of a sensible length gets
+// through: letters, digits and simple punctuation, 3-80 characters.
+export const CUSTOM_METAPHOR_MAX = 80;
+export function cleanCustomMetaphor(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const cleaned = input
+    .replace(/[^\p{L}\p{N} ,.!?'’:()\-–]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CUSTOM_METAPHOR_MAX)
+    .trim();
+  return cleaned.length >= 3 ? cleaned : null;
+}
 
 export const AGE_GROUPS = [
   "Småbarn (1-3 år)",

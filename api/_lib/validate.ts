@@ -2,8 +2,10 @@ import {
   CHARACTERS,
   METAPHORS,
   AGE_GROUPS,
+  ART_STYLES,
   LEGACY_AGE_GROUPS,
   DURATIONS,
+  cleanCustomMetaphor,
   normalizeAgeGroup,
   StoryOptions,
 } from "../../types.js";
@@ -36,16 +38,23 @@ export function validateOptions(options: unknown): StoryOptions | null {
   }
   if (
     !ALLOWED.character.has(o.character) ||
-    !ALLOWED.metaphor.has(o.metaphor) ||
     !ALLOWED.ageGroup.has(o.ageGroup) ||
     !ALLOWED.duration.has(o.duration)
   ) {
     return null;
   }
+  // One of ours, or a moral the grown-up typed themselves (cleaned).
+  const metaphor = ALLOWED.metaphor.has(o.metaphor)
+    ? o.metaphor
+    : cleanCustomMetaphor(o.metaphor);
+  if (!metaphor) return null;
   return {
     character: o.character,
-    metaphor: o.metaphor,
+    metaphor,
     ageGroup: normalizeAgeGroup(o.ageGroup),
     duration: o.duration,
+    ...(typeof o.artStyle === "string" && ART_STYLES.includes(o.artStyle)
+      ? { artStyle: o.artStyle }
+      : {}),
   };
 }

@@ -22,12 +22,13 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const generateCharacterSheet = async (
-  character: string
+  character: string,
+  artStyle?: string
 ): Promise<string | undefined> => {
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/character-sheet",
-      { character }
+      { character, artStyle }
     );
     return base64 ?? undefined;
   } catch (error) {
@@ -49,6 +50,7 @@ export const generateIllustration = async (
     const { base64 } = await postJson<{ base64: string | null }>("/api/image", {
       prompt: segment.illustrationPrompt,
       character: options.character,
+      artStyle: options.artStyle,
       characterSheet,
       sideCharacters,
     });

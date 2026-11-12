@@ -13,6 +13,7 @@ import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 import {
   SAFETY_RULES,
+  heroAndMoralNotes,
   parseSeed,
   parseSideCharacters,
   storySeeds,
@@ -202,7 +203,7 @@ Ikke oppsummer valget med ord som "Kim valgte å …" — vis det skje.`;
 Du skriver side ${pageNumber} av ${TOTAL_PAGES} i en interaktiv bok der barnets valg virkelig betyr noe.
 
 Hovedkarakter: ${options.character}. Metafor: "${options.metaphor}". Aldersgruppe: ${options.ageGroup}.
-${premise ? `\nPREMISS (tråden som holder historien sammen, og som løses på siste side):\n${premise}\n` : ""}
+${heroAndMoralNotes(options)}${premise ? `\nPREMISS (tråden som holder historien sammen, og som løses på siste side):\n${premise}\n` : ""}
 HISTORIEN SÅ LANGT:
 
 ${storySoFar}

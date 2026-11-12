@@ -185,7 +185,7 @@ const App: React.FC = () => {
   };
 
   const getSheet = (opts: StoryOptions) => {
-    if (!sheetRef.current) sheetRef.current = generateCharacterSheet(opts.character);
+    if (!sheetRef.current) sheetRef.current = generateCharacterSheet(opts.character, opts.artStyle);
     return sheetRef.current;
   };
 
@@ -320,11 +320,15 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     const seed = Math.floor(Math.random() * 1_000_000_000);
-    // Age and length become the defaults next time.
+    // Age, length and drawing style become the defaults next time.
     rememberPreferences(selectedOptions, account.innlogget);
     setAccount(prev => ({
       ...prev,
-      valg: { ageGroup: selectedOptions.ageGroup, duration: selectedOptions.duration },
+      valg: {
+        ageGroup: selectedOptions.ageGroup,
+        duration: selectedOptions.duration,
+        artStyle: selectedOptions.artStyle,
+      },
     }));
     try {
       // Start the character sheet now so it's ready for page 1's picture.

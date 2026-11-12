@@ -1,7 +1,7 @@
 // Account state and story sync for the logged-in user. When no one is signed in
 // — the common path while Vipps is still being set up — every call falls back
 // to the local IndexedDB store, so the app keeps working as it did before.
-import { AGE_GROUPS, DURATIONS, SavedStory, StoryOptions } from "../types";
+import { AGE_GROUPS, ART_STYLES, DURATIONS, SavedStory, StoryOptions } from "../types";
 import {
   deleteStoryFromDB,
   getAllStoriesFromDB,
@@ -17,12 +17,12 @@ export interface AccountStatus {
   supabaseReady: boolean;
   innlogget: boolean;
   fornavn: string;
-  // Setup choices saved on the account (age group, reading length).
+  // Setup choices saved on the account (age group, reading length, drawing style).
   valg: SetupPreferences;
 }
 
 // The setup choices we remember between visits.
-export type SetupPreferences = Partial<Pick<StoryOptions, "ageGroup" | "duration">>;
+export type SetupPreferences = Partial<Pick<StoryOptions, "ageGroup" | "duration" | "artStyle">>;
 
 const STATUS_KEY = "magiboka_konto";
 const PREFS_KEY = "magiboka_valg";
@@ -33,6 +33,7 @@ function cleanPreferences(raw: unknown): SetupPreferences {
   const r = raw as Record<string, unknown>;
   if (typeof r.ageGroup === "string" && AGE_GROUPS.includes(r.ageGroup)) out.ageGroup = r.ageGroup;
   if (typeof r.duration === "string" && DURATIONS.includes(r.duration)) out.duration = r.duration;
+  if (typeof r.artStyle === "string" && ART_STYLES.includes(r.artStyle)) out.artStyle = r.artStyle;
   return out;
 }
 

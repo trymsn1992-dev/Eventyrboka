@@ -12,6 +12,24 @@ export const ai = new GoogleGenAI({ apiKey });
 export const ART_STYLE =
   "children's book illustration, watercolor and ink style, soft pastel colors, clean white background, whimsical, cute, consistent character scale across pages";
 
+// The drawing styles the reader can pick between (labels in types.ts
+// ART_STYLES). Every page and the character sheet of a story use the same one.
+const ART_STYLE_PROMPTS: Record<string, string> = {
+  Akvarell: ART_STYLE,
+  Fargestifter:
+    "children's book illustration drawn by hand with wax crayons and coloured pencils, visible waxy crayon strokes and paper grain, warm bright colors, soft hand-drawn outlines, clean white background, whimsical, cute, consistent character scale across pages",
+  Papirklipp:
+    "children's book illustration in cut-paper collage style, everything built from layered pieces of coloured and textured paper with soft drop shadows between the layers, simple bold shapes, cheerful colors, clean white background, whimsical, cute, consistent character scale across pages",
+  Tegnefilm:
+    "children's book illustration in a modern 2D cartoon style, clean bold outlines, flat bright saturated colors with simple cel shading, big expressive eyes, clean white background, playful, cute, consistent character scale across pages",
+};
+
+// Unknown or missing style (older clients, stories saved before the choice
+// existed) means watercolour.
+export function artStyleFor(label: unknown): string {
+  return (typeof label === "string" && ART_STYLE_PROMPTS[label]) || ART_STYLE;
+}
+
 // Full visual bibles for each main character. These are repeated verbatim on EVERY image
 // prompt so the model has no excuse to drift between pages. Every item is intentional:
 // - Species / proportions lock the silhouette
