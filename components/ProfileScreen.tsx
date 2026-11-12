@@ -2,8 +2,8 @@ import React from 'react';
 import { SetupPreferences } from '../services/account';
 import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
-import { ArrowLeft, Calendar, CheckCircle, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
+import { ProBadge, SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
+import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
 
 // Where the last change to the choices ended up.
 export type SaveState = 'idle' | 'local' | 'account' | 'account-failed';
@@ -20,6 +20,9 @@ interface ProfileScreenProps {
   onLoadStory: (story: SavedStory) => void;
   onDeleteStory: (e: React.MouseEvent, id: string) => void;
   onBack: () => void;
+  // Pro unlocks the choice of drawing style.
+  isPro: boolean;
+  onOpenPlan: () => void;
 }
 
 // The style cards need a hero to show the style on.
@@ -45,8 +48,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onLoadStory,
   onDeleteStory,
   onBack,
+  isPro,
+  onOpenPlan,
 }) => {
-  const artStyle = preferences.artStyle ?? DEFAULT_ART_STYLE;
+  const artStyle = isPro ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE;
   return (
     <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-8 sm:space-y-10">
@@ -61,6 +66,21 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           >
             <ArrowLeft className="w-4 h-4" />
             Lag nytt eventyr
+          </button>
+        </div>
+
+        {/* The plan the user is on */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900 bg-white dark:bg-gray-800 px-5 py-4">
+          <p className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-100">
+            <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500' : 'text-gray-400'}`} />
+            Du bruker {isPro ? 'Pro' : 'Gratis'}
+          </p>
+          <button
+            type="button"
+            onClick={onOpenPlan}
+            className="text-sm font-semibold text-indigo-600 dark:text-indigo-300 hover:underline"
+          >
+            {isPro ? 'Se hva som er med' : 'Se hva du får med Pro'}
           </button>
         </div>
 
@@ -166,7 +186,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
               <Palette className="w-6 h-6 text-emerald-500" />
               <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Tegnestil</h3>
+              {!isPro && <ProBadge />}
             </div>
+            {!isPro && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Med Gratis tegnes eventyrene i akvarell. Pro lar deg velge mellom alle fire.
+              </p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               {ART_STYLES.map((style) => {
                 const isSelected = artStyle === style;
@@ -176,8 +202,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     key={style}
                     type="button"
                     aria-pressed={isSelected}
-                    onClick={() => onPreferenceChange({ artStyle: style })}
-                    className={`group relative p-2 rounded-2xl border-2 flex flex-col items-center text-center gap-1.5 transition-all duration-200 ${cardClass(isSelected)}`}
+                    onClick={() => (isPro ? onPreferenceChange({ artStyle: style }) : onOpenPlan())}
+                    className={`group relative p-2 rounded-2xl border-2 flex flex-col items-center text-center gap-1.5 transition-all duration-200 ${cardClass(isSelected)} ${!isPro && !isSelected ? 'opacity-60' : ''}`}
                   >
                     {isSelected && <SelectedBadge />}
                     <div className="w-full aspect-square rounded-xl bg-white overflow-hidden">

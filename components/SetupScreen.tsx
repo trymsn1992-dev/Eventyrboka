@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check } from 'lucide-react';
 
@@ -15,6 +15,11 @@ interface SetupScreenProps {
   // No age has been saved yet (first visit): ask for it here as well.
   askForAge: boolean;
   onOpenProfile: () => void;
+  // Pro unlocks your own moral and the drawing style, and has no weekly limit.
+  isPro: boolean;
+  // Free stories left this week (null when unknown or on Pro).
+  freeLeft: number | null;
+  onOpenPlan: () => void;
 }
 
 // Watercolour art for the pickers, drawn from the same character bibles and
@@ -52,6 +57,13 @@ export const styleArt = (character: string, style: string): string | undefined =
   return suffix ? hero.replace('/velger/', '/velger/stil/').replace('.webp', `-${suffix}.webp`) : hero;
 };
 
+// Marks something that needs Pro.
+export const ProBadge = ({ className = '' }: { className?: string }) => (
+  <span className={`inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 ${className}`}>
+    Pro
+  </span>
+);
+
 export const SelectedBadge = () => (
   <span className="absolute top-2 right-2 z-10 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md">
     <Check className="h-4 w-4" strokeWidth={3} />
@@ -70,6 +82,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   onPreferenceChange,
   askForAge,
   onOpenProfile,
+  isPro,
+  freeLeft,
+  onOpenPlan,
 }) => {
   // Hero and moral are picked fresh for every story; the rest is remembered.
   const [picked, setPicked] = useState({ character: CHARACTERS[0], metaphor: METAPHORS[0] });
@@ -77,8 +92,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     ...picked,
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
     duration: preferences.duration ?? DURATIONS[1],
-    artStyle: preferences.artStyle ?? DEFAULT_ART_STYLE,
+    // Other drawing styles than the standard one are a Pro feature.
+    artStyle: isPro ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
   };
+  const outOfFreeStories = !isPro && freeLeft === 0;
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
   // 405 back without touching Gemini, but it spins up the Vercel lambda so the
@@ -141,6 +158,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [customMoral, setCustomMoral] = useState('');
   const customMoralRef = useRef<HTMLInputElement>(null);
   const pickCustomMoral = () => {
+    if (!isPro) {
+      window.clearTimeout(advanceTimer.current);
+      onOpenPlan();
+      return;
+    }
     setUseCustomMoral(true);
     // Stay here and put the cursor in the field — there is something to type.
     window.clearTimeout(advanceTimer.current);
@@ -268,7 +290,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   <Pencil className="w-7 h-7 text-amber-500" />
                 </span>
                 <span>
-                  <span className="block text-sm sm:text-base font-bold leading-snug">Skriv din egen</span>
+                  <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
+                    Skriv din egen
+                    {!isPro && <ProBadge />}
+                  </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå</span>
                 </span>
               </button>
@@ -318,7 +343,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             <Button 
               type="submit" 
               fullWidth 
-              disabled={isLoading}
+              disabled={isLoading || outOfFreeStories}
               className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
             >
               {isLoading ? (
@@ -330,6 +355,23 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </>
               )}
             </Button>
+
+            {/* Free plan: how many stories are left this week. */}
+            {!isPro && freeLeft !== null && (
+              <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
+                {outOfFreeStories
+                  ? `Du har laget ukas ${FREE_STORIES_PER_WEEK} gratis eventyr. Nye kommer på mandag.`
+                  : `${freeLeft} av ${FREE_STORIES_PER_WEEK} gratis eventyr igjen denne uka.`}
+                {' '}
+                <button
+                  type="button"
+                  onClick={onOpenPlan}
+                  className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
+                >
+                  Se Pro
+                </button>
+              </p>
+            )}
 
             {/* What the story is made for. Changed on Min side, not here. */}
             <p className="mt-5 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">

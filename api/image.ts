@@ -6,6 +6,7 @@ import {
   FRAMING_RULE,
 } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { allowedArtStyle, requireLogin } from "./_lib/access.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
 
@@ -70,6 +71,9 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const session = requireLogin(req, res);
+  if (!session) return;
+
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
@@ -112,12 +116,15 @@ export default async function handler(
 
     const sheet = parseDataUrl(body.characterSheet);
 
+    // Other drawing styles than the standard one are for Pro.
+    const artStyle = await allowedArtStyle(session.sub, body.artStyle);
+
     const referenceNote = sheet
       ? "\nA REFERENCE IMAGE of the main character is attached. The character in the scene MUST match this reference exactly — same colors, same clothing items, same accessories, same body proportions. Do not deviate.\n"
       : "";
 
     const fullPrompt = `
-Style: ${artStyleFor(body.artStyle)}
+Style: ${artStyleFor(artStyle)}
 
 Main character bible (follow EXACTLY — never add, change or remove any item):
 ${characterVisuals}

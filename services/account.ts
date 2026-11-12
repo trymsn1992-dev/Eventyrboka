@@ -1,7 +1,7 @@
 // Account state and story sync for the logged-in user. When no one is signed in
 // — the common path while Vipps is still being set up — every call falls back
 // to the local IndexedDB store, so the app keeps working as it did before.
-import { AGE_GROUPS, ART_STYLES, DURATIONS, SavedStory, StoryOptions } from "../types";
+import { AGE_GROUPS, ART_STYLES, DURATIONS, Plan, SavedStory, StoryOptions } from "../types";
 import {
   deleteStoryFromDB,
   getAllStoriesFromDB,
@@ -19,6 +19,10 @@ export interface AccountStatus {
   fornavn: string;
   // Setup choices saved on the account (age group, reading length, drawing style).
   valg: SetupPreferences;
+  // Gratis or Pro; null until the user has chosen (the plan page is shown).
+  plan: Plan | null;
+  // Free stories left this week. null on Pro (no limit) or when unknown.
+  freeLeft: number | null;
 }
 
 // The setup choices we remember between visits.
@@ -86,11 +90,16 @@ function cachedStatus(): AccountStatus | null {
       innlogget: Boolean(raw.innlogget),
       fornavn: typeof raw.fornavn === "string" ? raw.fornavn : "",
       valg: cleanPreferences(raw.valg),
+      plan: cleanPlan(raw.plan),
+      freeLeft: typeof raw.freeLeft === "number" ? raw.freeLeft : null,
     };
   } catch {
     return null;
   }
 }
+
+const cleanPlan = (raw: unknown): Plan | null =>
+  raw === "pro" || raw === "gratis" ? raw : null;
 
 function cacheStatus(status: AccountStatus | null): void {
   try {
@@ -111,6 +120,8 @@ export const emptyStatus = (): AccountStatus => ({
   innlogget: false,
   fornavn: "",
   valg: {},
+  plan: null,
+  freeLeft: null,
 });
 
 // /api/meg is slow (cold start) or down when env vars are missing, so we
@@ -135,6 +146,8 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       innlogget?: boolean;
       fornavn?: string;
       valg?: unknown;
+      plan?: unknown;
+      gratisIgjen?: unknown;
     };
     const status: AccountStatus = {
       checked: true,
@@ -143,6 +156,8 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       innlogget: Boolean(data.innlogget),
       fornavn: data.fornavn || "",
       valg: cleanPreferences(data.valg),
+      plan: cleanPlan(data.plan),
+      freeLeft: typeof data.gratisIgjen === "number" ? data.gratisIgjen : null,
     };
     cacheStatus(status);
     return status;
@@ -150,6 +165,42 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
     return fallback();
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// Keep the cached copy in step when the plan changes in this browser.
+export function rememberStatus(status: AccountStatus): void {
+  cacheStatus(status);
+}
+
+// Pick the free plan. False if it could not be saved.
+export async function chooseFreePlan(): Promise<boolean> {
+  try {
+    const r = await fetch("/api/meg", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "gratis" }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Try a code for Pro: "ok", "wrong" (not a valid code) or "error".
+export async function redeemProCode(code: string): Promise<"ok" | "wrong" | "error"> {
+  try {
+    const r = await fetch("/api/meg", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kode: code }),
+    });
+    if (r.ok) return "ok";
+    return r.status === 400 ? "wrong" : "error";
+  } catch {
+    return "error";
   }
 }
 

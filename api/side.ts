@@ -9,6 +9,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { isCustomMetaphor, isPro, requireLogin } from "./_lib/access.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
@@ -260,6 +261,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const session = requireLogin(req, res);
+  if (!session) return;
+
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
@@ -278,6 +282,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pages = parsePages(body.pages);
     if (!options || !pages) {
       return res.status(400).json({ error: "Ugyldig forespørsel." });
+    }
+    if (isCustomMetaphor(options.metaphor) && !(await isPro(session.sub))) {
+      return res.status(403).json({ error: "Egen moral er en Pro-funksjon." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";

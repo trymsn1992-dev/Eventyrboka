@@ -202,3 +202,93 @@ export async function savePreferences(
     return false;
   }
 }
+
+// The account row: the plan the user is on and their saved setup choices.
+// If the plan column hasn't been added yet (see supabase/schema.sql) the
+// plan reads as "not chosen".
+export interface Account {
+  plan: "gratis" | "pro" | null;
+  innstillinger: Preferences;
+}
+
+export async function getAccount(vippsSub: string): Promise<Account> {
+  const empty: Account = { plan: null, innstillinger: {} };
+  if (!supabaseReady() || !vippsSub) return empty;
+  try {
+    const r = await fetch(
+      `${supabaseUrl()}/rest/v1/brukere?vipps_sub=eq.${encodeURIComponent(
+        vippsSub
+      )}&select=innstillinger,plan`,
+      { headers: headers() }
+    );
+    if (!r.ok) return { plan: null, innstillinger: await getPreferences(vippsSub) };
+    const rows = (await r.json()) as Array<{ innstillinger?: unknown; plan?: unknown }>;
+    const row = rows[0];
+    if (!row) return empty;
+    return {
+      plan: row.plan === "pro" || row.plan === "gratis" ? row.plan : null,
+      innstillinger:
+        row.innstillinger && typeof row.innstillinger === "object"
+          ? (row.innstillinger as Preferences)
+          : {},
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function setPlan(
+  vippsSub: string,
+  plan: "gratis" | "pro"
+): Promise<boolean> {
+  if (!supabaseReady() || !vippsSub) return false;
+  try {
+    const r = await fetch(
+      `${supabaseUrl()}/rest/v1/brukere?vipps_sub=eq.${encodeURIComponent(vippsSub)}`,
+      {
+        method: "PATCH",
+        headers: { ...headers(), Prefer: "return=representation" },
+        body: JSON.stringify({ plan }),
+      }
+    );
+    if (!r.ok) {
+      console.error(
+        `Supabase-lagring av plan feilet (HTTP ${r.status}): ${(await r.text()).slice(0, 200)}`
+      );
+      return false;
+    }
+    // No row updated means the user row is missing — treat as not saved.
+    return ((await r.json()) as unknown[]).length > 0;
+  } catch (err) {
+    console.error("Supabase-lagring av plan feilet:", (err as Error).message);
+    return false;
+  }
+}
+
+// Calls one of the weekly-quota functions in supabase/schema.sql. Returns
+// null when it can't be reached, so the caller decides what that means.
+export async function quotaRpc<T>(
+  fn: "bruk_ukeskvote" | "les_ukeskvote",
+  args: Record<string, unknown>
+): Promise<T | null> {
+  if (!supabaseReady()) return null;
+  try {
+    const r = await fetch(`${supabaseUrl()}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) {
+      console.error(
+        `Ukeskvote (${fn}) svarte HTTP ${r.status}. Er supabase/schema.sql kjørt? ${(
+          await r.text()
+        ).slice(0, 200)}`
+      );
+      return null;
+    }
+    return (await r.json()) as T;
+  } catch (err) {
+    console.error(`Ukeskvote (${fn}) feilet:`, (err as Error).message);
+    return null;
+  }
+}

@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { isCustomMetaphor, isPro, requireLogin, takeFreeStory } from "./_lib/access.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
@@ -12,7 +13,7 @@ import {
   parseSideCharacters,
   storySeeds,
 } from "./_lib/story-seeds.js";
-import { StoryOptions, DURATION_DENSITY, TOTAL_PAGES } from "../types.js";
+import { StoryOptions, DURATION_DENSITY, FREE_STORIES_PER_WEEK, TOTAL_PAGES } from "../types.js";
 
 // Fast opener endpoint. Writes ONLY page 1 so the reader sees an
 // opening scene within ~3–5s. While they read it, the client asks
@@ -165,6 +166,9 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const session = requireLogin(req, res);
+  if (!session) return;
+
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
@@ -184,6 +188,21 @@ export default async function handler(
     const options = validateOptions(body.options);
     if (!options) {
       return res.status(400).json({ error: "Ugyldige historievalg." });
+    }
+
+    // Free plan: no own moral, standard drawing style, and a weekly quota.
+    const pro = await isPro(session.sub);
+    if (!pro) {
+      if (isCustomMetaphor(options.metaphor)) {
+        return res.status(403).json({ error: "Egen moral er en Pro-funksjon." });
+      }
+      delete options.artStyle;
+      if (!(await takeFreeStory(session.sub))) {
+        return res.status(429).json({
+          error: `Du har laget ${FREE_STORIES_PER_WEEK} eventyr denne uka. Nye gratis eventyr kommer på mandag.`,
+          grense: "uke",
+        });
+      }
     }
 
     const seed = parseSeed(body.seed);

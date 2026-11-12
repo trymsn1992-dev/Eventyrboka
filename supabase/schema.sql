@@ -95,3 +95,47 @@ $$;
 -- Bare serveren (service-nøkkelen) får kalle funksjonen.
 revoke all on function public.tell_forbruk(text, integer, text, integer) from public, anon, authenticated;
 grant execute on function public.tell_forbruk(text, integer, text, integer) to service_role;
+
+-- Gratis eller Pro. NULL betyr at brukeren ikke har valgt ennå (da vises
+-- valgsiden etter innlogging). Settes bare av serveren (api/meg.ts).
+alter table public.brukere
+  add column if not exists plan text;
+
+-- Ukeskvoten for gratisbrukere (se api/_lib/access.ts). Bruker samme tabell
+-- som kostnadstaket: én rad per uke og bruker, med mandagen (norsk tid) som dag.
+create or replace function public.bruk_ukeskvote(p_nokkel text, p_grense integer)
+returns boolean
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_uke    date := date_trunc('week', now() at time zone 'Europe/Oslo')::date;
+  v_antall integer;
+begin
+  if p_grense < 1 then return false; end if;
+  insert into forbruk (dag, nokkel, antall) values (v_uke, p_nokkel, 1)
+  on conflict (dag, nokkel) do update set antall = forbruk.antall + 1
+    where forbruk.antall < p_grense
+  returning antall into v_antall;
+  return v_antall is not null;
+end;
+$$;
+
+-- Hvor mange eventyr brukeren har laget denne uka.
+create or replace function public.les_ukeskvote(p_nokkel text)
+returns integer
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(
+    (select antall from forbruk
+      where dag = date_trunc('week', now() at time zone 'Europe/Oslo')::date
+        and nokkel = p_nokkel),
+    0);
+$$;
+
+revoke all on function public.bruk_ukeskvote(text, integer) from public, anon, authenticated;
+revoke all on function public.les_ukeskvote(text) from public, anon, authenticated;
+grant execute on function public.bruk_ukeskvote(text, integer) to service_role;
+grant execute on function public.les_ukeskvote(text) to service_role;

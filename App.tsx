@@ -2,23 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
+import { LandingScreen } from './components/LandingScreen';
+import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, TOTAL_PAGES } from './types';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage } from './services/geminiService';
 import {
   AccountStatus,
+  chooseFreePlan,
   deleteStory as deleteStoryAccount,
   fetchStatus,
   initialStatus,
   loadLocalPreferences,
   loadStories,
   logout,
+  redeemProCode,
   rememberPreferences,
+  rememberStatus,
   saveStory as saveStoryAccount,
   SetupPreferences,
 } from './services/account';
 import { logEvent, logStoryStarted } from './services/analytics';
-import { AlertCircle, Library, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
+import { AlertCircle, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -33,7 +38,7 @@ const generateId = () => {
 declare const __APP_VERSION__: string;
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'setup' | 'reading' | 'profile'>('setup');
+  const [view, setView] = useState<'setup' | 'reading' | 'profile' | 'plan'>('setup');
   const [options, setOptions] = useState<StoryOptions | null>(null);
   const [plan, setPlan] = useState<StoryPlan | null>(null);
   const [segments, setSegments] = useState<StorySegment[]>([]);
@@ -187,7 +192,8 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    setAccount({ ...account, innlogget: false, fornavn: '', valg: {} });
+    setAccount({ ...account, innlogget: false, fornavn: '', valg: {}, plan: null, freeLeft: null });
+    setView('setup');
     // After sign-out, the user sees their local IndexedDB stories again.
     try {
       const stories = await loadStories(false);
@@ -366,6 +372,12 @@ const App: React.FC = () => {
       const { segment: opener, premise } = await generateOpener(selectedOptions, seed);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
+      // One of this week's free stories is used.
+      setAccount(prev =>
+        prev.plan === 'pro' || prev.freeLeft === null
+          ? prev
+          : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
+      );
       setStoryMeta({ seed, premise });
       setSegments([opener]);
       setView('reading');
@@ -418,6 +430,37 @@ const App: React.FC = () => {
     setLoadedStory(null);
     setView('setup');
     setError(null);
+  };
+
+  // Gratis or Pro. Pro is unlocked with a code for now.
+  const isPro = account.plan === 'pro';
+  const openPlan = () => {
+    resetFlow();
+    setView('plan');
+    setError(null);
+    logEvent('Plansiden åpnet');
+    window.scrollTo({ top: 0 });
+  };
+  const applyPlan = (plan: 'gratis' | 'pro') => {
+    setAccount(prev => {
+      const next = { ...prev, plan, freeLeft: plan === 'pro' ? null : prev.freeLeft };
+      rememberStatus(next);
+      return next;
+    });
+    logEvent('Plan valgt', { plan });
+    setView('setup');
+    window.scrollTo({ top: 0 });
+  };
+  const handleChooseFree = async (): Promise<boolean> => {
+    const ok = await chooseFreePlan();
+    if (ok) applyPlan('gratis');
+    return ok;
+  };
+  const handleRedeem = async (code: string) => {
+    const result = await redeemProCode(code);
+    logEvent('Kode prøvd', { gyldig: result === 'ok' });
+    if (result === 'ok') applyPlan('pro');
+    return result;
   };
 
   // Min side: saved stories and the remembered choices.
@@ -550,6 +593,7 @@ const App: React.FC = () => {
                 <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-10 md:h-12 w-auto" />
               </button>
               <div className="flex items-center gap-2 sm:gap-3">
+                {account.innlogget && account.plan && (
                 <button
                   onClick={openProfile}
                   aria-current={view === 'profile' ? 'page' : undefined}
@@ -567,6 +611,7 @@ const App: React.FC = () => {
                     </span>
                   )}
                 </button>
+                )}
                 <button
                   onClick={toggleTheme}
                   aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
@@ -642,7 +687,34 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {view === 'setup' ? (
+        {isReading ? null : !account.innlogget ? (
+          // Making stories requires a login. Until the server has answered
+          // we don't know, so wait rather than flash the wrong page.
+          account.checked ? (
+            <LandingScreen canLogIn={account.vippsReady} />
+          ) : (
+            <Loader2 className="w-8 h-8 mt-24 animate-spin text-indigo-400" aria-label="Laster" />
+          )
+        ) : !account.plan ? (
+          // First time after login: choose Gratis or Pro.
+          account.checked ? (
+            <PlanScreen
+              currentPlan={null}
+              onChooseFree={handleChooseFree}
+              onRedeem={handleRedeem}
+              onBack={() => undefined}
+            />
+          ) : (
+            <Loader2 className="w-8 h-8 mt-24 animate-spin text-indigo-400" aria-label="Laster" />
+          )
+        ) : view === 'plan' ? (
+          <PlanScreen
+            currentPlan={account.plan}
+            onChooseFree={handleChooseFree}
+            onRedeem={handleRedeem}
+            onBack={handleRestart}
+          />
+        ) : view === 'setup' ? (
           <SetupScreen 
             onStart={handleStartStory} 
             isLoading={isLoading} 
@@ -650,6 +722,9 @@ const App: React.FC = () => {
             onPreferenceChange={updatePrefs}
             askForAge={!ageKnown}
             onOpenProfile={() => openProfile()}
+            isPro={isPro}
+            freeLeft={account.freeLeft}
+            onOpenPlan={openPlan}
           />
         ) : view === 'profile' ? (
           <ProfileScreen
@@ -663,8 +738,12 @@ const App: React.FC = () => {
             onLoadStory={handleLoadStory}
             onDeleteStory={handleDeleteStory}
             onBack={handleRestart}
+            isPro={isPro}
+            onOpenPlan={openPlan}
           />
-        ) : (
+        ) : null}
+
+        {isReading && (
           currentSegment && (
             <BookPage
               segment={currentSegment}

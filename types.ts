@@ -177,6 +177,11 @@ export function cleanCustomMetaphor(input: unknown): string | null {
   return cleaned.length >= 3 ? cleaned : null;
 }
 
+// Plans. Pro gives unlimited stories, the choice of drawing style and your
+// own moral; everything else is free.
+export type Plan = "gratis" | "pro";
+export const FREE_STORIES_PER_WEEK = 3;
+
 export const AGE_GROUPS = [
   "Småbarn (1-3 år)",
   "3-4 år",
