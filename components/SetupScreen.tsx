@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences, loadLocalPreferences } from '../services/account';
 import { StoryOptions, CHARACTERS, METAPHORS, AGE_GROUPS, DURATIONS, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { BookOpen, Sparkles, User, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock } from 'lucide-react';
+import { BookOpen, Sparkles, User, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock, Check } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
@@ -15,249 +15,36 @@ interface SetupScreenProps {
   onDeleteStory?: (e: React.MouseEvent, id: string) => void;
 }
 
-const CharacterAvatar = ({ name, selected }: { name: string, selected: boolean }) => {
-  // Base SVG logic
-  const bgClass = selected ? "scale-110 drop-shadow-xl filter saturate-110" : "grayscale-[0.2] hover:grayscale-0 hover:scale-105";
-  const transition = "transition-all duration-300 ease-in-out";
-
-  switch (name) {
-    case "Ninja-katten Nils":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-          <defs>
-            <linearGradient id="catFur" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#FFD54F" />
-              <stop offset="100%" stopColor="#FF8F00" />
-            </linearGradient>
-            <linearGradient id="headband" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#424242" />
-              <stop offset="100%" stopColor="#212121" />
-            </linearGradient>
-          </defs>
-          {/* Ears */}
-          <path d="M20 30 L15 5 L45 25" fill="url(#catFur)" stroke="#E65100" strokeWidth="1"/>
-          <path d="M80 30 L85 5 L55 25" fill="url(#catFur)" stroke="#E65100" strokeWidth="1"/>
-          {/* Head */}
-          <circle cx="50" cy="50" r="40" fill="url(#catFur)" stroke="#E65100" strokeWidth="1"/>
-          {/* Headband */}
-          <path d="M12 35 C12 35 30 30 50 30 C70 30 88 35 88 35 L88 50 C88 50 70 45 50 45 C30 45 12 50 12 50 Z" fill="url(#headband)"/>
-          <circle cx="50" cy="38" r="6" fill="#D32F2F" stroke="white" strokeWidth="1"/>
-          <path d="M10 35 L5 30 M5 40 L0 45" stroke="#333" strokeWidth="3" strokeLinecap="round"/> {/* Headband ties */}
-          {/* Face */}
-          <ellipse cx="35" cy="60" rx="5" ry="7" fill="#333" />
-          <ellipse cx="65" cy="60" rx="5" ry="7" fill="#333" />
-          <circle cx="37" cy="58" r="2" fill="white" />
-          <circle cx="67" cy="58" r="2" fill="white" />
-          <path d="M45 70 L50 75 L55 70" fill="#3E2723" />
-          <path d="M30 75 L15 72 M30 80 L15 82 M70 75 L85 72 M70 80 L85 82" stroke="#3E2723" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      );
-    case "Kongekrabba Kim":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-          <defs>
-            <radialGradient id="crabBody" cx="50%" cy="50%" r="50%" fx="40%" fy="40%">
-              <stop offset="0%" stopColor="#FF8A80" />
-              <stop offset="100%" stopColor="#C62828" />
-            </radialGradient>
-            <linearGradient id="crownGold" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#FFECB3" />
-              <stop offset="50%" stopColor="#FFCA28" />
-              <stop offset="100%" stopColor="#FF6F00" />
-            </linearGradient>
-          </defs>
-          {/* Legs */}
-          <path d="M10 55 Q5 40 20 35" stroke="#C62828" strokeWidth="5" strokeLinecap="round" fill="none"/>
-          <path d="M10 65 Q5 65 20 60" stroke="#C62828" strokeWidth="5" strokeLinecap="round" fill="none"/>
-          <path d="M90 55 Q95 40 80 35" stroke="#C62828" strokeWidth="5" strokeLinecap="round" fill="none"/>
-          <path d="M90 65 Q95 65 80 60" stroke="#C62828" strokeWidth="5" strokeLinecap="round" fill="none"/>
-          {/* Claws */}
-          <path d="M25 35 L10 15" stroke="#C62828" strokeWidth="8" strokeLinecap="round"/>
-          <circle cx="10" cy="15" r="8" fill="#D32F2F"/>
-          <path d="M10 15 L5 5 M10 15 L18 8" stroke="#D32F2F" strokeWidth="4" strokeLinecap="round"/>
-
-          <path d="M75 35 L90 15" stroke="#C62828" strokeWidth="8" strokeLinecap="round"/>
-          <circle cx="90" cy="15" r="8" fill="#D32F2F"/>
-          <path d="M90 15 L95 5 M90 15 L82 8" stroke="#D32F2F" strokeWidth="4" strokeLinecap="round"/>
-
-          {/* Body */}
-          <ellipse cx="50" cy="60" rx="35" ry="25" fill="url(#crabBody)" stroke="#B71C1C" strokeWidth="1"/>
-          {/* Face */}
-          <circle cx="38" cy="50" r="8" fill="white" stroke="#B71C1C" strokeWidth="1"/>
-          <circle cx="38" cy="50" r="3" fill="black" />
-          <circle cx="62" cy="50" r="8" fill="white" stroke="#B71C1C" strokeWidth="1"/>
-          <circle cx="62" cy="50" r="3" fill="black" />
-          <path d="M40 68 Q50 75 60 68" stroke="#7f0000" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          
-          {/* Crown */}
-          <path d="M30 35 L30 20 L40 30 L50 10 L60 30 L70 20 L70 35 Z" fill="url(#crownGold)" stroke="#FFA000" strokeWidth="1"/>
-          <circle cx="50" cy="10" r="3" fill="red" />
-          <circle cx="30" cy="20" r="2" fill="blue" />
-          <circle cx="70" cy="20" r="2" fill="green" />
-        </svg>
-      );
-    case "Rom-hunden Rex":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-          <defs>
-            <linearGradient id="helmetGlass" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#E3F2FD" stopOpacity="0.4"/>
-              <stop offset="50%" stopColor="#90CAF9" stopOpacity="0.2"/>
-              <stop offset="100%" stopColor="#42A5F5" stopOpacity="0.1"/>
-            </linearGradient>
-            <linearGradient id="dogFur" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#FFF59D" />
-              <stop offset="100%" stopColor="#FBC02D" />
-            </linearGradient>
-          </defs>
-          {/* Ears */}
-          <path d="M25 45 L20 20 L45 35" fill="url(#dogFur)" /> 
-          <path d="M75 45 L80 20 L55 35" fill="url(#dogFur)" />
-          
-          {/* Head */}
-          <circle cx="50" cy="55" r="28" fill="url(#dogFur)" />
-          
-          {/* Face */}
-          <ellipse cx="42" cy="50" rx="4" ry="6" fill="#3E2723"/>
-          <ellipse cx="58" cy="50" rx="4" ry="6" fill="#3E2723"/>
-          <circle cx="44" cy="48" r="2" fill="white"/>
-          <circle cx="60" cy="48" r="2" fill="white"/>
-          <ellipse cx="50" cy="60" rx="6" ry="4" fill="#3E2723"/>
-          <path d="M50 64 L50 68" stroke="#3E2723" strokeWidth="2"/>
-          
-          {/* Suit Collar */}
-          <path d="M15 85 Q50 95 85 85 L85 100 L15 100 Z" fill="#ECEFF1" stroke="#90A4AE" strokeWidth="1"/>
-          <rect x="35" y="88" width="30" height="8" rx="4" fill="#CFD8DC" />
-
-          {/* Helmet */}
-          <circle cx="50" cy="50" r="42" fill="url(#helmetGlass)" stroke="#B0BEC5" strokeWidth="3" />
-          {/* Reflection */}
-          <path d="M25 35 Q40 20 65 25" stroke="white" strokeWidth="4" strokeLinecap="round" opacity="0.6" fill="none"/>
-          
-          {/* Antenna */}
-          <line x1="50" y1="8" x2="50" y2="0" stroke="#78909C" strokeWidth="3" />
-          <circle cx="50" cy="0" r="4" fill="#F44336" />
-        </svg>
-      );
-    case "Prinsesse Pølse":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-          <defs>
-            <linearGradient id="sausageSkin" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#EF9A9A" />
-              <stop offset="50%" stopColor="#E57373" />
-              <stop offset="100%" stopColor="#EF5350" />
-            </linearGradient>
-            <linearGradient id="dressPink" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#F48FB1" />
-              <stop offset="100%" stopColor="#AD1457" />
-            </linearGradient>
-          </defs>
-          {/* Dress */}
-          <path d="M30 60 L20 95 L80 95 L70 60 Z" fill="url(#dressPink)" />
-          
-          {/* Arms */}
-          <path d="M30 45 L15 35" stroke="#E57373" strokeWidth="4" strokeLinecap="round"/>
-          <path d="M70 45 L85 35" stroke="#E57373" strokeWidth="4" strokeLinecap="round"/>
-
-          {/* Body (Sausage) */}
-          <rect x="30" y="20" width="40" height="65" rx="20" fill="url(#sausageSkin)" />
-          
-          {/* Face */}
-          <circle cx="42" cy="35" r="3" fill="#333" />
-          <circle cx="58" cy="35" r="3" fill="#333" />
-          <path d="M45 45 Q50 48 55 45" stroke="#333" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          <circle cx="35" cy="40" r="3" fill="#FFCDD2" opacity="0.6"/>
-          <circle cx="65" cy="40" r="3" fill="#FFCDD2" opacity="0.6"/>
-
-          {/* Tiara */}
-          <path d="M35 20 L35 10 L42 18 L50 5 L58 18 L65 10 L65 20" fill="#FFD700" stroke="#FFA000" strokeWidth="1"/>
-          <circle cx="50" cy="5" r="2" fill="#F06292" />
-        </svg>
-      );
-    case "Dragen Dagros":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-          <defs>
-            <linearGradient id="dragonBody" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#C8E6C9" />
-              <stop offset="100%" stopColor="#81C784" />
-            </linearGradient>
-          </defs>
-          {/* Wings */}
-          <path d="M25 45 Q10 35 15 20 Q30 30 35 40" fill="#A5D6A7" stroke="#4CAF50" strokeWidth="1"/>
-          <path d="M75 45 Q90 35 85 20 Q70 30 65 40" fill="#A5D6A7" stroke="#4CAF50" strokeWidth="1"/>
-
-          {/* Body */}
-          <path d="M30 50 Q50 30 70 50 Q80 70 70 85 Q50 95 30 85 Q20 70 30 50" fill="url(#dragonBody)" stroke="#388E3C" strokeWidth="1"/>
-          
-          {/* Cow Spots */}
-          <path d="M40 55 Q45 50 50 55 Q52 60 45 65 Q38 60 40 55" fill="#333" opacity="0.8"/>
-          <path d="M60 70 Q65 65 70 70 Q72 75 65 80 Q58 75 60 70" fill="#333" opacity="0.8"/>
-          
-          {/* Head */}
-          <ellipse cx="50" cy="40" rx="20" ry="18" fill="url(#dragonBody)" stroke="#388E3C" strokeWidth="1"/>
-          
-          {/* Horns */}
-          <path d="M35 28 L30 15 L40 25" fill="#E0E0E0" stroke="#9E9E9E" strokeWidth="1"/>
-          <path d="M65 28 L70 15 L60 25" fill="#E0E0E0" stroke="#9E9E9E" strokeWidth="1"/>
-          
-          {/* Face */}
-          <circle cx="42" cy="38" r="2" fill="black"/>
-          <circle cx="58" cy="38" r="2" fill="black"/>
-          <ellipse cx="50" cy="48" rx="6" ry="4" fill="#A5D6A7" stroke="#388E3C" strokeWidth="1"/>
-          <circle cx="48" cy="48" r="1" fill="#2E7D32"/>
-          <circle cx="52" cy="48" r="1" fill="#2E7D32"/>
-          
-          {/* Bell */}
-          <rect x="45" y="85" width="10" height="8" fill="#FFD54F" stroke="#FBC02D" strokeWidth="1"/>
-          <circle cx="50" cy="93" r="2" fill="#FBC02D"/>
-          <path d="M45 85 L55 85" stroke="#795548" strokeWidth="2"/>
-        </svg>
-      );
-    case "Super-sneglen Sivert":
-      return (
-        <svg viewBox="0 0 100 100" className={`w-16 h-16 sm:w-24 sm:h-24 ${bgClass} ${transition}`}>
-           <defs>
-            <linearGradient id="shell" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#D7CCC8" />
-              <stop offset="100%" stopColor="#8D6E63" />
-            </linearGradient>
-          </defs>
-           {/* Cape - Behind */}
-           <path d="M60 50 Q90 40 95 60 L85 85 Q70 70 60 65" fill="#D32F2F" />
-           
-           {/* Shell */}
-           <circle cx="50" cy="55" r="22" fill="url(#shell)" stroke="#5D4037" strokeWidth="1"/>
-           <path d="M50 55 m-14 0 a 14 14 0 1 0 28 0 a 14 14 0 1 0 -28 0" stroke="#5D4037" strokeWidth="1.5" fill="none" />
-           <path d="M50 55 m-7 0 a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0" stroke="#5D4037" strokeWidth="1.5" fill="none" />
-
-           {/* Body */}
-           <path d="M20 80 Q25 90 50 90 L75 90 Q85 90 90 85" stroke="#A1887F" strokeWidth="10" strokeLinecap="round" fill="none"/>
-           
-           {/* Head Upright */}
-           <path d="M25 85 Q20 60 30 55" stroke="#A1887F" strokeWidth="10" strokeLinecap="round" fill="none"/>
-           <circle cx="30" cy="55" r="10" fill="#A1887F" />
-
-           {/* Eye Stalks */}
-           <line x1="25" y1="48" x2="20" y2="35" stroke="#A1887F" strokeWidth="2" />
-           <circle cx="20" cy="35" r="3" fill="#A1887F" />
-           <line x1="35" y1="48" x2="40" y2="35" stroke="#A1887F" strokeWidth="2" />
-           <circle cx="40" cy="35" r="3" fill="#A1887F" />
-
-           {/* Mask */}
-           <path d="M20 52 L40 52 L40 58 L20 58 Z" fill="#1976D2" />
-           <circle cx="25" cy="55" r="2" fill="white" />
-           <circle cx="35" cy="55" r="2" fill="white" />
-           
-           {/* Smile */}
-           <path d="M28 62 Q30 64 32 62" stroke="#3E2723" strokeWidth="1" fill="none"/>
-        </svg>
-      );
-    default:
-      return <User className="w-12 h-12 text-gray-400" />;
-  }
+// Watercolour art for the pickers, drawn from the same character bibles and
+// art style as the book illustrations, so the card shows the hero you get.
+const HERO_ART: Record<string, string> = {
+  "Ninja-katten Nils": "/velger/nils.webp",
+  "Kongekrabba Kim": "/velger/kim.webp",
+  "Rom-hunden Rex": "/velger/rex.webp",
+  "Prinsesse Pølse": "/velger/polse.webp",
+  "Dragen Dagros": "/velger/dagros.webp",
+  "Super-sneglen Sivert": "/velger/sivert.webp",
 };
+
+const MORAL_ART: Record<string, string> = {
+  "Det lønner seg å dele": "/velger/dele.webp",
+  "Fokuser på det du kan påvirke": "/velger/pavirke.webp",
+  "Vær snill mot andre": "/velger/snill.webp",
+  "Det lønner seg å spare": "/velger/spare.webp",
+  "Vær mot andre slik du vil at andre skal være mot deg": "/velger/gylne.webp",
+  "Ærlighet varer lengst": "/velger/aerlig.webp",
+};
+
+const SelectedBadge = () => (
+  <span className="absolute top-2 right-2 z-10 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md">
+    <Check className="h-4 w-4" strokeWidth={3} />
+  </span>
+);
+
+const cardClass = (isSelected: boolean) =>
+  isSelected
+    ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-lg ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-2 dark:ring-offset-gray-800'
+    : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-300 hover:shadow-md';
 
 export const SetupScreen: React.FC<SetupScreenProps> = ({ 
   onStart, 
@@ -330,31 +117,37 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           
           {/* 1. Character Selection Grid */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b pb-2 border-gray-100">
+            <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
               <User className="w-6 h-6 text-indigo-500" />
               <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">Hvem er helten?</h3>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               {CHARACTERS.map((char) => {
                 const isSelected = options.character === char;
+                const art = HERO_ART[char];
                 return (
                   <button
                     key={char}
                     type="button"
+                    aria-pressed={isSelected}
                     onClick={() => handleChange('character', char)}
-                    className={`
-                      p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left transition-all duration-200
-                      border-2 flex flex-col items-center justify-between text-center gap-2 sm:gap-3 h-full min-h-[120px] sm:min-h-[160px]
-                      ${isSelected
-                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-md ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-2 dark:ring-offset-gray-800'
-                        : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-600'
-                      }
-                    `}
+                    className={`group relative p-2 sm:p-3 rounded-2xl border-2 flex flex-col items-center text-center gap-2 transition-all duration-200 ${cardClass(isSelected)}`}
                   >
-                    <div className="flex-grow flex items-center justify-center w-full">
-                       <CharacterAvatar name={char} selected={isSelected} />
+                    {isSelected && <SelectedBadge />}
+                    <div className="w-full aspect-square rounded-xl bg-white overflow-hidden flex items-center justify-center">
+                      {art ? (
+                        <img
+                          src={art}
+                          alt=""
+                          width={480}
+                          height={480}
+                          className={`w-full h-full object-cover transition-transform duration-300 ease-out ${isSelected ? 'scale-110' : 'group-hover:scale-105'}`}
+                        />
+                      ) : (
+                        <User className="w-12 h-12 text-gray-400" />
+                      )}
                     </div>
-                    <span className="text-sm font-bold">{char}</span>
+                    <span className="text-sm sm:text-base font-bold leading-tight pb-1">{char}</span>
                   </button>
                 );
               })}
@@ -362,13 +155,42 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           </div>
 
           {/* 2. Metaphor Selection (Hva skal vi lære?) */}
-          <SelectionSection
-            icon={<Lightbulb className="w-6 h-6 text-amber-500" />}
-            title="Hva skal vi lære?"
-            options={METAPHORS}
-            value={options.metaphor}
-            onChange={(v) => handleChange('metaphor', v)}
-          />
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
+              <Lightbulb className="w-6 h-6 text-amber-500" />
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Hva skal vi lære?</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+              {METAPHORS.map((moral) => {
+                const isSelected = options.metaphor === moral;
+                const art = MORAL_ART[moral];
+                return (
+                  <button
+                    key={moral}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => handleChange('metaphor', moral)}
+                    className={`group relative p-2 pr-10 rounded-2xl border-2 flex items-center gap-3 sm:gap-4 text-left transition-all duration-200 ${cardClass(isSelected)}`}
+                  >
+                    {isSelected && <SelectedBadge />}
+                    <div className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white overflow-hidden">
+                      {art && (
+                        <img
+                          src={art}
+                          alt=""
+                          width={480}
+                          height={480}
+                          loading="lazy"
+                          className={`w-full h-full object-cover transition-transform duration-300 ease-out ${isSelected ? 'scale-125' : 'scale-110 group-hover:scale-125'}`}
+                        />
+                      )}
+                    </div>
+                    <span className="text-sm sm:text-base font-bold leading-snug">{moral}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* 3. Duration + Age */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
