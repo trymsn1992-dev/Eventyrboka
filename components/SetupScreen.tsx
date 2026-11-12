@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
 import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check } from 'lucide-react';
+import { logEvent } from '../services/analytics';
+import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check, Loader2 } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
@@ -20,7 +21,28 @@ interface SetupScreenProps {
   // Free stories left this week (null when unknown or on Pro).
   freeLeft: number | null;
   onOpenPlan: () => void;
+  // Making a story needs a login. Without one the choices can still be
+  // made, and the start button is a Vipps login instead.
+  //  - "unknown": the server hasn't answered yet
+  //  - "unavailable": logged out, and Vipps login isn't set up
+  login: 'in' | 'out' | 'unknown' | 'unavailable';
 }
+
+// Hero and moral picked before logging in survive the trip to Vipps and back.
+const PICKED_KEY = 'magiboka_utkast';
+const loadPicked = () => {
+  const fallback = { character: CHARACTERS[0], metaphor: METAPHORS[0] };
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(PICKED_KEY) || 'null');
+    if (!raw) return fallback;
+    return {
+      character: CHARACTERS.includes(raw.character) ? raw.character : fallback.character,
+      metaphor: METAPHORS.includes(raw.metaphor) ? raw.metaphor : fallback.metaphor,
+    };
+  } catch {
+    return fallback;
+  }
+};
 
 // Watercolour art for the pickers, drawn from the same character bibles and
 // art style as the book illustrations, so the card shows the hero you get.
@@ -85,9 +107,18 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   isPro,
   freeLeft,
   onOpenPlan,
+  login,
 }) => {
+  const loggedIn = login === 'in';
   // Hero and moral are picked fresh for every story; the rest is remembered.
-  const [picked, setPicked] = useState({ character: CHARACTERS[0], metaphor: METAPHORS[0] });
+  const [picked, setPicked] = useState(loadPicked);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PICKED_KEY, JSON.stringify(picked));
+    } catch {
+      // Private mode — the picks just won't survive the login.
+    }
+  }, [picked]);
   const options: StoryOptions = {
     ...picked,
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
@@ -95,7 +126,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     // Other drawing styles than the standard one are a Pro feature.
     artStyle: isPro ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
   };
-  const outOfFreeStories = !isPro && freeLeft === 0;
+  const outOfFreeStories = loggedIn && !isPro && freeLeft === 0;
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
   // 405 back without touching Gemini, but it spins up the Vercel lambda so the
@@ -160,7 +191,14 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const pickCustomMoral = () => {
     if (!isPro) {
       window.clearTimeout(advanceTimer.current);
-      onOpenPlan();
+      if (loggedIn) {
+        onOpenPlan();
+      } else {
+        // Not logged in yet: point at the login button instead.
+        formRef.current
+          ?.querySelector(`[data-step="${STEPS.length}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     setUseCustomMoral(true);
@@ -171,6 +209,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!loggedIn) return;
     if (!useCustomMoral) {
       onStart(options);
       return;
@@ -340,24 +379,49 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           </div>
 
           <div className="pt-6 scroll-mb-6" data-step={4}>
-            <Button 
-              type="submit" 
-              fullWidth 
-              disabled={isLoading || outOfFreeStories}
-              className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
-            >
-              {isLoading ? (
-                "Tryller frem historien og tegner bilder..."
-              ) : (
-                <>
-                  <Sparkles className="h-6 w-6" />
-                  Start Eventyret
-                </>
-              )}
-            </Button>
+            {loggedIn ? (
+              <Button
+                type="submit"
+                fullWidth
+                disabled={isLoading || outOfFreeStories}
+                className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
+              >
+                {isLoading ? (
+                  "Tryller frem historien og tegner bilder..."
+                ) : (
+                  <>
+                    <Sparkles className="h-6 w-6" />
+                    Start Eventyret
+                  </>
+                )}
+              </Button>
+            ) : login === 'out' ? (
+              // Not logged in: the way to start is to log in first.
+              <a
+                href="/api/vipps/start"
+                onClick={() => logEvent('Vipps-innlogging klikket')}
+                className="flex w-full justify-center items-center gap-3 rounded-full bg-[#FF5B24] text-[#1A0B05] text-lg sm:text-xl font-bold py-6 px-6 text-center shadow-xl hover:bg-[#FF7445] hover:shadow-2xl transform hover:-translate-y-1 transition-all"
+              >
+                Logg inn med Vipps for å lage eventyr
+              </a>
+            ) : login === 'unavailable' ? (
+              <p className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-5 px-4 text-center font-semibold text-gray-600 dark:text-gray-300">
+                Innlogging er ikke tilgjengelig akkurat nå. Prøv igjen om litt.
+              </p>
+            ) : (
+              <div className="flex justify-center py-6" role="status" aria-label="Laster">
+                <Loader2 className="w-7 h-7 animate-spin text-indigo-400" />
+              </div>
+            )}
+
+            {login === 'out' && (
+              <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                Gratis å bruke – {FREE_STORIES_PER_WEEK} nye eventyr hver uke.
+              </p>
+            )}
 
             {/* Free plan: how many stories are left this week. */}
-            {!isPro && freeLeft !== null && (
+            {loggedIn && !isPro && freeLeft !== null && (
               <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
                 {outOfFreeStories
                   ? `Du har laget ukas ${FREE_STORIES_PER_WEEK} gratis eventyr. Nye kommer på mandag.`
@@ -374,6 +438,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             )}
 
             {/* What the story is made for. Changed on Min side, not here. */}
+            {loggedIn && (
             <p className="mt-5 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               Lages for {options.ageGroup} · {options.artStyle}
               {' · '}
@@ -385,6 +450,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 Endre på Min side
               </button>
             </p>
+            )}
           </div>
         </form>
       </div>

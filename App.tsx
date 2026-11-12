@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
-import { LandingScreen } from './components/LandingScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, TOTAL_PAGES } from './types';
@@ -687,15 +686,7 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {isReading ? null : !account.innlogget ? (
-          // Making stories requires a login. Until the server has answered
-          // we don't know, so wait rather than flash the wrong page.
-          account.checked ? (
-            <LandingScreen canLogIn={account.vippsReady} />
-          ) : (
-            <Loader2 className="w-8 h-8 mt-24 animate-spin text-indigo-400" aria-label="Laster" />
-          )
-        ) : !account.plan ? (
+        {isReading ? null : account.innlogget && !account.plan ? (
           // First time after login: choose Gratis or Pro.
           account.checked ? (
             <PlanScreen
@@ -725,6 +716,15 @@ const App: React.FC = () => {
             isPro={isPro}
             freeLeft={account.freeLeft}
             onOpenPlan={openPlan}
+            login={
+              account.innlogget
+                ? 'in'
+                : !account.checked
+                  ? 'unknown'
+                  : account.vippsReady
+                    ? 'out'
+                    : 'unavailable'
+            }
           />
         ) : view === 'profile' ? (
           <ProfileScreen
