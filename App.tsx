@@ -25,6 +25,9 @@ const generateId = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
+// Build time and commit, filled in by vite.config.ts.
+declare const __APP_VERSION__: string;
+
 const App: React.FC = () => {
   const [view, setView] = useState<'setup' | 'reading'>('setup');
   const [options, setOptions] = useState<StoryOptions | null>(null);
@@ -607,6 +610,7 @@ const App: React.FC = () => {
           <span className="hidden sm:inline">·</span>
           <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 underline">trymnord@gmail.com</a>
         </div>
+        <p className="mt-1 text-center text-[11px] text-gray-400">Versjon {__APP_VERSION__}</p>
       </footer>
       )}
     </div>
