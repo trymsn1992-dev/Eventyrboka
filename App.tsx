@@ -602,15 +602,15 @@ const App: React.FC = () => {
 
       {/* Company details belong on the front page, not inside the story. */}
       {!isReading && (
-      <footer className="bg-white/60 border-t border-gray-200 py-4 px-6 text-xs text-gray-500">
+      <footer className="bg-white/60 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800 py-4 px-6 text-xs text-gray-500 dark:text-gray-400">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
           <span>Nordgård</span>
           <span className="hidden sm:inline">·</span>
           <span>Org.nr. 937 095 082</span>
           <span className="hidden sm:inline">·</span>
-          <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 underline">trymnord@gmail.com</a>
+          <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 dark:hover:text-gray-200 underline">trymnord@gmail.com</a>
         </div>
-        <p className="mt-1 text-center text-[11px] text-gray-400">Versjon {__APP_VERSION__}</p>
+        <p className="mt-1 text-center text-[11px] text-gray-500 dark:text-gray-400">Versjon {__APP_VERSION__}</p>
       </footer>
       )}
     </div>

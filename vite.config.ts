@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -6,8 +7,12 @@ import react from '@vitejs/plugin-react';
 // All Gemini calls go through serverless functions in /api which read
 // process.env.GEMINI_API_KEY at runtime on the server.
 // Shown at the bottom of the front page, so it's easy to see whether the
-// site has picked up the latest deploy: build time (Norwegian time) and the
-// short git commit. Vercel sets VERCEL_GIT_COMMIT_SHA during its builds.
+// site has picked up the latest deploy: version number, build time (Norwegian
+// time) and the short git commit. Vercel sets VERCEL_GIT_COMMIT_SHA during its
+// builds. The number lives in the VERSION file: every commit bumps it and
+// starts its message with it ("v1.0.7 · feat: ..."), because the commit
+// message is what Vercel's deployment list shows.
+const versionNumber = fs.readFileSync(path.resolve(__dirname, 'VERSION'), 'utf8').trim();
 const buildTime = new Intl.DateTimeFormat('nb-NO', {
   timeZone: 'Europe/Oslo',
   day: '2-digit',
@@ -17,7 +22,7 @@ const buildTime = new Intl.DateTimeFormat('nb-NO', {
   minute: '2-digit',
 }).format(new Date());
 const commit = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7);
-const appVersion = commit ? `${buildTime} · ${commit}` : `${buildTime} · lokal`;
+const appVersion = `${versionNumber} · ${buildTime} · ${commit || 'lokal'}`;
 
 export default defineConfig(() => {
     return {
