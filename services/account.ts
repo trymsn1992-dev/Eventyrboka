@@ -46,21 +46,30 @@ export function loadLocalPreferences(): SetupPreferences {
   }
 }
 
-// Remember the choices here, and on the account when logged in.
-export function rememberPreferences(options: StoryOptions, innlogget: boolean): void {
-  const valg = cleanPreferences(options);
+// Remember the choices here, and on the account when logged in. Resolves
+// to where they ended up, so the page can say so.
+export async function rememberPreferences(
+  preferences: SetupPreferences,
+  innlogget: boolean
+): Promise<"local" | "account" | "account-failed"> {
+  const valg = cleanPreferences(preferences);
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(valg));
   } catch {
     // Private mode — the choices just won't survive a reload.
   }
-  if (!innlogget) return;
-  void fetch("/api/meg", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ valg }),
-  }).catch(() => undefined);
+  if (!innlogget) return "local";
+  try {
+    const r = await fetch("/api/meg", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valg }),
+    });
+    return r.ok ? "account" : "account-failed";
+  } catch {
+    return "account-failed";
+  }
 }
 
 // What /api/meg answered last time in this browser. Lets the page show the

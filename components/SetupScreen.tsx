@@ -1,23 +1,25 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SetupPreferences, loadLocalPreferences } from '../services/account';
-import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, cleanCustomMetaphor, SavedStory, normalizeAgeGroup } from '../types';
+import { SetupPreferences } from '../services/account';
+import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { Sparkles, User, Pencil, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock, Check, Palette } from 'lucide-react';
+import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
   isLoading: boolean;
-  savedStories?: SavedStory[];
-  // Age, length and drawing style saved on the account, once the server has answered.
-  savedPreferences?: SetupPreferences;
-  onLoadStory?: (story: SavedStory) => void;
-  onDeleteStory?: (e: React.MouseEvent, id: string) => void;
+  // The remembered choices (age, length, drawing style). Age and drawing
+  // style are set on Min side; length is picked here.
+  preferences: SetupPreferences;
+  onPreferenceChange: (patch: SetupPreferences) => void;
+  // No age has been saved yet (first visit): ask for it here as well.
+  askForAge: boolean;
+  onOpenProfile: () => void;
 }
 
 // Watercolour art for the pickers, drawn from the same character bibles and
 // art style as the book illustrations, so the card shows the hero you get.
-const HERO_ART: Record<string, string> = {
+export const HERO_ART: Record<string, string> = {
   "Ninja-katten Nils": "/velger/nils.webp",
   "Kongekrabba Kim": "/velger/kim.webp",
   "Rom-hunden Rex": "/velger/rex.webp",
@@ -43,57 +45,40 @@ const STYLE_SUFFIX: Record<string, string> = {
   "Tegnefilm": "t",
 };
 
-const styleArt = (character: string, style: string): string | undefined => {
+export const styleArt = (character: string, style: string): string | undefined => {
   const hero = HERO_ART[character];
   if (!hero) return undefined;
   const suffix = STYLE_SUFFIX[style];
   return suffix ? hero.replace('/velger/', '/velger/stil/').replace('.webp', `-${suffix}.webp`) : hero;
 };
 
-const SelectedBadge = () => (
+export const SelectedBadge = () => (
   <span className="absolute top-2 right-2 z-10 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md">
     <Check className="h-4 w-4" strokeWidth={3} />
   </span>
 );
 
-const cardClass = (isSelected: boolean) =>
+export const cardClass = (isSelected: boolean) =>
   isSelected
     ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-100 shadow-lg ring-2 ring-indigo-200 dark:ring-indigo-700 ring-offset-2 dark:ring-offset-gray-800'
     : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-300 hover:shadow-md';
 
-export const SetupScreen: React.FC<SetupScreenProps> = ({ 
-  onStart, 
+export const SetupScreen: React.FC<SetupScreenProps> = ({
+  onStart,
   isLoading,
-  savedStories = [],
-  savedPreferences,
-  onLoadStory,
-  onDeleteStory
+  preferences,
+  onPreferenceChange,
+  askForAge,
+  onOpenProfile,
 }) => {
-  // Age, length and drawing style start from what was chosen last time in
-  // this browser.
-  const [options, setOptions] = useState<StoryOptions>(() => ({
-    character: CHARACTERS[0],
-    metaphor: METAPHORS[0],
-    ageGroup: AGE_GROUPS[1],
-    duration: DURATIONS[1],
-    artStyle: DEFAULT_ART_STYLE,
-    ...loadLocalPreferences(),
-  }));
-
-  // The account's saved choices arrive a moment later and win over the
-  // browser's — unless the user has already picked something on this visit.
-  const touched = useRef(new Set<keyof StoryOptions>());
-  const savedAge = savedPreferences?.ageGroup;
-  const savedDuration = savedPreferences?.duration;
-  const savedStyle = savedPreferences?.artStyle;
-  useEffect(() => {
-    setOptions(prev => ({
-      ...prev,
-      ...(savedAge && !touched.current.has('ageGroup') ? { ageGroup: savedAge } : {}),
-      ...(savedDuration && !touched.current.has('duration') ? { duration: savedDuration } : {}),
-      ...(savedStyle && !touched.current.has('artStyle') ? { artStyle: savedStyle } : {}),
-    }));
-  }, [savedAge, savedDuration, savedStyle]);
+  // Hero and moral are picked fresh for every story; the rest is remembered.
+  const [picked, setPicked] = useState({ character: CHARACTERS[0], metaphor: METAPHORS[0] });
+  const options: StoryOptions = {
+    ...picked,
+    ageGroup: normalizeAgeGroup(preferences.ageGroup),
+    duration: preferences.duration ?? DURATIONS[1],
+    artStyle: preferences.artStyle ?? DEFAULT_ART_STYLE,
+  };
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
   // 405 back without touching Gemini, but it spins up the Vercel lambda so the
@@ -115,7 +100,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   // The choices in the order they appear on the page. Picking something
   // glides down to the next one that isn't already fully on screen (and to
   // the start button after the last), so nobody has to scroll to find it.
-  const STEPS: Array<keyof StoryOptions> = ['character', 'metaphor', 'artStyle', 'duration', 'ageGroup'];
+  const STEPS: Array<keyof StoryOptions> = ['character', 'metaphor', 'duration', 'ageGroup'];
   const formRef = useRef<HTMLFormElement>(null);
   const advanceTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(advanceTimer.current), []);
@@ -127,6 +112,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       if (!form) return;
       const steps = Array.from(form.querySelectorAll('[data-step]')) as HTMLElement[];
       const from = STEPS.indexOf(key);
+      if (from < 0) return;
       const next = steps.find(el => {
         if (Number(el.dataset.step) <= from) return false;
         const r = el.getBoundingClientRect();
@@ -142,9 +128,12 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   };
 
   const handleChange = (key: keyof StoryOptions, value: string) => {
-    touched.current.add(key);
     advanceFrom(key);
-    setOptions(prev => ({ ...prev, [key]: value }));
+    if (key === 'character' || key === 'metaphor') {
+      setPicked(prev => ({ ...prev, [key]: value }));
+    } else {
+      onPreferenceChange({ [key]: value });
+    }
   };
 
   // A grown-up can type their own moral instead of picking one of ours.
@@ -302,65 +291,30 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             </div>
           </div>
 
-          {/* 3. Drawing style — previewed with the picked hero */}
-          <div className="space-y-3 sm:space-y-4 scroll-mt-4" data-step={2}>
-            <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
-              <Palette className="w-6 h-6 text-emerald-500" />
-              <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Hvordan skal tegningene se ut?</h3>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-              {ART_STYLES.map((style) => {
-                const isSelected = (options.artStyle ?? DEFAULT_ART_STYLE) === style;
-                const art = styleArt(options.character, style);
-                return (
-                  <button
-                    key={style}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => handleChange('artStyle', style)}
-                    className={`group relative p-2 rounded-2xl border-2 flex flex-col items-center text-center gap-1.5 transition-all duration-200 ${cardClass(isSelected)}`}
-                  >
-                    {isSelected && <SelectedBadge />}
-                    <div className="w-full aspect-square rounded-xl bg-white overflow-hidden">
-                      {art && (
-                        <img
-                          src={art}
-                          alt=""
-                          width={360}
-                          height={360}
-                          loading="lazy"
-                          className={`w-full h-full object-cover transition-transform duration-300 ease-out ${isSelected ? 'scale-110' : 'group-hover:scale-105'}`}
-                        />
-                      )}
-                    </div>
-                    <span className="text-sm sm:text-base font-bold leading-tight pb-1">{style}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 4. Duration + Age */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* 3. Length — and age, until one has been saved (then it lives on Min side) */}
+          <div className={askForAge ? 'grid grid-cols-1 md:grid-cols-2 gap-8' : ''}>
             <SelectionSection
                icon={<Clock className="w-6 h-6 text-blue-500" />}
-               step={3}
+               step={2}
                title="Hvor lenge skal vi lese?"
                options={DURATIONS}
                value={options.duration}
                onChange={(v) => handleChange('duration', v)}
+               wide={!askForAge}
             />
-            <SelectionSection
-              icon={<Calendar className="w-6 h-6 text-pink-500" />}
-              step={4}
-              title="Alder"
-              options={AGE_GROUPS}
-              value={normalizeAgeGroup(options.ageGroup)}
-              onChange={(v) => handleChange('ageGroup', v)}
-            />
+            {askForAge && (
+              <SelectionSection
+                icon={<Calendar className="w-6 h-6 text-pink-500" />}
+                step={3}
+                title="Alder"
+                options={AGE_GROUPS}
+                value={options.ageGroup}
+                onChange={(v) => handleChange('ageGroup', v)}
+              />
+            )}
           </div>
 
-          <div className="pt-6 scroll-mb-6" data-step={5}>
+          <div className="pt-6 scroll-mb-6" data-step={4}>
             <Button 
               type="submit" 
               fullWidth 
@@ -376,67 +330,27 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </>
               )}
             </Button>
+
+            {/* What the story is made for. Changed on Min side, not here. */}
+            <p className="mt-5 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+              Lages for {options.ageGroup} · {options.artStyle}
+              {' · '}
+              <button
+                type="button"
+                onClick={onOpenProfile}
+                className="underline decoration-dotted underline-offset-4 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+              >
+                Endre på Min side
+              </button>
+            </p>
           </div>
         </form>
       </div>
-
-      {/* Saved Stories Section */}
-      {savedStories.length > 0 && (
-        <div className="max-w-5xl w-full animate-fade-in-up pb-12">
-          <div className="flex items-center gap-3 mb-6">
-            <Library className="w-8 h-8 text-indigo-700" />
-            <h3 className="text-3xl font-bold text-gray-800 dark:text-gray-100 font-serif">Mitt Bibliotek</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {savedStories.map((story) => (
-              <div 
-                key={story.id}
-                onClick={() => onLoadStory && onLoadStory(story)}
-                className="group bg-white dark:bg-gray-800 rounded-xl p-5 shadow-md border border-indigo-50 dark:border-indigo-900 hover:shadow-xl hover:border-indigo-200 dark:hover:border-indigo-700 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col"
-              >
-                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-400 to-purple-400"></div>
-                
-                <div className="mb-4 flex-grow">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-1 rounded">
-                      {normalizeAgeGroup(story.options.ageGroup)}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(story.createdAt).toLocaleDateString('no-NO')}
-                    </span>
-                  </div>
-                  <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
-                    {story.options.character}
-                  </h4>
-                  <p className="text-sm text-gray-500 line-clamp-2">
-                     {story.options.metaphor}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                   <div className="flex items-center text-indigo-600 font-semibold text-sm group-hover:translate-x-1 transition-transform">
-                      <PlayCircle className="w-4 h-4 mr-2" />
-                      Les på nytt
-                   </div>
-                   <button 
-                      onClick={(e) => onDeleteStory && onDeleteStory(e, story.id)}
-                      className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors"
-                      title="Slett fra biblioteket"
-                   >
-                      <Trash2 className="w-4 h-4" />
-                   </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-const SelectionSection = ({ icon, title, options, value, onChange, iconMap, step }: {
+export const SelectionSection = ({ icon, title, options, value, onChange, iconMap, step, wide }: {
   icon: React.ReactNode,
   title: string,
   options: string[],
@@ -444,14 +358,16 @@ const SelectionSection = ({ icon, title, options, value, onChange, iconMap, step
   onChange: (val: string) => void,
   iconMap?: Record<string, string>,
   // Position among the setup choices, for gliding on to the next one.
-  step?: number
+  step?: number,
+  // Alone on its row: lay the options out side by side on larger screens.
+  wide?: boolean
 }) => (
   <div className="space-y-3 sm:space-y-4 scroll-mt-4" data-step={step}>
     <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
       {icon}
       <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h3>
     </div>
-    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+    <div className={`grid grid-cols-2 ${wide ? 'sm:grid-cols-3' : ''} gap-2 sm:gap-3`}>
       {options.map((opt) => {
         const isSelected = value === opt;
         const itemIcon = iconMap ? iconMap[opt] : null;

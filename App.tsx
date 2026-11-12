@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
+import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, TOTAL_PAGES } from './types';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage } from './services/geminiService';
@@ -9,12 +10,14 @@ import {
   deleteStory as deleteStoryAccount,
   fetchStatus,
   initialStatus,
+  loadLocalPreferences,
   loadStories,
   logout,
   rememberPreferences,
   saveStory as saveStoryAccount,
+  SetupPreferences,
 } from './services/account';
-import { AlertCircle, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
+import { AlertCircle, Library, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -29,7 +32,7 @@ const generateId = () => {
 declare const __APP_VERSION__: string;
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'setup' | 'reading'>('setup');
+  const [view, setView] = useState<'setup' | 'reading' | 'profile'>('setup');
   const [options, setOptions] = useState<StoryOptions | null>(null);
   const [plan, setPlan] = useState<StoryPlan | null>(null);
   const [segments, setSegments] = useState<StorySegment[]>([]);
@@ -78,6 +81,35 @@ const App: React.FC = () => {
   // story reads/writes go to Supabase or stay in the browser.
   const [account, setAccount] = useState<AccountStatus>(initialStatus());
 
+  // The choices remembered between visits: age, reading length and drawing
+  // style. They start from this browser's copy; the account's copy arrives a
+  // moment later and wins — except for what was changed on this visit.
+  const [prefs, setPrefs] = useState<SetupPreferences>(() => loadLocalPreferences());
+  const prefsRef = useRef(prefs);
+  const touchedPrefs = useRef(new Set<string>());
+  // Whether an age was saved before this visit. Until one is, the setup
+  // screen asks for it; afterwards it is changed on Min side.
+  const [ageKnown, setAgeKnown] = useState(() => Boolean(loadLocalPreferences().ageGroup));
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const saveSeq = useRef(0);
+
+  const applyPrefs = (next: SetupPreferences) => {
+    prefsRef.current = next;
+    setPrefs(next);
+  };
+
+  // Change one or more of the choices: saved at once, here and on the account.
+  const updatePrefs = (patch: SetupPreferences) => {
+    Object.keys(patch).forEach(k => touchedPrefs.current.add(k));
+    const next = { ...prefsRef.current, ...patch };
+    applyPrefs(next);
+    setAccount(prev => ({ ...prev, valg: next }));
+    const seq = ++saveSeq.current;
+    void rememberPreferences(next, account.innlogget).then(result => {
+      if (saveSeq.current === seq) setSaveState(result);
+    });
+  };
+
   // Hide feedback banner + header on scroll down, reveal on scroll up.
   // Keeps the illustration prominent while reading, without permanently
   // losing access to the logo (restart) or feedback link.
@@ -111,6 +143,11 @@ const App: React.FC = () => {
       const status = await fetchStatus();
       if (cancelled) return;
       setAccount(status);
+      const fromAccount = Object.fromEntries(
+        Object.entries(status.valg).filter(([k]) => !touchedPrefs.current.has(k))
+      ) as SetupPreferences;
+      applyPrefs({ ...prefsRef.current, ...fromAccount });
+      if (status.valg.ageGroup) setAgeKnown(true);
       try {
         const stories = await loadStories(status.innlogget);
         if (!cancelled) setSavedStories(stories);
@@ -320,16 +357,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     const seed = Math.floor(Math.random() * 1_000_000_000);
-    // Age, length and drawing style become the defaults next time.
-    rememberPreferences(selectedOptions, account.innlogget);
-    setAccount(prev => ({
-      ...prev,
-      valg: {
-        ageGroup: selectedOptions.ageGroup,
-        duration: selectedOptions.duration,
-        artStyle: selectedOptions.artStyle,
-      },
-    }));
     try {
       // Start the character sheet now so it's ready for page 1's picture.
       void getSheet(selectedOptions);
@@ -386,6 +413,15 @@ const App: React.FC = () => {
     setLoadedStory(null);
     setView('setup');
     setError(null);
+  };
+
+  // Min side: saved stories and the remembered choices.
+  const openProfile = () => {
+    resetFlow();
+    setSaveState('idle');
+    setView('profile');
+    setError(null);
+    window.scrollTo({ top: 0 });
   };
 
   const handleSaveStory = async (): Promise<boolean> => {
@@ -503,7 +539,24 @@ const App: React.FC = () => {
               >
                 <img src="/magiboka-logo.webp" alt="Magiboka" className="h-8 md:h-10 w-auto" />
               </button>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  onClick={openProfile}
+                  aria-current={view === 'profile' ? 'page' : undefined}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                    view === 'profile'
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-100'
+                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Library className="w-4 h-4" />
+                  <span>Min side</span>
+                  {savedStories.length > 0 && (
+                    <span className="ml-0.5 min-w-[1.25rem] px-1 rounded-full bg-indigo-600 text-white text-xs leading-5 text-center">
+                      {savedStories.length}
+                    </span>
+                  )}
+                </button>
                 <button
                   onClick={toggleTheme}
                   aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
@@ -513,7 +566,7 @@ const App: React.FC = () => {
                 </button>
                 {account.innlogget ? (
                   <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                    <span className="font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
+                    <span className="hidden sm:inline font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
                     <button
                       onClick={handleLogout}
                       className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -526,9 +579,9 @@ const App: React.FC = () => {
                 ) : account.vippsReady ? (
                   <a
                     href="/api/vipps/start"
-                    className="inline-flex items-center px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base"
+                    className="inline-flex items-center px-3 sm:px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base whitespace-nowrap"
                   >
-                    Logg inn med Vipps
+                    Logg inn<span className="hidden sm:inline">&nbsp;med Vipps</span>
                   </a>
                 ) : null}
               </div>
@@ -581,10 +634,23 @@ const App: React.FC = () => {
           <SetupScreen 
             onStart={handleStartStory} 
             isLoading={isLoading} 
+            preferences={prefs}
+            onPreferenceChange={updatePrefs}
+            askForAge={!ageKnown}
+            onOpenProfile={() => openProfile()}
+          />
+        ) : view === 'profile' ? (
+          <ProfileScreen
+            fornavn={account.innlogget ? account.fornavn : ''}
+            innlogget={account.innlogget}
+            canLogIn={account.vippsReady}
+            preferences={prefs}
+            onPreferenceChange={updatePrefs}
+            saveState={saveState}
             savedStories={savedStories}
-            savedPreferences={account.valg}
             onLoadStory={handleLoadStory}
             onDeleteStory={handleDeleteStory}
+            onBack={handleRestart}
           />
         ) : (
           currentSegment && (
