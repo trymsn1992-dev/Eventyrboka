@@ -9,6 +9,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
 import {
@@ -263,6 +264,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
     return res.status(429).json({ error: "Du må vente litt før du fortsetter." });
+  }
+
+  // Daily spending cap (see _lib/budget.ts).
+  const budget = await spend(req, "text");
+  if (!budget.ok) {
+    return res.status(429).json({ error: budget.message });
   }
 
   try {

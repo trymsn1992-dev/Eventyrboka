@@ -6,6 +6,7 @@ import {
   FRAMING_RULE,
 } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
 
 export const maxDuration = 60;
@@ -37,6 +38,12 @@ export default async function handler(
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
     return res.status(429).json({ error: "Du må vente litt." });
+  }
+
+  // Daily spending cap (see _lib/budget.ts).
+  const budget = await spend(req, "image");
+  if (!budget.ok) {
+    return res.status(429).json({ error: budget.message });
   }
 
   try {
