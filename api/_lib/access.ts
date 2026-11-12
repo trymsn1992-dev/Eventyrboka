@@ -1,5 +1,5 @@
 // Who may do what. Making stories requires a login; Pro adds unlimited
-// stories, the choice of drawing style and your own moral. Everything is
+// stories, read-aloud, the choice of drawing style and your own moral. Everything is
 // checked here on the server — the browser only hides the buttons.
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";

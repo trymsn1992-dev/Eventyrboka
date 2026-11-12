@@ -756,6 +756,7 @@ const App: React.FC = () => {
               isGenerating={isLoading}
               pageNumber={currentPageIndex + 1}
               totalPages={estimatedPages}
+              isPro={isPro}
             />
           )
         )}

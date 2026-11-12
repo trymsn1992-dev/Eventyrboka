@@ -6,6 +6,7 @@ import { ArrowRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Load
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
+import { ProBadge } from './SetupScreen';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -51,6 +52,8 @@ interface BookPageProps {
   isGenerating: boolean;
   pageNumber: number;
   totalPages?: number; // Total estimated pages
+  // Read-aloud is a Pro feature.
+  isPro: boolean;
 }
 
 export const BookPage: React.FC<BookPageProps> = ({
@@ -63,8 +66,11 @@ export const BookPage: React.FC<BookPageProps> = ({
   arrivedVia,
   isGenerating,
   pageNumber,
-  totalPages
+  totalPages,
+  isPro
 }) => {
+  // Shown when someone on Gratis taps "Les høyt".
+  const [showProNote, setShowProNote] = useState(false);
   // Chunked text reveal: the page text is split into one-sentence chunks and
   // shown one at a time in a fixed-height frame on mobile. Keeps text small
   // so the illustration stays prominent and the layout never shifts.
@@ -151,6 +157,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'instant' });
     stopAudio();
     setChunksRevealed(1);
+    setShowProNote(false);
     setRating(0);
     setHoverRating(0);
   }, [pageKey]);
@@ -201,6 +208,11 @@ export const BookPage: React.FC<BookPageProps> = ({
   };
 
   const handleReadAloud = async () => {
+    if (!isPro) {
+      setShowProNote(true);
+      logEvent('Lås truffet', { funksjon: 'Les høyt' });
+      return;
+    }
     if (isPlaying) {
       stopAudio();
       return;
@@ -466,7 +478,7 @@ export const BookPage: React.FC<BookPageProps> = ({
               )}
               {/* Les høyt sits under the text frame now so it does not compete
                   with the illustration for attention at the top. */}
-              <div className="mt-5 flex justify-center">
+              <div className="mt-5 flex flex-col items-center gap-2">
                 <button
                   onClick={handleReadAloud}
                   disabled={isLoadingAudio || isGenerating}
@@ -484,7 +496,13 @@ export const BookPage: React.FC<BookPageProps> = ({
                     <Volume2 className="w-4 h-4" />
                   )}
                   {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : 'Les høyt'}
+                  {!isPro && <ProBadge />}
                 </button>
+                {showProNote && (
+                  <p role="status" className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 text-center">
+                    Opplesning er med i Prinsen. Du finner Prinsen på Min side.
+                  </p>
+                )}
               </div>
             </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { SetupPreferences } from '../services/account';
-import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, SavedStory, normalizeAgeGroup } from '../types';
+import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { ProBadge, SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
 import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
@@ -73,14 +73,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900 bg-white dark:bg-gray-800 px-5 py-4">
           <p className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-100">
             <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500' : 'text-gray-400'}`} />
-            Du bruker {isPro ? 'Pro' : 'Gratis'}
+            Du er {isPro ? PLAN_NAMES.pro : PLAN_NAMES.gratis}
           </p>
           <button
             type="button"
             onClick={onOpenPlan}
             className="text-sm font-semibold text-indigo-600 dark:text-indigo-300 hover:underline"
           >
-            {isPro ? 'Se hva som er med' : 'Se hva du får med Pro'}
+            {isPro ? 'Se hva som er med' : `Se hva du får som ${PLAN_NAMES.pro}`}
           </button>
         </div>
 
@@ -190,7 +190,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </div>
             {!isPro && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Med Gratis tegnes eventyrene i akvarell. Pro lar deg velge mellom alle fire.
+                {PLAN_NAMES.gratis} får tegninger i akvarell. {PLAN_NAMES.pro} velger mellom alle fire.
               </p>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">

@@ -13,7 +13,7 @@ import {
   parseSideCharacters,
   storySeeds,
 } from "./_lib/story-seeds.js";
-import { StoryOptions, DURATION_DENSITY, FREE_STORIES_PER_WEEK, TOTAL_PAGES } from "../types.js";
+import { StoryOptions, DURATION_DENSITY, TOTAL_PAGES } from "../types.js";
 
 // Fast opener endpoint. Writes ONLY page 1 so the reader sees an
 // opening scene within ~3–5s. While they read it, the client asks
@@ -194,12 +194,12 @@ export default async function handler(
     const pro = await isPro(session.sub);
     if (!pro) {
       if (isCustomMetaphor(options.metaphor)) {
-        return res.status(403).json({ error: "Egen moral er en Pro-funksjon." });
+        return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
       }
       delete options.artStyle;
       if (!(await takeFreeStory(session.sub))) {
         return res.status(429).json({
-          error: `Du har laget ${FREE_STORIES_PER_WEEK} eventyr denne uka. Nye gratis eventyr kommer på mandag.`,
+          error: "Du har brukt ukas gratis historie. En ny kommer på mandag.",
           grense: "uke",
         });
       }

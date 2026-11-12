@@ -177,10 +177,19 @@ export function cleanCustomMetaphor(input: unknown): string | null {
   return cleaned.length >= 3 ? cleaned : null;
 }
 
-// Plans. Pro gives unlimited stories, the choice of drawing style and your
-// own moral; everything else is free.
+// Plans. In the database and the code they are "gratis" and "pro"; to the
+// user they are Askeladden and Prinsen.
+//  - Askeladden: one simple story free each week, then pay per story.
+//  - Prinsen: a weekly price, no commitment, everything included.
+// A "personal" story is one with your own moral, a chosen drawing style or
+// read-aloud. Payment is not built yet — the prices are shown, and Prinsen
+// is unlocked with a code.
 export type Plan = "gratis" | "pro";
-export const FREE_STORIES_PER_WEEK = 3;
+export const PLAN_NAMES: Record<Plan, string> = { gratis: "Askeladden", pro: "Prinsen" };
+export const FREE_STORIES_PER_WEEK = 1;
+export const PRICE_SIMPLE_STORY_KR = 10;
+export const PRICE_PERSONAL_STORY_KR = 20;
+export const PRICE_PRINSEN_PER_WEEK_KR = 50;
 
 export const AGE_GROUPS = [
   "Småbarn (1-3 år)",

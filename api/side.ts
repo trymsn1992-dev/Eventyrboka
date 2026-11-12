@@ -284,7 +284,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Ugyldig forespørsel." });
     }
     if (isCustomMetaphor(options.metaphor) && !(await isPro(session.sub))) {
-      return res.status(403).json({ error: "Egen moral er en Pro-funksjon." });
+      return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";
