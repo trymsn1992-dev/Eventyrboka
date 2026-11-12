@@ -91,13 +91,12 @@ export const BookPage: React.FC<BookPageProps> = ({
     mql.addEventListener?.('change', update);
     return () => mql.removeEventListener?.('change', update);
   }, []);
-  // Whenever the active source switches (new page OR choice just picked)
-  // restart at the first sentence.
-  useEffect(() => {
-    setChunksRevealed(1);
-  }, [activeSource]);
   const allChunksShown = isDesktop || chunksRevealed >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
+  const choicesRef = useRef<HTMLDivElement>(null);
+  // A page is its number and text. The segment object itself is replaced when
+  // the illustration lands, and that must not reset the page the reader is on.
+  const pageKey = `${pageNumber}|${segment.text}`;
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [rating, setRating] = useState<number>(0);
@@ -145,27 +144,50 @@ export const BookPage: React.FC<BookPageProps> = ({
   }, [isGenerating]);
 
   useEffect(() => {
-    // Reset scroll on desktop text container or window on mobile
-    if (textContainerRef.current) {
-      textContainerRef.current.scrollTop = 0;
-    }
-    window.scrollTo(0, 0);
-
-    // Stop audio when turning pages
+    // New page: back to the top and the first sentence, and stop any audio.
+    // 'instant' also cancels a glide to the previous page's choices.
+    textContainerRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
     stopAudio();
-
     setChunksRevealed(1);
-  }, [segment]);
-
-  useEffect(() => {
-    // Reset saved state and rating when segment changes
-    setIsSaved(false);
     setRating(0);
     setHoverRating(0);
-    return () => {
-      stopAudio();
-    }
+  }, [pageKey]);
+
+  useEffect(() => {
+    // The page changed, or its illustration just landed: offer saving again
+    // so the saved copy gets the picture too.
+    setIsSaved(false);
   }, [segment]);
+
+  useEffect(() => () => stopAudio(), []);
+
+  // The reader shouldn't have to scroll to find the choices. Once they show
+  // on a page (on mobile: after the last sentence), glide down until they are
+  // in view. The short pause lets the new page be seen arriving, and the
+  // glide shows there is text above.
+  const choicesShown = allChunksShown && !segment.isEnding && !waitingFor && !isGenerating;
+  useEffect(() => {
+    if (!choicesShown) return;
+    const timer = window.setTimeout(() => {
+      const target = choicesRef.current;
+      if (!target) return;
+      const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+      const pane = textContainerRef.current;
+      if (isDesktop) {
+        // The right-hand page scrolls on its own. Move it just far enough to
+        // show the choices, so as much of the text as possible stays visible.
+        if (!pane) return;
+        const hidden = target.getBoundingClientRect().bottom - pane.getBoundingClientRect().bottom;
+        if (hidden > 0) pane.scrollBy({ top: hidden + 16, behavior });
+      } else {
+        target.scrollIntoView({ behavior, block: 'nearest' });
+      }
+    }, isDesktop ? 500 : 150);
+    return () => window.clearTimeout(timer);
+  }, [choicesShown, pageKey]);
 
   const stopAudio = () => {
     if (sourceRef.current) {
@@ -283,7 +305,7 @@ export const BookPage: React.FC<BookPageProps> = ({
         {/* Left Page: Illustration (Top on Mobile) */}
         <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
-             <div className={`relative w-full flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating ? 'max-h-[70vh]' : 'max-h-[55vh]'} lg:max-h-full transition-all duration-500 ease-out`}>
+             <div className={`relative w-full flex-none lg:flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating ? 'h-[70vh] max-h-[70vh]' : 'h-[55vh] max-h-[55vh]'} lg:h-auto lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
                     animation keeps running; it fades out as the image fades in. */}
                 <div
@@ -369,7 +391,7 @@ export const BookPage: React.FC<BookPageProps> = ({
           
           {/* Scrollable content container (hidden while next page is generating) */}
           {!isGenerating && (
-          <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto scroll-smooth" ref={textContainerRef}>
+          <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto" ref={textContainerRef}>
             
             <div className="mb-6 lg:mb-10">
               <style>{`
@@ -582,7 +604,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                     </div>
                   </div>
                 ) : (
-                <div className="space-y-4">
+                <div className="space-y-4" ref={choicesRef}>
                   <p className="text-xs lg:text-sm uppercase tracking-widest text-indigo-400 font-bold mb-4 text-center">
                     {/* Page 1's choice is about looks (weather, a colour), not an action. */}
                     — {pageNumber === 1 ? 'Hva velger du?' : 'Hva vil du gjøre?'} —

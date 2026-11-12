@@ -466,7 +466,7 @@ const App: React.FC = () => {
   const isReading = view === 'reading';
 
   return (
-    <div className={`${isReading ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-[#e8e6e1] dark:bg-[#15161a] text-gray-900 dark:text-gray-100 transition-colors flex flex-col`}>
+    <div className={`min-h-screen ${isReading ? 'lg:h-screen lg:overflow-hidden' : ''} bg-[#e8e6e1] dark:bg-[#15161a] text-gray-900 dark:text-gray-100 transition-colors flex flex-col`}>
       {/* Chrome (feedback banner + header) only on the setup view.
           Reading gets the full viewport for the book, with a small
           floating Hjem button in the corner as the only control. */}
@@ -597,6 +597,8 @@ const App: React.FC = () => {
         )}
       </main>
 
+      {/* Company details belong on the front page, not inside the story. */}
+      {!isReading && (
       <footer className="bg-white/60 border-t border-gray-200 py-4 px-6 text-xs text-gray-500">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
           <span>Nordgård</span>
@@ -606,6 +608,7 @@ const App: React.FC = () => {
           <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 underline">trymnord@gmail.com</a>
         </div>
       </footer>
+      )}
     </div>
   );
 };
