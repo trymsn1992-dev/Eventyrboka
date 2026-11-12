@@ -135,6 +135,7 @@ BIKARAKTERER:
 Navngitte bikarakterer på denne siden (0-2) legges i 'sideCharacters' med en grundig visuell bible på ENGELSK.
 
 SPRÅK:
+Skriv på norsk BOKMÅL — aldri nynorsk eller dialekt.
 Konkrete sanselige detaljer, ikke abstrakte følelser.
 
 'illustrationPrompt' på engelsk, scenens viktigste øyeblikk. Beskriv ikke hovedkarakterens klær.

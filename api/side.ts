@@ -233,6 +233,7 @@ VALG (nøyaktig 2):
 `
 }
 SPRÅK:
+Skriv på norsk BOKMÅL — aldri nynorsk eller dialekt.
 Konkrete sanselige detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte følelser.
 "Han var redd" ❌  "Hjertet dunket som en lita tromme" ✓
 
