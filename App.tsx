@@ -17,6 +17,7 @@ import {
   saveStory as saveStoryAccount,
   SetupPreferences,
 } from './services/account';
+import { logEvent, logStoryStarted } from './services/analytics';
 import { AlertCircle, Library, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
@@ -334,6 +335,8 @@ const App: React.FC = () => {
       setSegments(prev => [...prev.slice(0, i + 1), next]);
       setChosenByPage(chosen);
       setCurrentPageIndex(i + 1);
+      logEvent('Side lest', { side: i + 2 });
+      if (next.isEnding) logEvent('Eventyr ferdig', { sider: i + 2, avsluttetTidlig: choiceIdx === -1 });
       void attachIllustrationAt(i + 1, next, options, sideCharactersAlong([...segs, next], i + 1));
     } catch (err) {
       if (runRef.current !== run) return;
@@ -362,6 +365,7 @@ const App: React.FC = () => {
       void getSheet(selectedOptions);
       const { segment: opener, premise } = await generateOpener(selectedOptions, seed);
       if (runRef.current !== run) return;
+      logStoryStarted(selectedOptions);
       setStoryMeta({ seed, premise });
       setSegments([opener]);
       setView('reading');
@@ -371,6 +375,7 @@ const App: React.FC = () => {
       if (runRef.current !== run) return;
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
+      logEvent('Oppstart feilet');
       setIsLoading(false);
     }
   };
@@ -420,6 +425,7 @@ const App: React.FC = () => {
     resetFlow();
     setSaveState('idle');
     setView('profile');
+    logEvent('Min side åpnet');
     setError(null);
     window.scrollTo({ top: 0 });
   };
@@ -442,6 +448,7 @@ const App: React.FC = () => {
     try {
       const ok = await saveStoryAccount(newStory, account.innlogget);
       if (!ok) throw new Error('save-failed');
+      logEvent('Eventyr lagret', { innlogget: account.innlogget });
       setSavedStories(prev =>
         prev.some(s => s.id === newStory.id)
           ? prev.map(s => (s.id === newStory.id ? newStory : s))
@@ -483,6 +490,7 @@ const App: React.FC = () => {
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
     setView('reading');
+    logEvent('Lagret eventyr åpnet');
   };
 
   const handleDeleteStory = async (e: React.MouseEvent, id: string) => {
@@ -581,6 +589,7 @@ const App: React.FC = () => {
                 ) : account.vippsReady ? (
                   <a
                     href="/api/vipps/start"
+                    onClick={() => logEvent('Vipps-innlogging klikket')}
                     className="inline-flex items-center px-3 sm:px-4 py-2 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] text-sm md:text-base whitespace-nowrap"
                   >
                     Logg inn<span className="hidden sm:inline">&nbsp;med Vipps</span>

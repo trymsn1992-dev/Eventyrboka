@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { ArrowRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
+import { logEvent } from '../services/analytics';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -207,6 +208,7 @@ export const BookPage: React.FC<BookPageProps> = ({
 
     setIsLoadingAudio(true);
     setAudioProgress(0);
+    logEvent('Les høyt');
 
     // Simulate progress bar since API doesn't return progress
     const progressInterval = setInterval(() => {
@@ -539,7 +541,10 @@ export const BookPage: React.FC<BookPageProps> = ({
                           <button
                             key={star}
                             type="button"
-                            onClick={() => setRating(star)}
+                            onClick={() => {
+                              setRating(star);
+                              logEvent('Vurdering', { stjerner: star });
+                            }}
                             onMouseEnter={() => setHoverRating(star)}
                             className="p-1 transition-transform hover:scale-110 active:scale-95"
                             aria-label={`${star} av 5 stjerner`}
