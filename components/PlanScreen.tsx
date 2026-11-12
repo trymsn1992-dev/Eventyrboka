@@ -6,9 +6,8 @@ import {
   PRICE_SIMPLE_STORY_KR,
   Plan,
 } from '../types';
-import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { ArrowLeft, Check, CheckCircle, Crown, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, Loader2 } from 'lucide-react';
 
 interface PlanScreenProps {
   // The plan the user is on; null the first time, right after login.
@@ -34,23 +33,34 @@ const PRO_FEATURES = [
   `Alt ${PLAN_NAMES.gratis} får`,
 ];
 
-const Feature: React.FC<{ children: React.ReactNode; pro?: boolean }> = ({ children, pro }) => (
-  <li className="flex items-start gap-3">
-    <span
-      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-        pro ? 'bg-amber-400 text-amber-950' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-200'
-      }`}
-    >
-      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-    </span>
-    <span className="text-sm sm:text-base leading-snug">{children}</span>
-  </li>
+const CARD =
+  'flex flex-col bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 p-6 sm:p-8 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm';
+
+const PRIMARY_BUTTON =
+  'w-full rounded-xl bg-indigo-600 text-white font-semibold text-base py-3 px-4 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2';
+
+const Features: React.FC<{ items: string[] }> = ({ items }) => (
+  <ul className="space-y-3 mb-8 flex-grow">
+    {items.map((item) => (
+      <li key={item} className="flex items-start gap-3">
+        <Check className="mt-1 h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-300" strokeWidth={2.5} />
+        <span className="text-sm sm:text-base leading-snug">{item}</span>
+      </li>
+    ))}
+  </ul>
+);
+
+const CurrentLabel = () => (
+  <span className="ml-auto text-xs font-semibold text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 rounded-full px-2.5 py-0.5">
+    Din plan
+  </span>
 );
 
 // The choice between Askeladden (pay per story, one free a week) and
 // Prinsen (weekly price, everything included). Shown right after the first
-// login, and later from Min side. Nothing can be bought yet: Prinsen is
-// unlocked with a code, and the "tell me" button measures how many want it.
+// login, and later from Min side. Two equal, plainly presented options —
+// no badges, no pressure. Nothing can be bought yet: Prinsen is unlocked
+// with a code, and "tell me" counts how many would want it.
 export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFree, onRedeem, onBack }) => {
   const [busy, setBusy] = useState<'free' | 'code' | null>(null);
   const [code, setCode] = useState('');
@@ -86,46 +96,30 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
     <div className="w-full flex flex-col items-center pt-3 pb-8 sm:pt-6 sm:pb-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-6 sm:space-y-8">
         <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             {currentPlan ? `${PLAN_NAMES.gratis} eller ${PLAN_NAMES.pro}` : 'Velkommen til Magiboka!'}
           </h2>
-          <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300">
+          <p className="text-base text-gray-600 dark:text-gray-300">
             {currentPlan
               ? `Du er ${isPro ? PLAN_NAMES.pro : PLAN_NAMES.gratis} nå.`
-              : 'Velg hvordan du vil bruke Magiboka. Du kan bytte senere.'}
+              : 'Velg det som passer dere. Du kan bytte når som helst.'}
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-stretch">
           {/* Askeladden */}
-          <section className="flex flex-col bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 p-6 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl border-2 sm:border-4 border-indigo-100 dark:border-indigo-900">
-            <div className="flex items-center gap-3 mb-1">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-200">
-                <Sparkles className="w-6 h-6" />
-              </span>
-              <h3 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">{PLAN_NAMES.gratis}</h3>
-              {currentPlan === 'gratis' && (
-                <span className="ml-auto text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-900/50 px-2 py-1 rounded">
-                  Din plan
-                </span>
-              )}
+          <section className={CARD}>
+            <div className="flex items-center gap-3">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{PLAN_NAMES.gratis}</h3>
+              {currentPlan === 'gratis' && <CurrentLabel />}
             </div>
-            <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-3">
-              Fra 0 kr
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-              Én gratis i uka. Betal bare for de historiene du vil ha i tillegg.
-            </p>
-            <ul className="space-y-3 mb-8 flex-grow">
-              {FREE_FEATURES.map((f) => (
-                <Feature key={f}>{f}</Feature>
-              ))}
-            </ul>
+            <p className="mt-2 mb-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">Fra 0 kr</p>
+            <Features items={FREE_FEATURES} />
             {!isPro && (
-              <Button onClick={chooseFree} disabled={busy !== null} fullWidth variant={currentPlan ? 'outline' : 'primary'} className="text-lg py-4 flex items-center justify-center gap-2 dark:text-indigo-200 dark:border-indigo-400 dark:hover:bg-indigo-900/40">
-                {busy === 'free' && <Loader2 className="w-5 h-5 animate-spin" />}
-                {currentPlan ? `Fortsett som ${PLAN_NAMES.gratis}` : `Start som ${PLAN_NAMES.gratis}`}
-              </Button>
+              <button type="button" onClick={chooseFree} disabled={busy !== null} className={PRIMARY_BUTTON}>
+                {busy === 'free' && <Loader2 className="w-4 h-4 animate-spin" />}
+                {currentPlan ? `Fortsett som ${PLAN_NAMES.gratis}` : `Velg ${PLAN_NAMES.gratis}`}
+              </button>
             )}
             {freeFailed && (
               <p role="alert" className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400">
@@ -138,62 +132,44 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
           </section>
 
           {/* Prinsen */}
-          <section className="relative flex flex-col bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-6 sm:p-8 rounded-2xl sm:rounded-3xl shadow-2xl border-2 sm:border-4 border-amber-300">
-            <span className="absolute -top-3 right-6 text-xs font-bold uppercase tracking-wider bg-amber-400 text-amber-950 px-3 py-1 rounded-full shadow">
-              {isPro ? 'Din plan' : 'Kommer snart'}
-            </span>
-            <div className="flex items-center gap-3 mb-1">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-400 text-amber-950">
-                <Crown className="w-6 h-6" />
-              </span>
-              <h3 className="text-2xl font-extrabold">{PLAN_NAMES.pro}</h3>
+          <section className={CARD}>
+            <div className="flex items-center gap-3">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{PLAN_NAMES.pro}</h3>
+              {isPro && <CurrentLabel />}
             </div>
-            <p className="text-3xl font-extrabold mt-3">
-              {PRICE_PRINSEN_PER_WEEK_KR} kr <span className="text-lg font-bold">per uke</span>
+            <p className="mt-2 mb-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              {PRICE_PRINSEN_PER_WEEK_KR} kr <span className="text-base font-normal text-gray-500 dark:text-gray-400">per uke</span>
             </p>
-            <p className="text-sm text-indigo-100 mb-5">Alt er med, så mye dere vil. Ingen binding.</p>
-            <ul className="space-y-3 mb-8 flex-grow">
-              {PRO_FEATURES.map((f) => (
-                <Feature key={f} pro>{f}</Feature>
-              ))}
-            </ul>
+            <Features items={PRO_FEATURES} />
 
             {isPro ? (
-              <div className="space-y-3">
-                <p className="flex items-center gap-2 font-bold">
-                  <CheckCircle className="w-5 h-5 text-amber-300" />
-                  Du er {PLAN_NAMES.pro}. Alt er låst opp.
-                </p>
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="w-full rounded-full bg-white text-indigo-700 font-bold text-lg py-4 hover:bg-indigo-50 transition-colors"
-                >
-                  Lag et eventyr
-                </button>
-              </div>
+              <button type="button" onClick={onBack} className={PRIMARY_BUTTON}>
+                Lag en historie
+              </button>
             ) : (
               <div className="space-y-4">
-                {interested ? (
-                  <p role="status" className="flex items-center gap-2 font-bold">
-                    <CheckCircle className="w-5 h-5 text-amber-300" />
-                    Takk! Vi sier fra når {PLAN_NAMES.pro} kan kjøpes.
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInterested(true);
-                      logEvent('Prinsen-interesse', { plan: currentPlan ?? 'ikke valgt' });
-                    }}
-                    className="w-full rounded-full bg-white text-indigo-700 font-bold text-lg py-4 hover:bg-indigo-50 transition-colors"
-                  >
-                    Si fra når {PLAN_NAMES.pro} kan kjøpes
-                  </button>
-                )}
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {PLAN_NAMES.pro} kan ikke kjøpes ennå.{' '}
+                  {interested ? (
+                    <span role="status" className="font-semibold text-gray-900 dark:text-gray-100">
+                      Takk, vi sier fra når det er mulig.
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInterested(true);
+                        logEvent('Prinsen-interesse', { plan: currentPlan ?? 'ikke valgt' });
+                      }}
+                      className="font-semibold text-indigo-600 dark:text-indigo-300 underline underline-offset-4 hover:text-indigo-800 dark:hover:text-indigo-100"
+                    >
+                      Si fra når det er mulig
+                    </button>
+                  )}
+                </p>
 
-                <form onSubmit={redeem} className="pt-4 border-t border-white/25">
-                  <label htmlFor="pro-kode" className="block text-sm font-semibold mb-2">
+                <form onSubmit={redeem}>
+                  <label htmlFor="pro-kode" className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                     Har du en kode?
                   </label>
                   <div className="flex gap-2">
@@ -207,19 +183,19 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
                       autoCapitalize="characters"
                       spellCheck={false}
                       placeholder="Skriv koden her"
-                      className="min-w-0 flex-1 rounded-xl border-2 border-white/40 bg-white/15 px-4 py-3 font-semibold uppercase tracking-wider text-white placeholder:normal-case placeholder:tracking-normal placeholder:font-normal placeholder:text-indigo-200 focus:outline-none focus:border-amber-300"
+                      className="min-w-0 flex-1 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100 placeholder:normal-case placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
                     />
                     <button
                       type="submit"
                       disabled={busy !== null || !code.trim()}
-                      className="shrink-0 rounded-xl bg-amber-400 text-amber-950 font-bold px-5 py-3 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                      className="shrink-0 rounded-xl border border-indigo-600 text-indigo-700 dark:text-indigo-200 dark:border-indigo-400 font-semibold px-5 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                     >
                       {busy === 'code' && <Loader2 className="w-4 h-4 animate-spin" />}
                       Bruk kode
                     </button>
                   </div>
                   {codeMessage && (
-                    <p role="alert" className="mt-2 text-sm font-semibold text-amber-200">
+                    <p role="alert" className="mt-2 text-sm font-semibold text-red-600 dark:text-red-400">
                       {codeMessage}
                     </p>
                   )}

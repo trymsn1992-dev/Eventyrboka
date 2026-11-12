@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Choice, StorySegment } from '../types';
 import { Button } from './Button';
-import { ArrowRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
+import { ArrowDown, ArrowRight, ChevronLeft, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
@@ -98,7 +98,17 @@ export const BookPage: React.FC<BookPageProps> = ({
     mql.addEventListener?.('change', update);
     return () => mql.removeEventListener?.('change', update);
   }, []);
-  const allChunksShown = isDesktop || chunksRevealed >= textChunks.length;
+  // The furthest card reached on this page. Once the last one has been seen
+  // the choices stay, also when the reader steps back to re-read.
+  const [furthestChunk, setFurthestChunk] = useState(1);
+  const currentChunk = Math.min(chunksRevealed, textChunks.length);
+  const isLastChunk = currentChunk >= textChunks.length;
+  const goToChunk = (n: number) => {
+    const target = Math.max(1, Math.min(n, textChunks.length));
+    setChunksRevealed(target);
+    setFurthestChunk(f => Math.max(f, target));
+  };
+  const allChunksShown = isDesktop || furthestChunk >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
   const choicesRef = useRef<HTMLDivElement>(null);
   // A page is its number and text. The segment object itself is replaced when
@@ -157,6 +167,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'instant' });
     stopAudio();
     setChunksRevealed(1);
+    setFurthestChunk(1);
     setShowProNote(false);
     setRating(0);
     setHoverRating(0);
@@ -186,7 +197,39 @@ export const BookPage: React.FC<BookPageProps> = ({
     return () => window.clearTimeout(timer);
   }, [choicesShown, pageKey, isDesktop]);
 
+  // On desktop the choices can sit below the fold of the right-hand page.
+  // Watch whether they are in view, so a pointer can show the way down.
+  const [choicesInView, setChoicesInView] = useState(true);
+  useEffect(() => {
+    if (!isDesktop || !choicesShown) return;
+    const target = choicesRef.current;
+    if (!target || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setChoicesInView(entry.isIntersecting),
+      { root: textContainerRef.current, threshold: 0.15 }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isDesktop, choicesShown, pageKey]);
+  const scrollToChoices = () => {
+    const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth';
+    choicesRef.current?.scrollIntoView({ behavior, block: 'end' });
+  };
+
+  // Swipe on the text card: left for the next sentence, right for the previous.
+  const touchStartX = useRef<number | null>(null);
+
+  // Timers that turn the text cards in step with the read-aloud.
+  const syncTimers = useRef<number[]>([]);
+  const clearSyncTimers = () => {
+    syncTimers.current.forEach(t => window.clearTimeout(t));
+    syncTimers.current = [];
+  };
+
   const stopAudio = () => {
+    clearSyncTimers();
     if (sourceRef.current) {
       try {
         sourceRef.current.stop();
@@ -222,15 +265,11 @@ export const BookPage: React.FC<BookPageProps> = ({
     setAudioProgress(0);
     logEvent('Les høyt');
 
-    // Simulate progress bar since API doesn't return progress
+    // The API gives no progress, and making the voice takes about a minute:
+    // fill the bar to 90 % over roughly that long.
     const progressInterval = setInterval(() => {
-      setAudioProgress(prev => {
-        // Slow down as we get closer to 90%
-        if (prev >= 90) return 90;
-        const increment = Math.max(1, (90 - prev) / 10);
-        return prev + increment;
-      });
-    }, 200);
+      setAudioProgress(prev => Math.min(90, prev + 0.75));
+    }, 500);
 
     try {
       const base64Audio = await generateSpeech(segment.text);
@@ -276,6 +315,7 @@ export const BookPage: React.FC<BookPageProps> = ({
       source.connect(ctx.destination);
       
       source.onended = () => {
+        clearSyncTimers();
         setIsPlaying(false);
         sourceRef.current = null;
       };
@@ -283,6 +323,25 @@ export const BookPage: React.FC<BookPageProps> = ({
       sourceRef.current = source;
       source.start(0);
       setIsPlaying(true);
+
+      // Small screens show one sentence at a time: turn the cards as the
+      // voice gets to each sentence. The voice reads the whole page in one
+      // go, so each sentence's start is estimated from its share of the text
+      // (plus a little for the pause after it).
+      clearSyncTimers();
+      if (!isDesktop && textChunks.length > 1) {
+        const weights = textChunks.map(c => c.length + 12);
+        const total = weights.reduce((a, b) => a + b, 0);
+        let elapsed = 0;
+        goToChunk(1);
+        textChunks.forEach((_, i) => {
+          if (i > 0) {
+            const at = (elapsed / total) * buffer.duration * 1000;
+            syncTimers.current.push(window.setTimeout(() => goToChunk(i + 1), at));
+          }
+          elapsed += weights[i];
+        });
+      }
 
     } catch (error) {
       console.error("Error playing audio:", error);
@@ -381,7 +440,9 @@ export const BookPage: React.FC<BookPageProps> = ({
               <h3 className="text-xl font-serif font-bold text-indigo-800 text-center px-4 mb-2">
                 Varmer opp stemmen...
               </h3>
-              <p className="text-sm text-indigo-400 mb-6">Henter frem fortellerstemmen</p>
+              <p className="text-sm text-indigo-400 mb-6 text-center px-6">
+                Det tar omtrent ett minutt å lage opplesningen.
+              </p>
 
               <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden relative">
                  <div 
@@ -399,6 +460,9 @@ export const BookPage: React.FC<BookPageProps> = ({
             <div className="mb-6 lg:mb-10">
               <style>{`
                 @keyframes chunkSwap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+                @keyframes nudgeRight { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
+                @keyframes nudgeDown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+                @media (prefers-reduced-motion: reduce) { .hint-nudge { animation: none !important; } }
               `}</style>
               {isDesktop ? (
                 // Desktop: full paragraph, no tap-to-advance, no progress dots.
@@ -417,48 +481,88 @@ export const BookPage: React.FC<BookPageProps> = ({
                 </div>
               ) : (
                 <>
-                  {/* Mobile: fixed-height text frame so the image never shifts
-                      when the current sentence changes. Tap anywhere to advance. */}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      !allChunksShown &&
-                      setChunksRevealed(c => Math.min(c + 1, textChunks.length))
-                    }
-                    disabled={allChunksShown}
-                    aria-label={allChunksShown ? 'Siste setning' : 'Vis neste setning'}
-                    className={`relative w-full text-left rounded-2xl px-5 py-6 min-h-[180px] flex items-center justify-center border transition-colors ${
-                      allChunksShown
-                        ? 'border-transparent cursor-default'
-                        : 'border-amber-100 bg-amber-50/40 hover:bg-amber-50/80 active:bg-amber-100/80 cursor-pointer'
+                  {/* Mobile: one sentence at a time in a fixed-height card, so
+                      the image never shifts. Tapping the card goes on; tapping
+                      its left third goes back. Swiping works too. */}
+                  <div
+                    className={`relative w-full rounded-2xl min-h-[190px] border transition-colors select-none ${
+                      textChunks.length > 1
+                        ? 'border-amber-100 bg-amber-50/40 dark:border-amber-200/25 dark:bg-amber-200/5'
+                        : 'border-transparent'
                     }`}
+                    onTouchStart={(e) => {
+                      touchStartX.current = e.touches[0]?.clientX ?? null;
+                    }}
+                    onTouchEnd={(e) => {
+                      const start = touchStartX.current;
+                      touchStartX.current = null;
+                      const end = e.changedTouches[0]?.clientX;
+                      if (start === null || end === undefined) return;
+                      const dx = end - start;
+                      if (Math.abs(dx) < 45) return; // a tap — the buttons handle it
+                      e.preventDefault();
+                      goToChunk(currentChunk + (dx < 0 ? 1 : -1));
+                    }}
                   >
                     <div
-                      key={`${pageNumber}-${chunksRevealed}`}
+                      key={`${pageNumber}-${currentChunk}`}
                       style={{ animation: 'chunkSwap 0.4s ease-out' }}
-                      className="w-full"
+                      className="w-full min-h-[190px] px-5 pt-6 pb-12 flex flex-col items-center justify-center"
                     >
-                      {arrivedVia && chunksRevealed === 1 && (
+                      {arrivedVia && currentChunk === 1 && (
                         <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
                           Du valgte: {arrivedVia}
                         </p>
                       )}
                       <p
+                        aria-live="polite"
                         className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
-                          chunksRevealed === 1
+                          currentChunk === 1
                             ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
                             : ''
                         }`}
                       >
-                        {textChunks[Math.min(chunksRevealed, textChunks.length) - 1]}
+                        {textChunks[currentChunk - 1]}
                       </p>
                     </div>
-                    {!allChunksShown && (
-                      <span className="absolute bottom-3 right-4 flex items-center gap-1 text-xs text-amber-700/80 font-serif italic">
-                        Trykk <ArrowRight className="w-3.5 h-3.5" />
-                      </span>
+
+                    {textChunks.length > 1 && (
+                      <>
+                        {/* Tap zones: left third back, the rest forward. */}
+                        <button
+                          type="button"
+                          aria-label="Forrige setning"
+                          disabled={currentChunk === 1}
+                          onClick={() => goToChunk(currentChunk - 1)}
+                          className="absolute inset-y-0 left-0 w-[30%] rounded-l-2xl enabled:active:bg-amber-200/30 dark:enabled:active:bg-amber-200/10 disabled:cursor-default"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Neste setning"
+                          disabled={isLastChunk}
+                          onClick={() => goToChunk(currentChunk + 1)}
+                          className="absolute inset-y-0 right-0 w-[70%] rounded-r-2xl enabled:active:bg-amber-200/30 dark:enabled:active:bg-amber-200/10 disabled:cursor-default"
+                        />
+
+                        {/* What a tap does, spelled out. */}
+                        {currentChunk > 1 && (
+                          <span className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-0.5 text-xs font-semibold text-amber-800/70 dark:text-amber-200/70">
+                            <ChevronLeft className="w-4 h-4" />
+                            Tilbake
+                          </span>
+                        )}
+                        {!isLastChunk && (
+                          <span className="pointer-events-none absolute bottom-2.5 right-3 flex items-center gap-1.5 rounded-full bg-amber-400 px-3 py-1.5 text-sm font-bold text-amber-950 shadow-md">
+                            {currentChunk === 1 ? 'Trykk for å lese videre' : 'Trykk'}
+                            <ArrowRight
+                              className="hint-nudge w-4 h-4"
+                              style={{ animation: 'nudgeRight 1.1s ease-in-out infinite' }}
+                            />
+                          </span>
+                        )}
+                      </>
                     )}
-                  </button>
+                  </div>
                   {/* Progress dots: shows how far through the page we are */}
                   {textChunks.length > 1 && (
                     <div className="flex items-center justify-center gap-1.5 mt-3">
@@ -466,9 +570,9 @@ export const BookPage: React.FC<BookPageProps> = ({
                         <span
                           key={idx}
                           className={`block h-1.5 rounded-full transition-all duration-300 ${
-                            idx < chunksRevealed
+                            idx < currentChunk
                               ? 'w-6 bg-indigo-400'
-                              : 'w-3 bg-indigo-100'
+                              : 'w-3 bg-indigo-100 dark:bg-gray-600'
                           }`}
                         />
                       ))}
@@ -665,6 +769,24 @@ export const BookPage: React.FC<BookPageProps> = ({
                 )
               )}
             </div>
+
+            {/* Desktop: the choices are further down this page. Point the way
+                until they have scrolled into view. */}
+            {isDesktop && choicesShown && !choicesInView && (
+              <div className="sticky bottom-2 z-10 flex justify-center pointer-events-none">
+                <button
+                  type="button"
+                  onClick={scrollToChoices}
+                  className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-3 text-base font-bold text-white shadow-xl ring-4 ring-[#fdfbf7] dark:ring-gray-800 hover:bg-indigo-700 transition-colors"
+                >
+                  {pageNumber === 1 ? 'Velg lenger ned' : 'Valgene er lenger ned'}
+                  <ArrowDown
+                    className="hint-nudge w-5 h-5"
+                    style={{ animation: 'nudgeDown 1.1s ease-in-out infinite' }}
+                  />
+                </button>
+              </div>
+            )}
           </div>
           )}
 
