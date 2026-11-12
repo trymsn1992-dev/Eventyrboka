@@ -162,32 +162,21 @@ export const BookPage: React.FC<BookPageProps> = ({
 
   useEffect(() => () => stopAudio(), []);
 
-  // The reader shouldn't have to scroll to find the choices. Once they show
-  // on a page (on mobile: after the last sentence), glide down until they are
-  // in view. The short pause lets the new page be seen arriving, and the
-  // glide shows there is text above.
+  // On small screens the choices land below the fold once the last sentence
+  // is shown, so glide down until they are in view. On desktop the right-hand
+  // page is left alone: moving it would push the start of the text out of
+  // sight before it has been read.
   const choicesShown = allChunksShown && !segment.isEnding && !waitingFor && !isGenerating;
   useEffect(() => {
-    if (!choicesShown) return;
+    if (!choicesShown || isDesktop) return;
     const timer = window.setTimeout(() => {
-      const target = choicesRef.current;
-      if (!target) return;
       const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
         ? 'auto'
         : 'smooth';
-      const pane = textContainerRef.current;
-      if (isDesktop) {
-        // The right-hand page scrolls on its own. Move it just far enough to
-        // show the choices, so as much of the text as possible stays visible.
-        if (!pane) return;
-        const hidden = target.getBoundingClientRect().bottom - pane.getBoundingClientRect().bottom;
-        if (hidden > 0) pane.scrollBy({ top: hidden + 16, behavior });
-      } else {
-        target.scrollIntoView({ behavior, block: 'nearest' });
-      }
-    }, isDesktop ? 500 : 150);
+      choicesRef.current?.scrollIntoView({ behavior, block: 'nearest' });
+    }, 150);
     return () => window.clearTimeout(timer);
-  }, [choicesShown, pageKey]);
+  }, [choicesShown, pageKey, isDesktop]);
 
   const stopAudio = () => {
     if (sourceRef.current) {
