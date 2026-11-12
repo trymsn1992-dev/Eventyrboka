@@ -74,6 +74,17 @@ export function buildCookie(
   )}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${lifetimeSec}`;
 }
 
+// How long a login lasts. /api/meg renews the cookie on visits, so someone
+// who keeps using the site stays signed in.
+export const SESSION_LIFETIME_SEC = 180 * 24 * 60 * 60;
+
+export const sessionCookie = (sub: string, fornavn: string): string =>
+  buildCookie(
+    "eventyrboka_okt",
+    sealCookie("session", { sub, fornavn }, SESSION_LIFETIME_SEC),
+    SESSION_LIFETIME_SEC
+  );
+
 export interface Session {
   sub: string;
   fornavn: string;

@@ -584,7 +584,8 @@ export const BookPage: React.FC<BookPageProps> = ({
                 ) : (
                 <div className="space-y-4">
                   <p className="text-xs lg:text-sm uppercase tracking-widest text-indigo-400 font-bold mb-4 text-center">
-                    — Hva vil du gjøre? —
+                    {/* Page 1's choice is about looks (weather, a colour), not an action. */}
+                    — {pageNumber === 1 ? 'Hva velger du?' : 'Hva vil du gjøre?'} —
                   </p>
                   {segment.choices.map((choice, idx) => (
                     <button

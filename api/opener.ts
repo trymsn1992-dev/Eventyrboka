@@ -16,12 +16,12 @@ import { StoryOptions, DURATION_DENSITY, TOTAL_PAGES } from "../types.js";
 // opening scene within ~3–5s. While they read it, the client asks
 // /api/side for the next page behind each of the two choices.
 //
-// Besides the page it returns a one-sentence premise — the problem the
-// story is about — which every later page is written against, so the
-// thread from page 1 is never dropped.
+// Page 1 only introduces the character and the place, and its two choices
+// are purely about looks (weather, a colour); the problem arrives on page 2. Besides the page it returns a premise — the problem the story
+// will be about — which every later page is written against.
 //
 // Lite is the primary because:
-//  - Page 1 is just an opening scene (3–5 sensory sentences + 2 choices),
+//  - Page 1 is just a calm introduction of the character plus 2 choices,
 //    not the whole arc — lite handles this prose shape well
 //  - Lite is markedly faster than full Flash on small structured JSON
 // Full Flash + Pro remain as fallbacks if lite is unavailable.
@@ -40,7 +40,7 @@ const RESPONSE_SCHEMA = {
     text: {
       type: Type.STRING,
       description:
-        "The opening page text in Norwegian. Concrete, sensory, action-first. Length matches the pacing instructions.",
+        "The opening page text in Norwegian. Concrete and sensory. A calm introduction of the character and the place — no problem yet. Length matches the pacing instructions.",
     },
     illustrationPrompt: {
       type: Type.STRING,
@@ -55,12 +55,12 @@ const RESPONSE_SCHEMA = {
           text: {
             type: Type.STRING,
             description:
-              "VERY SHORT button label in Norwegian (2-5 words, max ~30 chars).",
+              "VERY SHORT button label in Norwegian (2-5 words, max ~30 chars). A look, not an action: weather, a colour, time of day.",
           },
           nextPlotPoint: {
             type: Type.STRING,
             description:
-              "One Norwegian sentence: what the character does and what it leads to if this is chosen.",
+              "One Norwegian sentence describing how the book looks if this is chosen.",
           },
         },
         required: ["text", "nextPlotPoint"],
@@ -70,7 +70,7 @@ const RESPONSE_SCHEMA = {
     premise: {
       type: Type.STRING,
       description:
-        "1-2 Norwegian sentences: what the main character wants or which problem must be solved by the last page. The thread that holds the whole story together.",
+        "1-2 Norwegian sentences: the problem that will appear on page 2 and must be solved by the last page. Not mentioned in the page 1 text. The thread that holds the whole story together.",
     },
     sideCharacters: {
       type: Type.ARRAY,
@@ -99,25 +99,36 @@ Du skriver ÅPNINGEN til en interaktiv bok for barn (aldersgruppe ${options.ageG
 
 Karakter: ${options.character}. Metafor: "${options.metaphor}".
 
-DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Hver senere side skrives ut fra valget barnet tar — valgene betyr virkelig noe.
+DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Senere sider skrives ut fra valgene barnet tar.
 
-Åpne historien ${openingArchetype}.
-Introduser karakteren gjennom en konkret, sanselig handling som viser stemmen deres.
-Sett opp ETT tydelig problem eller ønske som historien skal handle om, og som løses på siste side.
-Antyd dilemmaet metaforen vil teste${metaphorAngle ? ` (vinkel: ${metaphorAngle})` : ""}, men løs ingenting.
+SIDE 1 ER BARE EN INTRODUKSJON (viktig — barnet vet ingenting ennå):
+- La barnet bli kjent med karakteren: hvem de er, hvor vi er, og hva de holder på med akkurat nå.
+- Et rolig, trygt og lekent øyeblikk med konkrete, sanselige handlinger som viser stemmen deres.
+- Vis gjerne noe karakteren liker, gleder seg til eller er stolt av. Det som blir viktig senere (en ting, et sted, en venn) kan barnet få møte her.
+- INGEN PROBLEMER PÅ SIDE 1. Ingenting går galt, ingenting mistes eller ødelegges, ingen uro, ingen vanskelige følelser, ikke noe dilemma.
+  Problemet kommer først på side 2.
+- Avslutt med at karakteren lurer på det barnet skal få bestemme (se VALG) — for eksempel ved å kikke ut av vinduet eller rote i en kiste.
+  Teksten skal IKKE avsløre svaret, og ikke ramse opp de to valgene — knappene gjør det.
 
 TETTHET (varighet: ${options.duration}):
 - Omtrent ${density?.sentences ?? "4-6"} setninger.
-- Pacing: ${density?.pacing ?? "balansert"}.
+- Pacing: rolig og varm.
 
-VALG-KVALITET:
-- Nøyaktig 2 valg som handler om problemet du nettopp satte opp.
-- "text" er en KORT knapp-label på norsk: 2-5 ord, maks ~30 tegn. En rask handling.
-- De to valgene må være ulike handlinger som fører til ulike ting.
-- "nextPlotPoint" er én setning om hva karakteren gjør og hva det fører til.
+VALG PÅ SIDE 1 — BARE UTSEENDE:
+Barnet får bestemme hvordan noe i boka skal SE UT. Valget endrer ikke handlingen, bare hvordan boka ser ut og føles.
+- Nøyaktig 2 valg om ÉN og samme ting. Velg det som passer best til karakteren og stedet, for eksempel:
+  været (sol / snø / regn / tåke), fargen på noe karakteren har med seg eller tar på seg (skjerf, lue, sekk, ballong, paraply),
+  tid på døgnet (morgensol / stjernehimmel), eller fargen på noe i omgivelsene (båten, døra, blomstene).
+- De to valgene skal se tydelig forskjellige ut på et bilde.
+- IKKE handlinger, IKKE veivalg, IKKE noe som har med et problem å gjøre.
+- Ikke la barnet endre det karakteren alltid har (pels, skall, krone og lignende) — bare noe ekstra eller noe i omgivelsene.
+- "text" er en KORT knapp-label på norsk: 2-5 ord, maks ~30 tegn. F.eks. "Snø som daler" / "Sol og blå himmel", eller "Rødt skjerf" / "Gult skjerf".
+- "nextPlotPoint" er én setning som beskriver hvordan det ser ut når dette er valgt.
 
-PREMISS:
-'premise' er 1-2 setninger om hva hovedkarakteren vil eller hvilket problem som må løses innen siste side.
+PREMISS (skjult plan — skal IKKE stå i teksten på side 1):
+'premise' er 1-2 setninger om problemet som dukker opp på side 2, og som må løses innen siste side.
+Problemet skal dukke opp ${openingArchetype}, og sette metaforen på prøve${metaphorAngle ? ` (vinkel: ${metaphorAngle})` : ""}.
+Det må fungere like godt uansett hvilket av de to utseende-valgene barnet tar.
 Det er tråden som holder hele boka sammen.
 
 BIKARAKTERER:
@@ -127,6 +138,7 @@ SPRÅK:
 Konkrete sanselige detaljer, ikke abstrakte følelser.
 
 'illustrationPrompt' på engelsk, scenens viktigste øyeblikk. Beskriv ikke hovedkarakterens klær.
+Bildet på side 1 tegnes FØR barnet har valgt: vis derfor ikke det valget handler om (er valget været, er scenen innendørs; er det en farge, er tingen ikke tatt fram ennå).
 ${SAFETY_RULES}`;
 }
 
@@ -168,7 +180,7 @@ export default async function handler(
     const seed = parseSeed(body.seed);
     const systemInstruction = buildSystemInstruction(options, seed);
     const userPrompt =
-      "Skriv åpningen nå. Konkret, sanselig scene — ikke oppsummering. Returner JSON etter skjemaet.";
+      "Skriv åpningen nå. Konkret, sanselig scene — ikke oppsummering. Side 1 er bare en rolig introduksjon av karakteren og stedet — problemet kommer først på side 2. Returner JSON etter skjemaet.";
 
     const tGemini = Date.now();
     const response = await withModelFallback(TEXT_MODEL_CHAIN, (model) =>
@@ -195,12 +207,12 @@ export default async function handler(
     if (!Array.isArray(parsed.choices) || parsed.choices.length < 2) {
       parsed.choices = [
         {
-          text: "Gå forsiktig fram",
-          nextPlotPoint: "går rolig og forsiktig videre for å se hva som skjer",
+          text: "Sol og blå himmel",
+          nextPlotPoint: "sola skinner fra en knallblå himmel og alt glitrer i lyset",
         },
         {
-          text: "Hopp rett i det",
-          nextPlotPoint: "kaster seg ivrig ut i det med en gang",
+          text: "Snø som daler",
+          nextPlotPoint: "store, myke snøfnugg daler ned og legger seg som et hvitt teppe over alt",
         },
       ];
     } else {

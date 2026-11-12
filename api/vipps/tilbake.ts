@@ -6,7 +6,7 @@ import {
   openCookie,
   readCookie,
   redirect,
-  sealCookie,
+  sessionCookie,
 } from "../_lib/session.js";
 import { recordLogin } from "../_lib/supabase.js";
 import {
@@ -17,7 +17,6 @@ import {
   vippsClientSecret,
 } from "../_lib/vipps.js";
 
-const THIRTY_DAYS = 30 * 24 * 60 * 60;
 
 // Only access_denied actually means the user cancelled. Every other error
 // code — documented or not — is surfaced as a generic failure.
@@ -153,11 +152,7 @@ export default async function handler(
 
     res.setHeader("Set-Cookie", [
       clearAttempt,
-      buildCookie(
-        "eventyrboka_okt",
-        sealCookie("session", { sub: claims.sub, fornavn }, THIRTY_DAYS),
-        THIRTY_DAYS
-      ),
+      sessionCookie(claims.sub, fornavn),
     ]);
     // Supabase bookkeeping is best-effort — it must never block the login.
     await recordLogin(claims.sub, fornavn);

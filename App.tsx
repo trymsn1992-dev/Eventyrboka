@@ -7,10 +7,11 @@ import { generateCharacterSheet, generateIllustration, generateOpener, generateP
 import {
   AccountStatus,
   deleteStory as deleteStoryAccount,
-  emptyStatus,
   fetchStatus,
+  initialStatus,
   loadStories,
   logout,
+  rememberPreferences,
   saveStory as saveStoryAccount,
 } from './services/account';
 import { AlertCircle, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
@@ -72,7 +73,7 @@ const App: React.FC = () => {
 
   // Account state. Drives the header login/logout UI and decides whether
   // story reads/writes go to Supabase or stay in the browser.
-  const [account, setAccount] = useState<AccountStatus>(emptyStatus());
+  const [account, setAccount] = useState<AccountStatus>(initialStatus());
 
   // Hide feedback banner + header on scroll down, reveal on scroll up.
   // Keeps the illustration prominent while reading, without permanently
@@ -145,7 +146,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    setAccount({ ...account, innlogget: false, fornavn: '' });
+    setAccount({ ...account, innlogget: false, fornavn: '', valg: {} });
     // After sign-out, the user sees their local IndexedDB stories again.
     try {
       const stories = await loadStories(false);
@@ -316,6 +317,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     const seed = Math.floor(Math.random() * 1_000_000_000);
+    // Age and length become the defaults next time.
+    rememberPreferences(selectedOptions, account.innlogget);
+    setAccount(prev => ({
+      ...prev,
+      valg: { ageGroup: selectedOptions.ageGroup, duration: selectedOptions.duration },
+    }));
     try {
       // Start the character sheet now so it's ready for page 1's picture.
       void getSheet(selectedOptions);
@@ -568,6 +575,7 @@ const App: React.FC = () => {
             onStart={handleStartStory} 
             isLoading={isLoading} 
             savedStories={savedStories}
+            savedPreferences={account.valg}
             onLoadStory={handleLoadStory}
             onDeleteStory={handleDeleteStory}
           />

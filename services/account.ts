@@ -1,7 +1,7 @@
 // Account state and story sync for the logged-in user. When no one is signed in
 // — the common path while Vipps is still being set up — every call falls back
 // to the local IndexedDB store, so the app keeps working as it did before.
-import { SavedStory } from "../types";
+import { AGE_GROUPS, DURATIONS, SavedStory, StoryOptions } from "../types";
 import {
   deleteStoryFromDB,
   getAllStoriesFromDB,
@@ -17,7 +17,82 @@ export interface AccountStatus {
   supabaseReady: boolean;
   innlogget: boolean;
   fornavn: string;
+  // Setup choices saved on the account (age group, reading length).
+  valg: SetupPreferences;
 }
+
+// The setup choices we remember between visits.
+export type SetupPreferences = Partial<Pick<StoryOptions, "ageGroup" | "duration">>;
+
+const STATUS_KEY = "magiboka_konto";
+const PREFS_KEY = "magiboka_valg";
+
+function cleanPreferences(raw: unknown): SetupPreferences {
+  const out: SetupPreferences = {};
+  if (!raw || typeof raw !== "object") return out;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.ageGroup === "string" && AGE_GROUPS.includes(r.ageGroup)) out.ageGroup = r.ageGroup;
+  if (typeof r.duration === "string" && DURATIONS.includes(r.duration)) out.duration = r.duration;
+  return out;
+}
+
+// This browser's own copy of the choices. Works for guests too.
+export function loadLocalPreferences(): SetupPreferences {
+  try {
+    return cleanPreferences(JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"));
+  } catch {
+    return {};
+  }
+}
+
+// Remember the choices here, and on the account when logged in.
+export function rememberPreferences(options: StoryOptions, innlogget: boolean): void {
+  const valg = cleanPreferences(options);
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(valg));
+  } catch {
+    // Private mode — the choices just won't survive a reload.
+  }
+  if (!innlogget) return;
+  void fetch("/api/meg", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valg }),
+  }).catch(() => undefined);
+}
+
+// What /api/meg answered last time in this browser. Lets the page show the
+// user as logged in at once, and keeps them logged in on screen when the
+// server is slow to answer.
+function cachedStatus(): AccountStatus | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STATUS_KEY) || "null");
+    if (!raw || typeof raw !== "object") return null;
+    return {
+      checked: false,
+      vippsReady: Boolean(raw.vippsReady),
+      supabaseReady: Boolean(raw.supabaseReady),
+      innlogget: Boolean(raw.innlogget),
+      fornavn: typeof raw.fornavn === "string" ? raw.fornavn : "",
+      valg: cleanPreferences(raw.valg),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cacheStatus(status: AccountStatus | null): void {
+  try {
+    if (status) localStorage.setItem(STATUS_KEY, JSON.stringify(status));
+    else localStorage.removeItem(STATUS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// First render: the last known state, before the server has answered.
+export const initialStatus = (): AccountStatus => cachedStatus() ?? emptyStatus();
 
 export const emptyStatus = (): AccountStatus => ({
   checked: false,
@@ -25,12 +100,17 @@ export const emptyStatus = (): AccountStatus => ({
   supabaseReady: false,
   innlogget: false,
   fornavn: "",
+  valg: {},
 });
 
 // /api/meg is slow (cold start) or down when env vars are missing, so we
-// time it out and fall back to "no account" instead of leaving the UI
-// stuck without a sign-in button.
-export async function fetchStatus(timeoutMs = 3500): Promise<AccountStatus> {
+// time it out instead of leaving the UI stuck. If it doesn't answer we keep
+// what it said last time — a slow server must not look like a logout.
+export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
+  const fallback = (): AccountStatus => ({
+    ...(cachedStatus() ?? emptyStatus()),
+    checked: true,
+  });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -38,35 +118,40 @@ export async function fetchStatus(timeoutMs = 3500): Promise<AccountStatus> {
       credentials: "same-origin",
       signal: controller.signal,
     });
-    if (!r.ok) return { ...emptyStatus(), checked: true };
+    if (!r.ok) return fallback();
     const data = (await r.json()) as {
       vippsKlar?: boolean;
       supabaseKlar?: boolean;
       innlogget?: boolean;
       fornavn?: string;
+      valg?: unknown;
     };
-    return {
+    const status: AccountStatus = {
       checked: true,
       vippsReady: Boolean(data.vippsKlar),
       supabaseReady: Boolean(data.supabaseKlar),
       innlogget: Boolean(data.innlogget),
       fornavn: data.fornavn || "",
+      valg: cleanPreferences(data.valg),
     };
+    cacheStatus(status);
+    return status;
   } catch {
-    return { ...emptyStatus(), checked: true };
+    return fallback();
   } finally {
     clearTimeout(timer);
   }
 }
 
 export async function logout(): Promise<void> {
+  cacheStatus(null);
   try {
     await fetch("/api/loggut", {
       method: "POST",
       credentials: "same-origin",
     });
   } catch {
-    // Ignore — the cookie expires on its own in 30 days anyway.
+    // Ignore — the cookie expires on its own eventually.
   }
 }
 

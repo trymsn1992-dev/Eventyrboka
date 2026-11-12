@@ -28,3 +28,7 @@ create index if not exists fortellinger_vipps_sub_idx
 -- vipps_sub vi snakker om. Ingen anon- eller authenticated-rolle slipper til.
 alter table public.brukere       enable row level security;
 alter table public.fortellinger  enable row level security;
+
+-- Valg brukeren vil ha husket på oppsett-siden (alder og lengde).
+alter table public.brukere
+  add column if not exists innstillinger jsonb not null default '{}'::jsonb;

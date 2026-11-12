@@ -150,3 +150,55 @@ export async function deleteStory(
     return false;
   }
 }
+
+// The setup choices a user wants remembered (age group and reading length).
+// Lives in brukere.innstillinger. If that column hasn't been added yet (see
+// supabase/schema.sql), both calls fail quietly and the browser's own copy
+// is used instead.
+export type Preferences = Record<string, string>;
+
+export async function getPreferences(vippsSub: string): Promise<Preferences> {
+  if (!supabaseReady() || !vippsSub) return {};
+  try {
+    const r = await fetch(
+      `${supabaseUrl()}/rest/v1/brukere?vipps_sub=eq.${encodeURIComponent(
+        vippsSub
+      )}&select=innstillinger`,
+      { headers: headers() }
+    );
+    if (!r.ok) return {};
+    const rows = (await r.json()) as Array<{ innstillinger?: unknown }>;
+    const v = rows[0]?.innstillinger;
+    return v && typeof v === "object" ? (v as Preferences) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function savePreferences(
+  vippsSub: string,
+  prefs: Preferences
+): Promise<boolean> {
+  if (!supabaseReady() || !vippsSub) return false;
+  try {
+    const r = await fetch(
+      `${supabaseUrl()}/rest/v1/brukere?vipps_sub=eq.${encodeURIComponent(vippsSub)}`,
+      {
+        method: "PATCH",
+        headers: { ...headers(), Prefer: "return=minimal" },
+        body: JSON.stringify({ innstillinger: prefs }),
+      }
+    );
+    if (!r.ok) {
+      console.error(
+        `Supabase-lagring av innstillinger feilet (HTTP ${r.status}): ${(
+          await r.text()
+        ).slice(0, 200)}`
+      );
+    }
+    return r.ok;
+  } catch (err) {
+    console.error("Supabase-lagring av innstillinger feilet:", (err as Error).message);
+    return false;
+  }
+}

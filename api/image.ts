@@ -122,6 +122,7 @@ Rules:
 - Keep every side character identical to its bible each time it appears.
 - Keep the children's book watercolor style and consistent character scale.
 - Keep the scene safe and age-appropriate for young children.
+- If the scene has a sentence starting with "Reader's choice:", the reader picked that look for this book. Always show it clearly. It is the one allowed addition to the character bible (for example a scarf in the chosen colour), and it overrides the "clean white background" style when it is about weather or time of day.
 `;
 
     const parts: Array<

@@ -131,9 +131,10 @@ function pageRole(
   }
   switch (pageNumber) {
     case 2:
-      return `SIDE 2 — UTVIKLING:
-Vis hva valget på side 1 fører til, og la problemet fra premisset vokse eller ta en ny vending.
-Valgene på slutten av siden skal peke mot dilemmaet som kommer.`;
+      return `SIDE 2 — PROBLEMET DUKKER OPP:
+Side 1 var bare en rolig introduksjon, og valget der handlet bare om utseende.
+Nå dukker problemet fra premisset opp for første gang, ${seeds.openingArchetype}. Vis det skje i scenen, tydelig og konkret.
+Valgene på slutten av siden er to ulike måter å møte problemet på, og skal peke mot dilemmaet som kommer.`;
     case 3:
       return `SIDE 3 — METAFOR-TESTEN:
 Her settes "${options.metaphor}" på prøve${seeds.metaphorAngle ? ` (vinkel: ${seeds.metaphorAngle})` : ""}.
@@ -177,11 +178,25 @@ function buildSystemInstruction(
         .join("\n")}\n`
     : "";
 
-  const opening = last.choice
-    ? `SIDE ${pageNumber} MÅ ÅPNE MED DEN DIREKTE KONSEKVENSEN AV VALGET «${last.choice}».
+  // The choice on page 1 is only about looks (weather, a colour). It holds
+  // for the whole book, in the text and in every illustration.
+  const lookChoice = pages[0].choice;
+  const look = lookChoice
+    ? `\nUTSEENDE-VALGET (gjelder HELE boka):
+På side 1 bestemte barnet hvordan noe skal se ut: «${lookChoice}»${pages[0].choiceDirection ? ` — ${pages[0].choiceDirection}` : ""}.
+Det var bare et utseende-valg og endrer ikke handlingen, men det skal synes på hver side: nevn det kort og naturlig i teksten,
+og avslutt ALLTID 'illustrationPrompt' med en egen setning som starter med "Reader's choice:" og beskriver det på engelsk.\n`
+    : "";
+
+  const opening = !last.choice
+    ? `Fortsett rett fra slutten av side ${pages.length}.`
+    : pageNumber === 2
+      ? `SIDE 2 MÅ ÅPNE MED AT BARNET SER VALGET SITT «${last.choice}».
+Vis det i første eller andre setning, konkret og sanselig (hvordan det ser ut, kjennes og høres ut).
+Ikke oppsummer med ord som "Kim valgte …" — vis det.`
+      : `SIDE ${pageNumber} MÅ ÅPNE MED DEN DIREKTE KONSEKVENSEN AV VALGET «${last.choice}».
 Barnet skal kjenne igjen valget sitt i første eller andre setning: vis karakteren gjøre det, og hva som skjer rett etterpå.
-Ikke oppsummer valget med ord som "Kim valgte å …" — vis det skje.`
-    : `Fortsett rett fra slutten av side ${pages.length}.`;
+Ikke oppsummer valget med ord som "Kim valgte å …" — vis det skje.`;
 
   return `Du er en varm, lekende norsk barnebokforfatter.
 Du skriver side ${pageNumber} av ${TOTAL_PAGES} i en interaktiv bok der barnets valg virkelig betyr noe.
@@ -192,6 +207,7 @@ HISTORIEN SÅ LANGT:
 
 ${storySoFar}
 ${known}
+${look}
 ${opening}
 
 ${pageRole(pageNumber, ending, forced, options, seeds)}

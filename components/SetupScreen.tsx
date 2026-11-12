@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SetupPreferences, loadLocalPreferences } from '../services/account';
 import { StoryOptions, CHARACTERS, METAPHORS, AGE_GROUPS, DURATIONS, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { BookOpen, Sparkles, User, Lightbulb, Calendar, Library, Trash2, PlayCircle, Clock } from 'lucide-react';
@@ -8,6 +9,8 @@ interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
   isLoading: boolean;
   savedStories?: SavedStory[];
+  // Age and length saved on the account, once the server has answered.
+  savedPreferences?: SetupPreferences;
   onLoadStory?: (story: SavedStory) => void;
   onDeleteStory?: (e: React.MouseEvent, id: string) => void;
 }
@@ -260,15 +263,31 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   onStart, 
   isLoading,
   savedStories = [],
+  savedPreferences,
   onLoadStory,
   onDeleteStory
 }) => {
-  const [options, setOptions] = useState<StoryOptions>({
+  // Age and length start from what was chosen last time in this browser.
+  const [options, setOptions] = useState<StoryOptions>(() => ({
     character: CHARACTERS[0],
     metaphor: METAPHORS[0],
     ageGroup: AGE_GROUPS[1],
-    duration: DURATIONS[1]
-  });
+    duration: DURATIONS[1],
+    ...loadLocalPreferences(),
+  }));
+
+  // The account's saved choices arrive a moment later and win over the
+  // browser's — unless the user has already picked something on this visit.
+  const touched = useRef(new Set<keyof StoryOptions>());
+  const savedAge = savedPreferences?.ageGroup;
+  const savedDuration = savedPreferences?.duration;
+  useEffect(() => {
+    setOptions(prev => ({
+      ...prev,
+      ...(savedAge && !touched.current.has('ageGroup') ? { ageGroup: savedAge } : {}),
+      ...(savedDuration && !touched.current.has('duration') ? { duration: savedDuration } : {}),
+    }));
+  }, [savedAge, savedDuration]);
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
   // 405 back without touching Gemini, but it spins up the Vercel lambda so the
@@ -288,6 +307,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   }, []);
 
   const handleChange = (key: keyof StoryOptions, value: string) => {
+    touched.current.add(key);
     setOptions(prev => ({ ...prev, [key]: value }));
   };
 
