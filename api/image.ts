@@ -118,7 +118,11 @@ export default async function handler(
     const sheet = parseDataUrl(body.characterSheet);
 
     // Other drawing styles than the standard one are for Pro.
-    const artStyle = await allowedArtStyle(session, body.artStyle);
+    const artStyle = await allowedArtStyle(
+      session,
+      body.artStyle,
+      (body as { billett?: unknown }).billett
+    );
 
     const referenceNote = sheet
       ? "\nA REFERENCE IMAGE of the main character is attached. The character in the scene MUST match this reference exactly — same colors, same clothing items, same accessories, same body proportions. Do not deviate.\n"

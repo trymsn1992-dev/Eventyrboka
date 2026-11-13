@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import {
+  FREE_STORIES_PER_WEEK,
+  PERSONAL_STORY_NAME,
   PLAN_NAMES,
   PRICE_PERSONAL_STORY_KR,
   PRICE_PRINSEN_PER_WEEK_KR,
   PRICE_SIMPLE_STORY_KR,
+  STORY_NAME,
   Plan,
 } from '../types';
 import { logEvent } from '../services/analytics';
@@ -18,16 +21,16 @@ interface PlanScreenProps {
 }
 
 const FREE_FEATURES = [
-  'Én enkel historie gratis hver uke',
-  `Flere enkle historier: ${PRICE_SIMPLE_STORY_KR} kr per historie`,
-  `Personlig historie: ${PRICE_PERSONAL_STORY_KR} kr – egen lærepenge, valgfri tegnestil og opplesning`,
+  `Gratis hver uke: ${FREE_STORIES_PER_WEEK} ${STORY_NAME} eller 1 ${PERSONAL_STORY_NAME}`,
+  `${STORY_NAME}: ${PRICE_SIMPLE_STORY_KR} kr – når ukas gratis er brukt`,
+  `${PERSONAL_STORY_NAME}: ${PRICE_PERSONAL_STORY_KR} kr – egen lærepenge, valgfri tegnestil og opplesning`,
   'Alle seks heltene, og barnet velger veien på hver side',
   'Lagring av historiene på Min side',
 ];
 
 const PRO_FEATURES = [
   'Så mange historier dere vil',
-  'Alle historier kan være personlige: egen lærepenge, valgfri tegnestil og opplesning',
+  `Alt er ${PERSONAL_STORY_NAME}: egen lærepenge, valgfri tegnestil og opplesning`,
   'Ingen binding – si opp når du vil',
   `Alt ${PLAN_NAMES.gratis} får`,
 ];
@@ -55,7 +58,7 @@ const CurrentLabel = () => (
   </span>
 );
 
-// The choice between Askeladden (pay per story, one free a week) and
+// The choice between Askeladden (pay per story, free ones each week) and
 // Prinsen (weekly price, everything included). Shown right after the first
 // login, and later from Min side. Two equal, plainly presented options —
 // no badges, no pressure. Nothing can be bought yet: Prinsen is given
@@ -114,7 +117,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
               </p>
             )}
             <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-              Kjøp av enkelthistorier kommer snart. Til da gjelder den gratis historien hver uke.
+              Kjøp av enkelthistorier kommer snart. Til da gjelder de gratis historiene hver uke.
             </p>
           </section>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { SetupPreferences } from '../services/account';
-import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
+import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { ProBadge, SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
 import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
@@ -20,7 +20,7 @@ interface ProfileScreenProps {
   onLoadStory: (story: SavedStory) => void;
   onDeleteStory: (e: React.MouseEvent, id: string) => void;
   onBack: () => void;
-  // Pro unlocks the choice of drawing style.
+  // On Pro every story uses the chosen drawing style; otherwise only «Din historie» does.
   isPro: boolean;
   onOpenPlan: () => void;
 }
@@ -51,7 +51,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   isPro,
   onOpenPlan,
 }) => {
-  const artStyle = isPro ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE;
+  const artStyle = preferences.artStyle ?? DEFAULT_ART_STYLE;
   return (
     <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-8 sm:space-y-10">
@@ -186,11 +186,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
               <Palette className="w-6 h-6 text-emerald-500" />
               <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Tegnestil</h3>
-              {!isPro && <ProBadge />}
+              {!isPro && <ProBadge label={PERSONAL_STORY_NAME} />}
             </div>
             {!isPro && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {PLAN_NAMES.gratis} får tegninger i akvarell. {PLAN_NAMES.pro} velger mellom alle fire.
+                Brukes når dere lager {PERSONAL_STORY_NAME}. {STORY_NAME} tegnes alltid i akvarell.
               </p>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
@@ -202,8 +202,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     key={style}
                     type="button"
                     aria-pressed={isSelected}
-                    onClick={() => (isPro ? onPreferenceChange({ artStyle: style }) : onOpenPlan())}
-                    className={`group relative p-2 rounded-2xl border-2 flex flex-col items-center text-center gap-1.5 transition-all duration-200 ${cardClass(isSelected)} ${!isPro && !isSelected ? 'opacity-60' : ''}`}
+                    onClick={() => onPreferenceChange({ artStyle: style })}
+                    className={`group relative p-2 rounded-2xl border-2 flex flex-col items-center text-center gap-1.5 transition-all duration-200 ${cardClass(isSelected)}`}
                   >
                     {isSelected && <SelectedBadge />}
                     <div className="w-full aspect-square rounded-xl bg-white overflow-hidden">

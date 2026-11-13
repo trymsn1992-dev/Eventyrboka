@@ -4,8 +4,8 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, GUEST_PAGES, PLAN_NAMES, TOTAL_PAGES } from './types';
-import { generateCharacterSheet, generateIllustration, generateOpener, generatePage } from './services/geminiService';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PLAN_NAMES, TOTAL_PAGES } from './types';
+import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
 import {
   AccountStatus,
   chooseFreePlan,
@@ -64,6 +64,13 @@ const App: React.FC = () => {
   // The story on screen was started without a login and is not yet counted
   // as anyone's: only the first GUEST_PAGES pages can be read.
   const [guestStory, setGuestStory] = useState(false);
+  // The ticket of a «Din historie» made on the free plan: it gives this
+  // story read-aloud and its drawing style, and is saved with it.
+  const [storyTicket, setTicketState] = useState<string | null>(null);
+  const applyTicket = (ticket: string | null) => {
+    setStoryTicket(ticket);
+    setTicketState(ticket);
+  };
   // "Log in to read on", shown when a guest picks a choice past those pages.
   const [loginGate, setLoginGate] = useState(false);
   const [leavingForLogin, setLeavingForLogin] = useState(false);
@@ -277,6 +284,7 @@ const App: React.FC = () => {
     setWaitingFor(null);
     setGuestStory(false);
     setLoginGate(false);
+    applyTicket(null);
   };
 
   const getSheet = (opts: StoryOptions) => {
@@ -299,7 +307,7 @@ const App: React.FC = () => {
         if (runRef.current !== run) return false;
         if (result === 'ok') {
           setGuestStory(false);
-          // On the free plan this was the week's free story.
+          // On the free plan this was one of the week's free stories.
           setAccount(prev =>
             prev.plan === 'pro' || prev.freeLeft === null
               ? prev
@@ -314,7 +322,7 @@ const App: React.FC = () => {
         } else {
           setError(
             result === 'used'
-              ? 'Du har brukt ukas gratis historie, så dette eventyret kan ikke fortsette nå. En ny historie kommer på mandag.'
+              ? 'Du har brukt ukas gratis historier, så dette eventyret kan ikke fortsette nå. Nye kommer på mandag.'
               : 'Noe gikk galt. Prøv igjen om litt.'
           );
         }
@@ -485,7 +493,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartStory = async (selectedOptions: StoryOptions) => {
+  const handleStartStory = async (selectedOptions: StoryOptions, personal: boolean) => {
     resetFlow();
     const run = runRef.current;
     setOptions(selectedOptions);
@@ -500,17 +508,22 @@ const App: React.FC = () => {
     const seed = Math.floor(Math.random() * 1_000_000_000);
     try {
       // Start the character sheet now so it's ready for page 1's picture.
-      void getSheet(selectedOptions);
-      const { segment: opener, premise, guest } = await generateOpener(selectedOptions, seed);
+      // A «Din historie» on the free plan gets its drawing style through
+      // the ticket that comes with page 1, so its sheet waits for that.
+      const usesTicket = personal && account.plan !== 'pro';
+      if (!usesTicket) void getSheet(selectedOptions);
+      const { segment: opener, premise, guest, ticket } = await generateOpener(selectedOptions, seed, personal);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
+      logEvent('Historietype', { type: personal ? 'Din historie' : 'Historie' });
+      applyTicket(ticket);
       setGuestStory(guest);
-      // One of this week's free stories is used.
+      // The week's free stories: a plain one uses one, a personal one all.
       if (!guest) {
         setAccount(prev =>
           prev.plan === 'pro' || prev.freeLeft === null
             ? prev
-            : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
+            : { ...prev, freeLeft: usesTicket ? 0 : Math.max(0, prev.freeLeft - 1) }
         );
       }
       setStoryMeta({ seed, premise });
@@ -654,6 +667,7 @@ const App: React.FC = () => {
       premise: storyMeta?.premise,
       seed: storyMeta?.seed,
       ...(guestStory ? { guestStarted: true } : {}),
+      ...(storyTicket ? { personalTicket: storyTicket } : {}),
     };
 
     try {
@@ -701,6 +715,7 @@ const App: React.FC = () => {
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
     setGuestStory(story.guestStarted === true);
+    applyTicket(typeof story.personalTicket === 'string' ? story.personalTicket : null);
     setView('reading');
     logEvent('Lagret eventyr åpnet');
   };
@@ -885,7 +900,7 @@ const App: React.FC = () => {
                 Logg inn for å lese videre
               </h2>
               <p className="mt-4 rounded-2xl bg-emerald-50 dark:bg-emerald-400/10 border border-emerald-200 dark:border-emerald-400/30 px-4 py-3 text-emerald-900 dark:text-emerald-100">
-                <span className="block text-xl font-extrabold">1 historie gratis hver uke</span>
+                <span className="block text-xl font-extrabold">{FREE_STORIES_PER_WEEK} historier gratis hver uke</span>
                 <span className="block mt-0.5 text-sm font-semibold">Det koster ingenting å logge inn.</span>
               </p>
               <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
@@ -988,7 +1003,7 @@ const App: React.FC = () => {
               isGenerating={isLoading}
               pageNumber={currentPageIndex + 1}
               totalPages={estimatedPages}
-              isPro={isPro}
+              readAloud={isPro || storyTicket !== null}
             />
           )
         )}

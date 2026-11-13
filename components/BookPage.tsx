@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Choice, StorySegment } from '../types';
+import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
 import { ArrowDown, ArrowRight, ChevronLeft, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
@@ -53,7 +53,8 @@ interface BookPageProps {
   pageNumber: number;
   totalPages?: number; // Total estimated pages
   // Read-aloud is a Pro feature.
-  isPro: boolean;
+  // Read-aloud is part of «Din historie» and Prinsen.
+  readAloud: boolean;
 }
 
 export const BookPage: React.FC<BookPageProps> = ({
@@ -67,7 +68,7 @@ export const BookPage: React.FC<BookPageProps> = ({
   isGenerating,
   pageNumber,
   totalPages,
-  isPro
+  readAloud
 }) => {
   // Shown when someone on Gratis taps "Les høyt".
   const [showProNote, setShowProNote] = useState(false);
@@ -251,7 +252,7 @@ export const BookPage: React.FC<BookPageProps> = ({
   };
 
   const handleReadAloud = async () => {
-    if (!isPro) {
+    if (!readAloud) {
       setShowProNote(true);
       logEvent('Lås truffet', { funksjon: 'Les høyt' });
       return;
@@ -600,11 +601,11 @@ export const BookPage: React.FC<BookPageProps> = ({
                     <Volume2 className="w-4 h-4" />
                   )}
                   {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : 'Les høyt'}
-                  {!isPro && <ProBadge />}
+                  {!readAloud && <ProBadge label={PERSONAL_STORY_NAME} />}
                 </button>
                 {showProNote && (
                   <p role="status" className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 text-center">
-                    Opplesning er med i Prinsen. Du finner Prinsen på Min side.
+                    Opplesning er med i Din historie og i Prinsen.
                   </p>
                 )}
               </div>

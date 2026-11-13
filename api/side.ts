@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, isPro } from "./_lib/access.js";
+import { isCustomMetaphor, mayPersonalize } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
@@ -288,8 +288,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(429).json({ error: budget.message });
     }
 
-    if (isCustomMetaphor(options.metaphor) && !(session && (await isPro(session.sub)))) {
-      return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
+    if (isCustomMetaphor(options.metaphor) && !(await mayPersonalize(session, body.billett))) {
+      return res.status(403).json({ error: "Egen lærepenge er med i Din historie og Prinsen." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";

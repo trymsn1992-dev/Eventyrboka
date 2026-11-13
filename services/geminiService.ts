@@ -1,5 +1,14 @@
 import { Choice, SideCharacter, StoryOptions, StorySegment } from "../types";
 
+// The ticket of the story on screen, when it is a «Din historie» made on the
+// free plan (see api/_lib/access.ts). Sent along with that story's requests.
+let storyTicket: string | null = null;
+export const setStoryTicket = (ticket: string | null): void => {
+  storyTicket = ticket;
+};
+const withTicket = <B extends object>(body: B): B | (B & { billett: string }) =>
+  storyTicket ? { ...body, billett: storyTicket } : body;
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -28,7 +37,7 @@ export const generateCharacterSheet = async (
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/character-sheet",
-      { character, artStyle }
+      withTicket({ character, artStyle })
     );
     return base64 ?? undefined;
   } catch (error) {
@@ -47,13 +56,16 @@ export const generateIllustration = async (
 ): Promise<string | undefined> => {
   if (!segment.illustrationPrompt) return undefined;
   try {
-    const { base64 } = await postJson<{ base64: string | null }>("/api/image", {
-      prompt: segment.illustrationPrompt,
-      character: options.character,
-      artStyle: options.artStyle,
-      characterSheet,
-      sideCharacters,
-    });
+    const { base64 } = await postJson<{ base64: string | null }>(
+      "/api/image",
+      withTicket({
+        prompt: segment.illustrationPrompt,
+        character: options.character,
+        artStyle: options.artStyle,
+        characterSheet,
+        sideCharacters,
+      })
+    );
     return base64 ?? undefined;
   } catch (error) {
     console.warn("Illustration failed:", error);
@@ -72,11 +84,18 @@ interface PageResponse {
 // the same story; `premise` is the problem the whole story is about.
 export const generateOpener = async (
   options: StoryOptions,
-  seed: number
-): Promise<{ segment: StorySegment; premise: string; guest: boolean }> => {
+  seed: number,
+  // Ask for a «Din historie» (own moral, chosen drawing style, read-aloud).
+  personal: boolean
+): Promise<{ segment: StorySegment; premise: string; guest: boolean; ticket: string | null }> => {
   const data = await postJson<
-    PageResponse & { premise?: string; sideCharacters?: SideCharacter[]; gjest?: boolean }
-  >("/api/opener", { options, seed });
+    PageResponse & {
+      premise?: string;
+      sideCharacters?: SideCharacter[];
+      gjest?: boolean;
+      billett?: string;
+    }
+  >("/api/opener", { options, seed, personlig: personal });
   return {
     segment: {
       text: data.text,
@@ -88,6 +107,7 @@ export const generateOpener = async (
     premise: data.premise ?? "",
     // The server saw no login: the story stops at GUEST_PAGES until there is one.
     guest: data.gjest === true,
+    ticket: typeof data.billett === "string" ? data.billett : null,
   };
 };
 
@@ -108,7 +128,7 @@ export interface PageRequest {
 export const generatePage = async (req: PageRequest): Promise<StorySegment> => {
   const data = await postJson<PageResponse & { newSideCharacters?: SideCharacter[] }>(
     "/api/side",
-    {
+    withTicket({
       options: req.options,
       seed: req.seed,
       premise: req.premise,
@@ -119,7 +139,7 @@ export const generatePage = async (req: PageRequest): Promise<StorySegment> => {
       })),
       sideCharacters: req.sideCharacters,
       forceEnding: req.forceEnding === true,
-    }
+    })
   );
   return {
     text: data.text,
@@ -136,7 +156,7 @@ export const generateSpeech = async (
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/speech",
-      { text }
+      withTicket({ text })
     );
     return base64 ?? undefined;
   } catch (error) {

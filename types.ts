@@ -92,6 +92,9 @@ export interface SavedStory {
   // Started without a login and not yet counted as anyone's story: only
   // the first GUEST_PAGES pages can be read until it is.
   guestStarted?: boolean;
+  // A «Din historie» made on the free plan carries the server's ticket for
+  // it, so read-aloud and its drawing style keep working when it is re-read.
+  personalTicket?: string;
 }
 
 export interface StoryState {
@@ -182,17 +185,22 @@ export function cleanCustomMetaphor(input: unknown): string | null {
 
 // Plans. In the database and the code they are "gratis" and "pro"; to the
 // user they are Askeladden and Prinsen.
-//  - Askeladden: one simple story free each week, then pay per story.
+//  - Askeladden: free stories each week, then pay per story.
 //  - Prinsen: a weekly price, no commitment, everything included.
-// A "personal" story is one with your own moral, a chosen drawing style or
-// read-aloud. Payment is not built yet — the prices are shown, and Prinsen
-// is unlocked with a code.
+// There are two kinds of story. To the user they are «Historie» and «Din
+// historie»; in the code the second one is "personal": your own moral, a
+// chosen drawing style and read-aloud. Each week Askeladden gets two of the
+// first kind or one of the second for free. Payment is not built yet — the
+// prices are shown, and Prinsen is given through a share link.
 export type Plan = "gratis" | "pro";
 export const PLAN_NAMES: Record<Plan, string> = { gratis: "Askeladden", pro: "Prinsen" };
-export const FREE_STORIES_PER_WEEK = 1;
+export const STORY_NAME = "Historie";
+export const PERSONAL_STORY_NAME = "Din historie";
+// The week's free stories, counted in plain stories. A personal one uses all of them.
+export const FREE_STORIES_PER_WEEK = 2;
 export const PRICE_SIMPLE_STORY_KR = 10;
 export const PRICE_PERSONAL_STORY_KR = 20;
-export const PRICE_PRINSEN_PER_WEEK_KR = 50;
+export const PRICE_PRINSEN_PER_WEEK_KR = 20;
 
 export const AGE_GROUPS = [
   "Småbarn (1-3 år)",

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Modality } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isPro, requireLogin } from "./_lib/access.js";
+import { mayPersonalize, requireLogin } from "./_lib/access.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
 
@@ -25,9 +25,12 @@ export default async function handler(
 
   const session = requireLogin(req, res);
   if (!session) return;
-  // Read-aloud is for Prinsen (the "pro" plan).
-  if (!(await isPro(session.sub))) {
-    return res.status(403).json({ error: "Opplesning er med i Prinsen." });
+  // Read-aloud is for personal stories and Prinsen (the "pro" plan).
+  const ticket = (req.body as { billett?: unknown } | undefined)?.billett;
+  if (!(await mayPersonalize(session, ticket))) {
+    return res
+      .status(403)
+      .json({ error: "Opplesning er med i Din historie og Prinsen." });
   }
 
   const limit = rateLimit(getClientIp(req));

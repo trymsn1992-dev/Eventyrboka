@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, PLAN_NAMES, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check } from 'lucide-react';
+import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check, BookOpen } from 'lucide-react';
 
 interface SetupScreenProps {
-  onStart: (options: StoryOptions) => void;
+  // `personal`: make it a «Din historie» (own moral, chosen drawing style, read-aloud).
+  onStart: (options: StoryOptions, personal: boolean) => void;
   isLoading: boolean;
   // The remembered choices (age, length, drawing style). Age and drawing
   // style are set on Min side; length is picked here.
@@ -16,9 +17,10 @@ interface SetupScreenProps {
   // No age has been saved yet (first visit): ask for it here as well.
   askForAge: boolean;
   onOpenProfile: () => void;
-  // Pro unlocks your own moral and the drawing style, and has no weekly limit.
+  // On Pro every story is a «Din historie», and there is no weekly limit.
   isPro: boolean;
-  // Free stories left this week (null when unknown or on Pro).
+  // Free stories left this week (null when unknown or on Pro). A «Din
+  // historie» needs all of them.
   freeLeft: number | null;
   onOpenPlan: () => void;
   // A story can be started without a login; reading past the first pages
@@ -79,10 +81,11 @@ export const styleArt = (character: string, style: string): string | undefined =
   return suffix ? hero.replace('/velger/', '/velger/stil/').replace('.webp', `-${suffix}.webp`) : hero;
 };
 
-// Marks something that needs Prinsen (the "pro" plan).
-export const ProBadge = ({ className = '' }: { className?: string }) => (
-  <span className={`inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 ${className}`}>
-    {PLAN_NAMES.pro}
+// Marks something that needs Prinsen (the "pro" plan) — or, with another
+// label, «Din historie».
+export const ProBadge = ({ className = '', label = PLAN_NAMES.pro }: { className?: string; label?: string }) => (
+  <span className={`inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 whitespace-nowrap ${className}`}>
+    {label}
   </span>
 );
 
@@ -119,12 +122,20 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       // Private mode — the picks just won't survive the login.
     }
   }, [picked]);
+  // The kind of story. Prinsen always gets «Din historie». Askeladden picks:
+  // it is free while none of the week's free stories are used. Guests get
+  // the plain kind.
+  const [wantsPersonal, setWantsPersonal] = useState(false);
+  const [personalNote, setPersonalNote] = useState(false);
+  const canPickPersonal =
+    loggedIn && !isPro && (freeLeft === null || freeLeft >= FREE_STORIES_PER_WEEK);
+  const personal = isPro || (wantsPersonal && canPickPersonal);
   const options: StoryOptions = {
     ...picked,
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
     duration: preferences.duration ?? DURATIONS[1],
-    // Other drawing styles than the standard one are a Pro feature.
-    artStyle: isPro ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
+    // Other drawing styles than the standard one belong to «Din historie».
+    artStyle: personal ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
   };
   const outOfFreeStories = loggedIn && !isPro && freeLeft === 0;
   // Buying single stories isn't possible yet; count who would have.
@@ -190,17 +201,29 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [useCustomMoral, setUseCustomMoral] = useState(false);
   const [customMoral, setCustomMoral] = useState('');
   const customMoralRef = useRef<HTMLInputElement>(null);
+  const pickPlain = () => {
+    setWantsPersonal(false);
+    setPersonalNote(false);
+    setUseCustomMoral(false);
+  };
+  // True when the story is (now) a «Din historie»; otherwise says why not.
+  const pickPersonal = (): boolean => {
+    if (personal) return true;
+    if (canPickPersonal) {
+      setWantsPersonal(true);
+      setPersonalNote(false);
+      return true;
+    }
+    setPersonalNote(true);
+    return false;
+  };
   const pickCustomMoral = () => {
-    if (!isPro) {
+    // Your own moral makes it a «Din historie».
+    if (!pickPersonal()) {
       window.clearTimeout(advanceTimer.current);
-      if (loggedIn) {
-        onOpenPlan();
-      } else {
-        // Not logged in yet: point at the login link by the start button.
-        formRef.current
-          ?.querySelector(`[data-step="${STEPS.length}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      formRef.current
+        ?.querySelector('[data-story-kind]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     setUseCustomMoral(true);
@@ -211,8 +234,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!useCustomMoral) {
-      onStart(options);
+    if (!useCustomMoral || !personal) {
+      onStart(options, personal);
       return;
     }
     const metaphor = cleanCustomMetaphor(customMoral);
@@ -220,7 +243,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       customMoralRef.current?.focus();
       return;
     }
-    onStart({ ...options, metaphor });
+    onStart({ ...options, metaphor }, personal);
   };
 
   return (
@@ -231,7 +254,75 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
         </div>
 
         <form ref={formRef} className="mt-6 sm:mt-10 space-y-8 sm:space-y-12" onSubmit={handleSubmit}>
-          
+
+          {/* Which kind of story (Prinsen always gets «Din historie») */}
+          {!isPro && (
+            <div className="space-y-3 sm:space-y-4" data-story-kind>
+              <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
+                <BookOpen className="w-6 h-6 text-emerald-500" />
+                <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Hvilken historie?</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  aria-pressed={!personal}
+                  onClick={pickPlain}
+                  className={`relative p-4 pr-10 rounded-2xl border-2 text-left transition-all duration-200 ${cardClass(!personal)}`}
+                >
+                  {!personal && <SelectedBadge />}
+                  <span className="block text-base sm:text-lg font-bold">{STORY_NAME}</span>
+                  <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
+                    Velg blant lærepengene våre. Tegnet i akvarell.
+                  </span>
+                  <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    {FREE_STORIES_PER_WEEK} gratis hver uke
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={personal}
+                  onClick={() => pickPersonal()}
+                  className={`relative p-4 pr-10 rounded-2xl border-2 text-left transition-all duration-200 ${cardClass(personal)} ${canPickPersonal ? '' : 'opacity-70'}`}
+                >
+                  {personal && <SelectedBadge />}
+                  <span className="block text-base sm:text-lg font-bold">{PERSONAL_STORY_NAME}</span>
+                  <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
+                    Egen lærepenge, valgfri tegnestil og opplesning.
+                  </span>
+                  <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    1 gratis hver uke
+                  </span>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Hver uke får dere {FREE_STORIES_PER_WEEK} {STORY_NAME} eller 1 {PERSONAL_STORY_NAME} gratis.
+              </p>
+              {personalNote && !canPickPersonal && (
+                <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                  {loggedIn ? (
+                    `${PERSONAL_STORY_NAME} bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
+                  ) : (
+                    <>
+                      Logg inn for å lage {PERSONAL_STORY_NAME}.
+                      {canLogIn && (
+                        <>
+                          {' '}
+                          <a
+                            href="/api/vipps/start"
+                            onClick={() => logEvent('Vipps-innlogging klikket')}
+                            className="underline underline-offset-4"
+                          >
+                            Logg inn med Vipps
+                          </a>
+                        </>
+                      )}
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* 1. Character Selection Grid */}
           <div className="space-y-4 scroll-mt-4" data-step={0}>
             <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
@@ -332,7 +423,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 <span>
                   <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     Skriv din egen
-                    {!isPro && <ProBadge />}
+                    {!personal && <ProBadge label={PERSONAL_STORY_NAME} />}
                   </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå</span>
                 </span>
@@ -419,8 +510,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             {loggedIn && !isPro && freeLeft !== null && (
               <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
                 {outOfFreeStories
-                  ? `Du har brukt ukas gratis historie. En ny kommer på mandag. Kjøp av flere historier (${PRICE_SIMPLE_STORY_KR} kr enkel, ${PRICE_PERSONAL_STORY_KR} kr personlig) kommer snart.`
-                  : 'Ukas gratis historie er klar.'}
+                  ? `Dere har brukt ukas gratis historier. Nye kommer på mandag. Kjøp av flere (${STORY_NAME} ${PRICE_SIMPLE_STORY_KR} kr, ${PERSONAL_STORY_NAME} ${PRICE_PERSONAL_STORY_KR} kr) kommer snart.`
+                  : freeLeft >= FREE_STORIES_PER_WEEK
+                    ? `Ukas gratis historier er klare: ${FREE_STORIES_PER_WEEK} ${STORY_NAME} eller 1 ${PERSONAL_STORY_NAME}.`
+                    : `Dere har ${freeLeft} gratis ${STORY_NAME} igjen denne uka.`}
                 {' '}
                 <button
                   type="button"

@@ -62,7 +62,11 @@ export default async function handler(
 
     const bible = CHARACTER_DESCRIPTIONS[character];
     // Other drawing styles than the standard one are for Pro.
-    const artStyle = await allowedArtStyle(session, body.artStyle);
+    const artStyle = await allowedArtStyle(
+      session,
+      body.artStyle,
+      (body as { billett?: unknown }).billett
+    );
 
     const sheetPrompt = `
 This is a CHARACTER REFERENCE SHEET for a children's picture book. Draw ONE character,

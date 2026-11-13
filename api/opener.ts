@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, isPro, takeFreeStory } from "./_lib/access.js";
+import { isCustomMetaphor, isPro, personalTicket, takeFreeStory } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
@@ -151,6 +151,8 @@ interface OpenerRequestBody {
   options: unknown;
   // Shared with every /api/side call of the same story (see story-seeds.ts).
   seed?: unknown;
+  // The reader asked for a personal story («Din historie»).
+  personlig?: unknown;
 }
 
 export default async function handler(
@@ -192,20 +194,36 @@ export default async function handler(
       return res.status(400).json({ error: "Ugyldige historievalg." });
     }
 
-    // Free plan and guests: no own moral and the standard drawing style.
-    // The free plan also has a weekly quota; a guest's story is counted
-    // against it when they log in to read on (see /api/meg).
+    // Guests and the free plan get a plain story: no own moral and the
+    // standard drawing style. The free plan may instead spend the whole
+    // week on one personal story. A guest's story is counted when they log
+    // in to read on (see /api/meg).
     const pro = session ? await isPro(session.sub) : false;
+    const wantsPersonal = body.personlig === true || isCustomMetaphor(options.metaphor);
+    let ticket: string | undefined;
     if (!pro) {
-      if (isCustomMetaphor(options.metaphor)) {
-        return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
-      }
-      delete options.artStyle;
-      if (session && !(await takeFreeStory(session.sub))) {
-        return res.status(429).json({
-          error: "Du har brukt ukas gratis historie. En ny kommer på mandag.",
-          grense: "uke",
-        });
+      if (!session) {
+        if (wantsPersonal) {
+          return res.status(403).json({ error: "Logg inn for å lage Din historie." });
+        }
+        delete options.artStyle;
+      } else if (wantsPersonal) {
+        if (!(await takeFreeStory(session.sub, true))) {
+          return res.status(429).json({
+            error:
+              "Din historie bruker begge ukas gratis historier, og du har allerede brukt av dem. Nye kommer på mandag.",
+            grense: "uke",
+          });
+        }
+        ticket = personalTicket(session.sub);
+      } else {
+        delete options.artStyle;
+        if (!(await takeFreeStory(session.sub))) {
+          return res.status(429).json({
+            error: "Du har brukt ukas gratis historier. Nye kommer på mandag.",
+            grense: "uke",
+          });
+        }
       }
     }
 
@@ -273,6 +291,8 @@ export default async function handler(
       sideCharacters: parseSideCharacters(parsed.sideCharacters).slice(0, 2),
       // Started without a login: the client asks for one after GUEST_PAGES.
       gjest: !session,
+      // A personal story on the free plan: sent back with its later requests.
+      billett: ticket,
     });
   } catch (error) {
     console.error("Opener error:", error);

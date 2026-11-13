@@ -21,7 +21,8 @@ export interface AccountStatus {
   valg: SetupPreferences;
   // Gratis or Pro; null until the user has chosen (the plan page is shown).
   plan: Plan | null;
-  // Free stories left this week. null on Pro (no limit) or when unknown.
+  // Free stories left this week (a «Din historie» needs them all). null on
+  // Pro (no limit) or when unknown.
   freeLeft: number | null;
 }
 

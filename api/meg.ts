@@ -100,7 +100,7 @@ export default async function handler(
     }
 
     // A story started before logging in is read on: on the free plan it
-    // is this week's free story. 429 when that one is already used.
+    // is one of this week's free stories. 429 when they are used up.
     if (body.gjestehistorie !== undefined) {
       const ok = (await isPro(session.sub)) || (await takeFreeStory(session.sub));
       res.statusCode = ok ? 204 : 429;
@@ -132,7 +132,7 @@ export default async function handler(
   let valg: Record<string, string> = {};
   // null = not chosen yet (the plan page is shown after login).
   let plan: "gratis" | "pro" | null = null;
-  // Free stories left this week; null on Pro (no limit).
+  // Free stories left this week (a personal one needs them all); null on Pro.
   let gratisIgjen: number | null = null;
   if (session) {
     // Renew the login at most once a day, so it never runs out for someone
