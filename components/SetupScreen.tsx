@@ -509,7 +509,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 <span>
                   <span className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     {ownHero ? ownHero.name : 'Lag din egen helt'}
-                    {!personal && <ProBadge label={PERSONAL_STORY_NAME} />}
                   </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">
                     {ownHero
@@ -585,9 +584,14 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   </div>
                   <button
                     type="button"
-                    disabled={heroBusy}
+                    // Greyed out until there is a photo to draw from.
+                    disabled={heroBusy || !heroPhoto}
                     onClick={handleMakeHero}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-base font-bold text-white hover:bg-indigo-700 transition-colors disabled:opacity-70"
+                    className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base font-bold transition-colors ${
+                      heroPhoto
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    }`}
                   >
                     {heroBusy ? (
                       <>
@@ -672,7 +676,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 <span>
                   <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     Skriv din egen
-                    {!personal && <ProBadge label={PERSONAL_STORY_NAME} />}
                   </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå</span>
                 </span>
