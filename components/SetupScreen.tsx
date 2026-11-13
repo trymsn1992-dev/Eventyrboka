@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, OwnHero, HERO_NAME_MAX, cleanHeroName, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, cleanHeroTraits, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
 import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2 } from 'lucide-react';
@@ -147,6 +147,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   // The little form for making one: open, with a name, a photo and a status.
   const [heroFormOpen, setHeroFormOpen] = useState(false);
   const [heroName, setHeroName] = useState('');
+  const [heroTraits, setHeroTraits] = useState('');
+  // The hero just drawn, shown for a yes or a new try before it is taken into use.
+  const [heroDraft, setHeroDraft] = useState<OwnHero | null>(null);
   const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
   const [heroBusy, setHeroBusy] = useState(false);
   const [heroError, setHeroError] = useState<string | null>(null);
@@ -294,6 +297,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       return;
     }
     setHeroFormOpen(true);
+    setHeroDraft(null);
     setHeroError(null);
     window.clearTimeout(advanceTimer.current);
     window.setTimeout(() => heroNameRef.current?.focus(), 0);
@@ -325,20 +329,37 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setHeroBusy(true);
     setHeroError(null);
     try {
-      const hero = await makeHero(heroPhoto, name, preferences.artStyle);
-      void saveOwnHero(hero);
-      setOwnHero(hero);
-      setUseOwnHero(true);
-      setHeroFormOpen(false);
-      setHeroPhoto(null);
-      setHeroName('');
+      const hero = await makeHero(
+        heroPhoto,
+        name,
+        preferences.artStyle,
+        cleanHeroTraits(heroTraits) ?? undefined
+      );
+      // Shown first: the family says yes, or asks for a new try.
+      setHeroDraft(hero);
       logEvent('Egen helt laget');
-      advanceFrom('character');
     } catch (err) {
       setHeroError(err instanceof Error ? err.message : 'Kunne ikke lage helten. Prøv igjen.');
     } finally {
       setHeroBusy(false);
     }
+  };
+  const handleAcceptHero = () => {
+    if (!heroDraft) return;
+    void saveOwnHero(heroDraft);
+    setOwnHero(heroDraft);
+    setUseOwnHero(true);
+    setHeroDraft(null);
+    setHeroFormOpen(false);
+    setHeroPhoto(null);
+    setHeroName('');
+    setHeroTraits('');
+    logEvent('Egen helt godkjent');
+    advanceFrom('character');
+  };
+  const handleRetryHero = () => {
+    logEvent('Egen helt tegnet på nytt');
+    void handleMakeHero();
   };
   const handleForgetHero = () => {
     forgetOwnHero();
@@ -535,7 +556,70 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   </button>
                 </div>
               )}
-              {heroFormOpen && (
+              {/* The hero just drawn: use it, or try again. */}
+              {heroFormOpen && heroDraft && (
+                <div className="px-3 pb-3 space-y-3" data-hero-draft>
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <img
+                      src={heroDraft.sheet}
+                      alt={`Tegningen av ${heroDraft.name}`}
+                      className={`w-48 sm:w-56 aspect-[3/4] rounded-2xl bg-white object-cover border-2 border-indigo-200 dark:border-indigo-700 transition-opacity ${heroBusy ? 'opacity-40' : ''}`}
+                    />
+                    <div className="flex-1 w-full space-y-3 text-center sm:text-left">
+                      <div>
+                        <p className="text-lg sm:text-xl font-extrabold">{heroDraft.name}</p>
+                        {heroDraft.tagline && (
+                          <p className="text-sm font-medium opacity-75">{heroDraft.tagline}</p>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold">Ble {heroDraft.name} bra?</p>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          disabled={heroBusy}
+                          onClick={handleAcceptHero}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-base font-bold text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                          <Check className="w-5 h-5" strokeWidth={3} />
+                          Ja, bruk denne helten
+                        </button>
+                        <button
+                          type="button"
+                          disabled={heroBusy}
+                          onClick={handleRetryHero}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-indigo-300 dark:border-indigo-600 px-4 py-3 text-base font-bold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-70"
+                        >
+                          {heroBusy ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              Tegner på nytt …
+                            </>
+                          ) : (
+                            'Prøv på nytt'
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={heroBusy}
+                          onClick={() => {
+                            setHeroDraft(null);
+                            setHeroError(null);
+                          }}
+                          className="text-sm underline decoration-dotted underline-offset-4 hover:text-indigo-600 dark:hover:text-indigo-300 disabled:opacity-50"
+                        >
+                          Endre navn, beskrivelse eller bilde
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {heroError && (
+                    <p role="alert" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {heroError}
+                    </p>
+                  )}
+                </div>
+              )}
+              {heroFormOpen && !heroDraft && (
                 <div className="px-3 pb-3 space-y-3">
                   <input
                     ref={heroNameRef}
@@ -555,6 +639,28 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     aria-label="Navnet på helten"
                     className="w-full rounded-xl border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900 px-4 py-3 text-base font-semibold text-gray-900 dark:text-gray-100 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
                   />
+                  {/* Optional: a few words about what the hero is like. */}
+                  <label className="block">
+                    <span className="block mb-1 text-xs sm:text-sm font-semibold opacity-80">
+                      Hvordan er helten? (valgfritt)
+                    </span>
+                    <input
+                      type="text"
+                      value={heroTraits}
+                      onChange={(e) => setHeroTraits(e.target.value)}
+                      maxLength={HERO_TRAITS_MAX}
+                      disabled={heroBusy}
+                      onKeyDown={(e) => {
+                        // Enter must not start the story.
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void handleMakeHero();
+                        }
+                      }}
+                      placeholder="F.eks. elsker pannekaker og er litt redd for mørket"
+                      className="w-full rounded-xl border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900 px-4 py-3 text-base font-medium text-gray-900 dark:text-gray-100 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
+                    />
+                  </label>
                   <input
                     ref={heroFileRef}
                     type="file"

@@ -16,8 +16,13 @@ export async function preparePhoto(file: File): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
-    img.src = url;
-    await img.decode();
+    // The load event rather than decode(): decode() can wait for a frame
+    // that never comes when the page is in the background.
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("bilde"));
+      img.src = url;
+    });
     const scale = Math.min(1, PHOTO_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
     const w = Math.max(1, Math.round(img.naturalWidth * scale));
     const h = Math.max(1, Math.round(img.naturalHeight * scale));
@@ -44,7 +49,9 @@ export async function preparePhoto(file: File): Promise<string> {
 export async function makeHero(
   photo: string,
   name: string,
-  artStyle: string | undefined
+  artStyle: string | undefined,
+  // A few words about what the hero is like, if the family wrote any.
+  traits?: string
 ): Promise<OwnHero> {
   const data = await postJson<{
     navn: string;
@@ -52,7 +59,7 @@ export async function makeHero(
     token: string;
     ark: string;
     artStyle: string;
-  }>("/api/figur", { bilde: photo, navn: name, artStyle });
+  }>("/api/figur", { bilde: photo, navn: name, karakter: traits, artStyle });
   return {
     name: data.navn,
     tagline: data.undertittel,

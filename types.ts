@@ -179,6 +179,20 @@ export function cleanHeroName(input: unknown): string | null {
   return cleaned.length >= 2 ? cleaned : null;
 }
 
+// A few words from the family about what their own hero is like ("elsker
+// pannekaker, litt redd for mørket"). Optional. Cleaned like a typed moral.
+export const HERO_TRAITS_MAX = 120;
+export function cleanHeroTraits(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const cleaned = input
+    .replace(/[^\p{L}\p{N} ,.!?'’:()\-–]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, HERO_TRAITS_MAX)
+    .trim();
+  return cleaned.length >= 3 ? cleaned : null;
+}
+
 export const METAPHORS = [
   "Det lønner seg å dele",
   "Fokuser på det du kan påvirke",
