@@ -884,8 +884,12 @@ const App: React.FC = () => {
               <h2 id="logg-inn-tittel" className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
                 Logg inn for å lese videre
               </h2>
-              <p className="mt-3 text-base text-gray-600 dark:text-gray-300">
-                Eventyret venter her mens du logger inn. Én historie er gratis hver uke.
+              <p className="mt-4 rounded-2xl bg-emerald-50 dark:bg-emerald-400/10 border border-emerald-200 dark:border-emerald-400/30 px-4 py-3 text-emerald-900 dark:text-emerald-100">
+                <span className="block text-xl font-extrabold">1 historie gratis hver uke</span>
+                <span className="block mt-0.5 text-sm font-semibold">Det koster ingenting å logge inn.</span>
+              </p>
+              <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+                Eventyret venter her mens du logger inn.
               </p>
               {account.vippsReady || !account.checked ? (
                 <button
