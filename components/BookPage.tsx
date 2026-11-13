@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
-import { ArrowDown, ArrowRight, ChevronLeft, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
+import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
@@ -361,7 +361,7 @@ export const BookPage: React.FC<BookPageProps> = ({
   const progress = totalPages ? Math.min((pageNumber / totalPages) * 100, 100) : 0;
 
   return (
-    <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 rounded-xl lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden border-r-4 border-gray-200 dark:border-gray-700">
+    <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden lg:border-r-4 border-gray-200 dark:border-gray-700">
       
       {/* Book Spine visual - Hidden on Mobile to save space */}
       <div className="hidden lg:block absolute left-0 top-0 bottom-0 w-6 md:w-10 bg-gradient-to-r from-gray-300 via-gray-100 to-[#fdfbf7] dark:from-gray-950 dark:via-gray-900 dark:to-gray-800 z-10 shadow-inner"></div>
@@ -369,9 +369,9 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} p-4 lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
+        <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
-             <div className={`relative w-full flex-none lg:flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 rounded-md overflow-hidden flex items-center justify-center shadow-sm lg:shadow-none min-h-[280px] ${isGenerating ? 'h-[70vh] max-h-[70vh]' : 'h-[55vh] max-h-[55vh]'} lg:h-auto lg:max-h-full transition-all duration-500 ease-out`}>
+             <div className={`relative w-full flex-none lg:flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 lg:rounded-md overflow-hidden flex items-center justify-center lg:shadow-none min-h-[280px] ${isGenerating ? 'h-[70vh]' : 'h-[58vh]'} max-h-[133.34vw] lg:h-auto lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
                     animation keeps running; it fades out as the image fades in. */}
                 <div
@@ -383,11 +383,13 @@ export const BookPage: React.FC<BookPageProps> = ({
                   <img
                     src={segment.imageBase64}
                     alt={segment.illustrationPrompt}
-                    className="relative w-full h-full object-contain"
+                    // On a phone the picture fills the width; a little is cut
+                    // off top and bottom rather than leaving bars at the sides.
+                    className="relative w-full h-full object-cover lg:object-contain"
                   />
                 )}
              </div>
-             <div className="mt-2 lg:mt-4 text-indigo-300 text-xs lg:text-sm font-serif italic text-center">
+             <div className="my-2 lg:mb-0 lg:mt-4 text-indigo-300 text-xs lg:text-sm font-serif italic text-center">
                 Side {pageNumber}
              </div>
           </div>
@@ -459,12 +461,11 @@ export const BookPage: React.FC<BookPageProps> = ({
           
           {/* Scrollable content container (hidden while next page is generating) */}
           {!isGenerating && (
-          <div className="flex-1 p-6 lg:p-12 lg:overflow-y-auto" ref={textContainerRef}>
+          <div className="flex-1 px-4 pt-2 pb-6 lg:p-12 lg:overflow-y-auto" ref={textContainerRef}>
             
             <div className="mb-6 lg:mb-10">
               <style>{`
                 @keyframes chunkSwap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-                @keyframes nudgeRight { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
                 @keyframes nudgeDown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
                 @media (prefers-reduced-motion: reduce) { .hint-nudge { animation: none !important; } }
               `}</style>
@@ -521,8 +522,10 @@ export const BookPage: React.FC<BookPageProps> = ({
                       <p
                         aria-live="polite"
                         className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
+                          // The text is centred, so the big first letter stays
+                          // in the line: floated left it lands far from its word.
                           currentChunk === 1
-                            ? 'first-letter:text-5xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300 first-letter:float-left first-letter:mr-3 first-letter:-mt-2'
+                            ? 'first-letter:text-4xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300'
                             : ''
                         }`}
                       >
@@ -548,21 +551,18 @@ export const BookPage: React.FC<BookPageProps> = ({
                           className="absolute inset-y-0 right-0 w-[70%] rounded-r-2xl enabled:active:bg-amber-200/30 dark:enabled:active:bg-amber-200/10 disabled:cursor-default"
                         />
 
-                        {/* What a tap does, spelled out. */}
+                        {/* Small arrows show which way a tap goes. */}
                         {currentChunk > 1 && (
-                          <span className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-0.5 text-xs font-semibold text-amber-800/70 dark:text-amber-200/70">
-                            <ChevronLeft className="w-4 h-4" />
-                            Tilbake
-                          </span>
+                          <ChevronLeft
+                            aria-hidden="true"
+                            className="pointer-events-none absolute bottom-3 left-3 w-5 h-5 text-amber-800/50 dark:text-amber-200/50"
+                          />
                         )}
                         {!isLastChunk && (
-                          <span className="pointer-events-none absolute bottom-2.5 right-3 flex items-center gap-1.5 rounded-full bg-amber-400 px-3 py-1.5 text-sm font-bold text-amber-950 shadow-md">
-                            {currentChunk === 1 ? 'Trykk for å lese videre' : 'Trykk'}
-                            <ArrowRight
-                              className="hint-nudge w-4 h-4"
-                              style={{ animation: 'nudgeRight 1.1s ease-in-out infinite' }}
-                            />
-                          </span>
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="pointer-events-none absolute bottom-3 right-3 w-5 h-5 text-amber-800/70 dark:text-amber-200/70"
+                          />
                         )}
                       </>
                     )}

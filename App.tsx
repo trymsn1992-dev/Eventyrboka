@@ -1037,7 +1037,7 @@ const App: React.FC = () => {
             className="bg-white dark:bg-[#000c31] shadow-md rounded-full p-1.5 dark:p-0 overflow-hidden ring-1 ring-gray-200 dark:ring-indigo-900 transition-colors"
           >
             <img src="/magiboka-logo.webp" alt="Magiboka" className="h-5 w-auto dark:hidden" />
-            <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-8 w-auto" />
+            <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-7 lg:h-8 w-auto" />
           </button>
           <button
             onClick={toggleTheme}
@@ -1049,7 +1049,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className={`flex-grow flex items-center justify-center relative ${isReading ? 'p-2 lg:p-4' : 'p-4 md:p-8 items-start'}`}>
+      <main className={`flex-grow flex items-center justify-center relative ${isReading ? 'lg:p-4' : 'p-4 md:p-8 items-start'}`}>
         {error && (
            <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center shadow-lg">
              <AlertCircle className="w-5 h-5 mr-2" />
