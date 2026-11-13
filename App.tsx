@@ -4,7 +4,8 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DEFAULT_ART_STYLE, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
+import { saveHeroToProfile, saveMoralToProfile } from './services/samling';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
 import { loadOwnHero } from './services/hero';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
 import {
@@ -637,6 +638,15 @@ const App: React.FC = () => {
       });
       applyTicket(ticket);
       setGuestStory(guest);
+      // A hero or moral made for this magic story is now kept on the account,
+      // and can be picked again later — also in a plain story.
+      if (personal && !guest) {
+        const own = selectedOptions.heroToken ? loadOwnHero() : null;
+        if (own && own.token === selectedOptions.heroToken) void saveHeroToProfile(own, ticket);
+        if (!METAPHORS.includes(selectedOptions.metaphor)) {
+          void saveMoralToProfile(selectedOptions.metaphor, ticket);
+        }
+      }
       // A bought story is spent, or else the week's free stories: a plain
       // one uses one, a personal one all.
       if (bought) {

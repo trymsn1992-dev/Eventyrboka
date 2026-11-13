@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, mayPersonalize } from "./_lib/access.js";
+import { mayUseOwn } from "./_lib/samling.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
@@ -244,6 +244,7 @@ Konkrete sanselige detaljer (lyd, lukt, farge, bevegelse) i stedet for abstrakte
 
 ILLUSTRASJON:
 'illustrationPrompt' på engelsk: sidens viktigste øyeblikk, handling og omgivelser, bikarakterer ved navn.
+Hovedkarakteren skal ALLTID være med på bildet: nevn "${options.character}" ved navn og si hva hen gjør. Beskriv aldri bare et tomt rom eller landskap.
 Beskriv IKKE hovedkarakterens kropp eller klær — illustratøren har et referanseark.
 
 NYE BIKARAKTERER:
@@ -289,10 +290,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(429).json({ error: budget.message });
     }
 
-    if (
-      (isCustomMetaphor(options.metaphor) || options.heroToken) &&
-      !(await mayPersonalize(session, body.billett))
-    ) {
+    // …or ones the family has made before and keeps on the account.
+    if (!(await mayUseOwn(session, body.billett, options))) {
       return res
         .status(403)
         .json({ error: "Egen lærepenge og egen helt er med i magihistorier og Prinsen." });

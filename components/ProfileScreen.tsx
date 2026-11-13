@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { SetupPreferences } from '../services/account';
-import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PERSONAL_STORY_NAME, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
+import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
-import { ProBadge, SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
-import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
+import { SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
+import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Lightbulb, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
+import { Collection, cachedCollection, loadCollection, removeHero, removeMoral } from '../services/samling';
 
 // Where the last change to the choices ended up.
 export type SaveState = 'idle' | 'local' | 'account' | 'account-failed';
@@ -52,6 +53,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onOpenPlan,
 }) => {
   const artStyle = preferences.artStyle ?? DEFAULT_ART_STYLE;
+  // The heroes and morals the family has made (services/samling.ts).
+  const [collection, setCollection] = useState<Collection>(cachedCollection);
+  useEffect(() => {
+    let gone = false;
+    void loadCollection(innlogget).then(c => {
+      if (!gone) setCollection(c);
+    });
+    return () => {
+      gone = true;
+    };
+  }, [innlogget]);
+  const hasOwnThings = collection.heroes.length > 0 || collection.morals.length > 0;
   return (
     <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-8 sm:space-y-10">
@@ -150,6 +163,86 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           )}
         </section>
 
+        {/* Heroes and morals the family has made themselves */}
+        {hasOwnThings && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-7 h-7 text-amber-500" />
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">
+                Mine helter og lærepenger
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Det dere har laget selv, ligger klart til å velges igjen når dere lager et nytt eventyr.
+            </p>
+            {collection.heroes.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                {collection.heroes.map((hero) => (
+                  <div
+                    key={hero.token}
+                    className="relative bg-white dark:bg-gray-800 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900 p-2 sm:p-3 text-center"
+                  >
+                    <img
+                      src={hero.sheet}
+                      alt=""
+                      className="w-full aspect-square rounded-xl bg-white object-cover object-top"
+                    />
+                    <p className="mt-2 text-sm sm:text-base font-bold leading-tight text-gray-800 dark:text-gray-100">
+                      {hero.name}
+                    </p>
+                    {hero.tagline && (
+                      <p className="mt-1 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 leading-snug">
+                        {hero.tagline}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(`Vil du fjerne ${hero.name}? Det kan ikke angres.`)) return;
+                        setCollection(c => ({ ...c, heroes: c.heroes.filter(h => h.token !== hero.token) }));
+                        void removeHero(hero);
+                      }}
+                      className="absolute top-3 right-3 bg-white/90 dark:bg-gray-900/90 text-gray-500 hover:text-red-500 p-2 rounded-full shadow transition-colors"
+                      title={`Fjern ${hero.name}`}
+                      aria-label={`Fjern ${hero.name}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {collection.morals.length > 0 && (
+              <ul className="space-y-2">
+                {collection.morals.map((moral) => (
+                  <li
+                    key={moral.text}
+                    className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900 pl-4 pr-2 py-2"
+                  >
+                    <Lightbulb className="shrink-0 w-5 h-5 text-amber-500" />
+                    <span className="flex-1 text-sm sm:text-base font-semibold text-gray-800 dark:text-gray-100">
+                      {moral.text}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(`Vil du fjerne «${moral.text}»?`)) return;
+                        setCollection(c => ({ ...c, morals: c.morals.filter(m => m.text !== moral.text) }));
+                        void removeMoral(moral);
+                      }}
+                      className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                      title="Fjern lærepengen"
+                      aria-label={`Fjern «${moral.text}»`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {/* Remembered choices */}
         <section className="space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl border-2 border-indigo-100 dark:border-indigo-900">
           <div>
@@ -186,13 +279,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
               <Palette className="w-6 h-6 text-emerald-500" />
               <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Tegnestil</h3>
-              {!isPro && <ProBadge label={PERSONAL_STORY_NAME} />}
             </div>
-            {!isPro && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Brukes når dere lager en magihistorie. En vanlig historie tegnes alltid i akvarell.
-              </p>
-            )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               {ART_STYLES.map((style) => {
                 const isSelected = artStyle === style;

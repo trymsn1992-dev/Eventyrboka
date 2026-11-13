@@ -77,21 +77,12 @@ export async function mayPersonalize(
   return ticketFits(session, ticket) || (await isPro(session.sub));
 }
 
-// The drawing style this request may use: the one asked for in a personal
-// story or on Pro, otherwise the standard one.
-export async function allowedArtStyle(
-  session: Session | null,
-  requested: unknown,
-  ticket: unknown
-): Promise<string> {
-  if (
-    typeof requested !== "string" ||
-    !ART_STYLES.includes(requested) ||
-    requested === DEFAULT_ART_STYLE
-  ) {
-    return DEFAULT_ART_STYLE;
-  }
-  return (await mayPersonalize(session, ticket)) ? requested : DEFAULT_ART_STYLE;
+// The drawing style this request uses. Everyone may pick among them; an
+// unknown one becomes the standard style.
+export function allowedArtStyle(requested: unknown): string {
+  return typeof requested === "string" && ART_STYLES.includes(requested)
+    ? requested
+    : DEFAULT_ART_STYLE;
 }
 
 const quotaKey = (vippsSub: string) => `bruker:${vippsSub}:uke`;

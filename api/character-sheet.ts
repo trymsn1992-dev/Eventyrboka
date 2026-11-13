@@ -6,7 +6,9 @@ import {
 } from "./_lib/gemini.js";
 import { heroBible, openHero } from "./_lib/hero.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { allowedArtStyle, mayPersonalize } from "./_lib/access.js";
+import { allowedArtStyle } from "./_lib/access.js";
+import { mayUseOwn } from "./_lib/samling.js";
+import { METAPHORS } from "../types.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
@@ -62,7 +64,12 @@ export default async function handler(
       typeof body.character === "string" ? body.character : null;
 
     // A hero made from a photo belongs to «Magihistorie» and Prinsen.
-    if (openHero(body.heroToken) && !(await mayPersonalize(session, body.billett))) {
+    // …or is one the family has made before and keeps on the account.
+    if (
+      typeof body.heroToken === "string" &&
+      openHero(body.heroToken) &&
+      !(await mayUseOwn(session, body.billett, { metaphor: METAPHORS[0], heroToken: body.heroToken }))
+    ) {
       return res.status(403).json({ error: "Egen helt er med i magihistorier og Prinsen." });
     }
     const bible = heroBible(character, body.heroToken);
@@ -70,12 +77,8 @@ export default async function handler(
       return res.status(400).json({ error: "Ukjent karakter." });
     }
 
-    // Other drawing styles than the standard one are for Pro.
-    const artStyle = await allowedArtStyle(
-      session,
-      body.artStyle,
-      body.billett
-    );
+    // Everyone picks their own drawing style.
+    const artStyle = allowedArtStyle(body.artStyle);
 
     const sheetPrompt = `
 This is a CHARACTER REFERENCE SHEET for a children's picture book. Draw ONE character,

@@ -532,3 +532,19 @@ revoke all on public.innsikt_frafall, public.innsikt_populaert, public.innsikt_s
   public.innsikt_ventetid, public.innsikt_ventetid_frafall, public.innsikt_feil, public.innsikt_vegg,
   public.innsikt_kjop, public.innsikt_hendelser_telt, public.innsikt_kilder, public.innsikt_abonnement
   from anon, authenticated;
+
+-- Det familien har laget selv og vil bruke igjen (se api/_lib/samling.ts):
+-- helter tegnet etter et bilde, og lærepenger de har skrevet. Én rad per ting.
+--   type: helt | laerepenge
+--   data: helt       -> { token, sheet (tegningen som data-URL), tagline, artStyle }
+--         laerepenge -> { tekst }
+create table if not exists public.samling (
+  id         text primary key,
+  vipps_sub  text not null references public.brukere(vipps_sub) on delete cascade,
+  type       text not null,
+  data       jsonb not null,
+  opprettet  timestamptz not null default now()
+);
+create index if not exists samling_bruker_idx
+  on public.samling (vipps_sub, type, opprettet desc);
+alter table public.samling enable row level security;

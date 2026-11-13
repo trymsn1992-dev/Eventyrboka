@@ -109,6 +109,11 @@ export async function saveOwnHero(hero: OwnHero): Promise<void> {
   }
 }
 
+// A hero picked from the account's saved ones: the one the next story uses.
+export function selectOwnHero(hero: OwnHero): void {
+  current = hero;
+}
+
 export function forgetOwnHero(): void {
   current = null;
   try {

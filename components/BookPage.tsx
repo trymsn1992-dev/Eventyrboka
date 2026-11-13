@@ -127,6 +127,12 @@ export const BookPage: React.FC<BookPageProps> = ({
   const [audioProgress, setAudioProgress] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  // The voice made for this page's text, kept so it can be played again
+  // (or from the start) without waiting for it to be made once more.
+  const voiceRef = useRef<{ text: string; buffer: AudioBuffer } | null>(null);
+  const hasVoice = voiceRef.current?.text === segment.text;
+  const segmentTextRef = useRef(segment.text);
+  segmentTextRef.current = segment.text;
 
   // Waiting-state (next-page loading) states
   const [waitQuestion, setWaitQuestion] = useState<string>(WAIT_QUESTIONS[0]);
@@ -173,6 +179,18 @@ export const BookPage: React.FC<BookPageProps> = ({
     setShowProNote(false);
     setRating(0);
     setHoverRating(0);
+  }, [pageKey]);
+
+  // Turning the page: a sheet of paper is lifted off the new page (see
+  // .page-turn-sheet in index.html). Not on the first page shown.
+  const [turn, setTurn] = useState(0);
+  const firstPageShown = useRef(false);
+  useEffect(() => {
+    if (!firstPageShown.current) {
+      firstPageShown.current = true;
+      return;
+    }
+    setTurn(t => t + 1);
   }, [pageKey]);
 
   useEffect(() => {
@@ -252,6 +270,53 @@ export const BookPage: React.FC<BookPageProps> = ({
     }
   };
 
+  // Plays the page's voice from the start, turning the text cards along.
+  const playVoice = (buffer: AudioBuffer) => {
+    stopAudio();
+    const ctx = audioContextRef.current;
+    if (!ctx) return;
+    // Phones may have put the audio to sleep since the last time.
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = () => {
+      // A stopped or restarted voice must not switch off the one playing now.
+      if (sourceRef.current !== source) return;
+      clearSyncTimers();
+      setIsPlaying(false);
+      sourceRef.current = null;
+    };
+    sourceRef.current = source;
+    source.start(0);
+    setIsPlaying(true);
+
+    // Small screens show one sentence at a time: turn the cards as the
+    // voice gets to each sentence. The voice reads the whole page in one
+    // go, so each sentence's start is estimated from its share of the text
+    // (plus a little for the pause after it).
+    if (!isDesktop && textChunks.length > 1) {
+      const weights = textChunks.map(c => c.length + 12);
+      const total = weights.reduce((a, b) => a + b, 0);
+      let elapsed = 0;
+      goToChunk(1);
+      textChunks.forEach((_, i) => {
+        if (i > 0) {
+          const at = (elapsed / total) * buffer.duration * 1000;
+          syncTimers.current.push(window.setTimeout(() => goToChunk(i + 1), at));
+        }
+        elapsed += weights[i];
+      });
+    }
+  };
+
+  // "Start på nytt": the voice from the first sentence again.
+  const restartVoice = () => {
+    const voice = voiceRef.current;
+    if (voice && voice.text === segment.text) playVoice(voice.buffer);
+  };
+
   const handleReadAloud = async () => {
     if (!readAloud) {
       setShowProNote(true);
@@ -262,6 +327,12 @@ export const BookPage: React.FC<BookPageProps> = ({
       stopAudio();
       return;
     }
+    // Already made for this page: play it again right away.
+    if (voiceRef.current?.text === segment.text) {
+      playVoice(voiceRef.current.buffer);
+      return;
+    }
+    const text = segment.text;
 
     setIsLoadingAudio(true);
     setAudioProgress(0);
@@ -275,7 +346,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     }, 500);
 
     try {
-      const base64Audio = await generateSpeech(segment.text);
+      const base64Audio = await generateSpeech(text);
       
       if (!base64Audio) {
         console.error("No audio data returned");
@@ -312,39 +383,9 @@ export const BookPage: React.FC<BookPageProps> = ({
         channelData[i] = dataInt16[i] / 32768.0;
       }
 
-      // Play audio
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      
-      source.onended = () => {
-        clearSyncTimers();
-        setIsPlaying(false);
-        sourceRef.current = null;
-      };
-      
-      sourceRef.current = source;
-      source.start(0);
-      setIsPlaying(true);
-
-      // Small screens show one sentence at a time: turn the cards as the
-      // voice gets to each sentence. The voice reads the whole page in one
-      // go, so each sentence's start is estimated from its share of the text
-      // (plus a little for the pause after it).
-      clearSyncTimers();
-      if (!isDesktop && textChunks.length > 1) {
-        const weights = textChunks.map(c => c.length + 12);
-        const total = weights.reduce((a, b) => a + b, 0);
-        let elapsed = 0;
-        goToChunk(1);
-        textChunks.forEach((_, i) => {
-          if (i > 0) {
-            const at = (elapsed / total) * buffer.duration * 1000;
-            syncTimers.current.push(window.setTimeout(() => goToChunk(i + 1), at));
-          }
-          elapsed += weights[i];
-        });
-      }
+      voiceRef.current = { text, buffer };
+      // The reader may have turned the page while the voice was being made.
+      if (segmentTextRef.current === text) playVoice(buffer);
 
     } catch (error) {
       console.error("Error playing audio:", error);
@@ -363,6 +404,9 @@ export const BookPage: React.FC<BookPageProps> = ({
   return (
     <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden lg:border-r-4 border-gray-200 dark:border-gray-700">
       
+      {/* The page being turned. A new key restarts the animation. */}
+      {turn > 0 && <div key={turn} aria-hidden="true" className="page-turn-sheet lg:rounded-r-3xl" />}
+
       {/* Book Spine visual - Hidden on Mobile to save space */}
       <div className="hidden lg:block absolute left-0 top-0 bottom-0 w-6 md:w-10 bg-gradient-to-r from-gray-300 via-gray-100 to-[#fdfbf7] dark:from-gray-950 dark:via-gray-900 dark:to-gray-800 z-10 shadow-inner"></div>
       
@@ -402,11 +446,11 @@ export const BookPage: React.FC<BookPageProps> = ({
               (legacy fallback; the Neste-side button handles the main case). */}
           {isGenerating && (
             <div className="h-full flex flex-col items-center justify-center px-6 py-8 lg:p-8 text-center min-h-[280px]">
-              <div className="w-full max-w-sm bg-white border-2 border-indigo-100 rounded-2xl p-5 lg:p-6 shadow-md mb-5 lg:mb-6">
+              <div className="w-full max-w-sm bg-white dark:bg-gray-900 border-2 border-indigo-100 dark:border-indigo-900 rounded-2xl p-5 lg:p-6 shadow-md mb-5 lg:mb-6">
                 <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold mb-3">
                   — Mens dere venter —
                 </p>
-                <h3 className="text-lg lg:text-2xl font-serif font-bold text-indigo-800 mb-3 leading-snug">
+                <h3 className="text-lg lg:text-2xl font-serif font-bold text-indigo-800 dark:text-indigo-100 mb-3 leading-snug">
                   {waitQuestion}
                 </h3>
                 <p className="text-xs lg:text-sm text-gray-500 italic">
@@ -432,25 +476,25 @@ export const BookPage: React.FC<BookPageProps> = ({
 
           {/* Audio Loading Overlay */}
           {isLoadingAudio && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#fdfbf7]/95 backdrop-blur-sm transition-all duration-500">
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#fdfbf7]/95 dark:bg-gray-800/95 backdrop-blur-sm transition-all duration-500">
               <div className="relative mb-8">
-                <div className="absolute inset-0 bg-indigo-200 rounded-full animate-ping opacity-25"></div>
-                <div className="bg-indigo-100 p-6 rounded-full relative shadow-lg">
-                  <Mic className="w-12 h-12 text-indigo-600" />
+                <div className="absolute inset-0 bg-indigo-200 dark:bg-indigo-500 rounded-full animate-ping opacity-25"></div>
+                <div className="bg-indigo-100 dark:bg-indigo-900 p-6 rounded-full relative shadow-lg">
+                  <Mic className="w-12 h-12 text-indigo-600 dark:text-indigo-200" />
                 </div>
                 <Music className="absolute -top-2 -right-4 w-8 h-8 text-purple-500 animate-bounce" style={{ animationDelay: '0s' }} />
                 <Music className="absolute top-10 -left-6 w-6 h-6 text-pink-500 animate-bounce" style={{ animationDelay: '0.2s' }} />
                 <Music className="absolute -bottom-2 -right-2 w-5 h-5 text-blue-500 animate-bounce" style={{ animationDelay: '0.4s' }} />
               </div>
               
-              <h3 className="text-xl font-serif font-bold text-indigo-800 text-center px-4 mb-2">
+              <h3 className="text-xl font-serif font-bold text-indigo-800 dark:text-indigo-100 text-center px-4 mb-2">
                 Varmer opp stemmen...
               </h3>
-              <p className="text-sm text-indigo-400 mb-6 text-center px-6">
+              <p className="text-sm text-indigo-400 dark:text-indigo-300 mb-6 text-center px-6">
                 Det tar omtrent ett minutt å lage opplesningen.
               </p>
 
-              <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden relative">
+              <div className="w-48 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
                  <div 
                    className="h-full bg-gradient-to-r from-indigo-400 to-purple-500 transition-all duration-200"
                    style={{ width: `${audioProgress}%` }}
@@ -587,6 +631,7 @@ export const BookPage: React.FC<BookPageProps> = ({
               {/* Les høyt sits under the text frame now so it does not compete
                   with the illustration for attention at the top. */}
               <div className="mt-5 flex flex-col items-center gap-2">
+                <div className="flex flex-wrap items-center justify-center gap-2">
                 <button
                   onClick={handleReadAloud}
                   disabled={isLoadingAudio || isGenerating}
@@ -603,9 +648,19 @@ export const BookPage: React.FC<BookPageProps> = ({
                   ) : (
                     <Volume2 className="w-4 h-4" />
                   )}
-                  {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : 'Les høyt'}
+                  {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : hasVoice ? 'Les høyt igjen' : 'Les høyt'}
                   {!readAloud && <ProBadge label={PERSONAL_STORY_NAME} />}
                 </button>
+                {isPlaying && hasVoice && (
+                  <button
+                    onClick={restartVoice}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Start på nytt
+                  </button>
+                )}
+                </div>
                 {showProNote && (
                   <p role="status" className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 text-center">
                     Opplesning er med i magihistorier og i Prinsen.

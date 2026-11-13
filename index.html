@@ -91,6 +91,48 @@
         animation: float 6s ease-in-out infinite; /* Slower, calmer float */
       }
       
+      /* Turning to the next page (components/BookPage.tsx): a sheet of paper
+         lies over the new page and is lifted calmly over to the left, around
+         the spine. On a phone it covers the whole book and turns out of view;
+         on a wide screen it is the right-hand page landing on the left. */
+      .page-turn-sheet {
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        pointer-events: none;
+        transform-origin: left center;
+        backface-visibility: visible;
+        background:
+          linear-gradient(to right, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,0.06) 100%),
+          #fdfbf7;
+        box-shadow: 8px 0 24px rgba(0,0,0,0.12);
+        --turn-end: -100deg;
+        animation: pageTurn 1.1s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+        will-change: transform, opacity;
+      }
+      html.dark .page-turn-sheet {
+        background:
+          linear-gradient(to right, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,0.2) 100%),
+          #1f2937;
+        box-shadow: 8px 0 24px rgba(0,0,0,0.4);
+      }
+      @media (min-width: 1024px) {
+        .page-turn-sheet {
+          left: 50%;
+          --turn-end: -180deg;
+          animation-duration: 1.3s;
+        }
+      }
+      @keyframes pageTurn {
+        0%   { transform: perspective(2400px) rotateY(0deg); opacity: 1; }
+        12%  { transform: perspective(2400px) rotateY(-4deg); opacity: 1; }
+        70%  { opacity: 1; }
+        100% { transform: perspective(2400px) rotateY(var(--turn-end)); opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .page-turn-sheet { display: none; }
+      }
+
       @keyframes progress-stripe {
         0% { background-position: 1rem 0; }
         100% { background-position: 0 0; }

@@ -60,11 +60,12 @@ const PRO_PRICES: PriceRow[] = [
 type Included = boolean | string;
 const STORY_CONTENTS: { label: string; plain: Included; personal: Included }[] = [
   { label: 'Alle seks heltene', plain: true, personal: true },
-  { label: 'Egen helt fra et bilde av kosedyret', plain: false, personal: true },
+  { label: 'Lag ny helt fra et bilde av kosedyret', plain: false, personal: true },
+  { label: 'Skriv ny lærepenge', plain: false, personal: true },
+  { label: 'Helter og lærepenger dere har laget før', plain: true, personal: true },
   { label: 'Barnet velger veien på hver side', plain: true, personal: true },
   { label: 'Lagres på Min side', plain: true, personal: true },
-  { label: 'Lærepenge', plain: 'Velg blant våre', personal: 'Skriv deres egen' },
-  { label: 'Tegnestil', plain: 'Akvarell', personal: 'Velg selv' },
+  { label: 'Velg tegnestil', plain: true, personal: true },
   { label: 'Opplesning', plain: false, personal: true },
 ];
 

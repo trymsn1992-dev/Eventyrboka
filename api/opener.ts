@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, isPro, personalTicket, takeFreeStory } from "./_lib/access.js";
+import { isPro, personalTicket, takeFreeStory } from "./_lib/access.js";
+import { needsMagic } from "./_lib/samling.js";
 import { readSession } from "./_lib/session.js";
 import { giveBackBoughtStory, useBoughtStory } from "./_lib/betaling.js";
 import { spend } from "./_lib/budget.js";
@@ -51,7 +52,7 @@ const RESPONSE_SCHEMA = {
     illustrationPrompt: {
       type: Type.STRING,
       description:
-        "Visual scene description in English for this opening moment. Do NOT describe main character body/clothes — the illustrator has a reference sheet.",
+        "Visual scene description in English for this opening moment. The main character is ALWAYS in the picture: name them and say what they are doing. Do NOT describe their body/clothes — the illustrator has a reference sheet.",
     },
     choices: {
       type: Type.ARRAY,
@@ -144,8 +145,10 @@ SPRÅK:
 Skriv på norsk BOKMÅL — aldri nynorsk eller dialekt.
 Konkrete sanselige detaljer, ikke abstrakte følelser.
 
-'illustrationPrompt' på engelsk, scenens viktigste øyeblikk. Beskriv ikke hovedkarakterens klær.
-Bildet på side 1 tegnes FØR barnet har valgt: vis derfor ikke det valget handler om (er valget været, er scenen innendørs; er det en farge, er tingen ikke tatt fram ennå).
+'illustrationPrompt' på engelsk, scenens viktigste øyeblikk.
+HOVEDKARAKTEREN SKAL ALLTID VÆRE MED PÅ BILDET, midt i scenen: nevn "${options.character}" ved navn og si hva hen gjør akkurat nå. Skriv aldri at karakteren ikke er synlig, og beskriv aldri bare et tomt rom eller landskap.
+Det eneste du utelater er hvordan hovedkarakteren ser ut (kropp og klær) — det har tegneren et referanseark for.
+Bildet på side 1 tegnes FØR barnet har valgt: vis derfor ikke TINGEN valget handler om (er valget været, er scenen innendørs; er det en farge, er tingen ikke tatt fram ennå). Hovedkarakteren vises uansett.
 ${SAFETY_RULES}`;
 }
 
@@ -205,17 +208,15 @@ export default async function handler(
     // bought story is spent instead (see _lib/betaling.ts).
     const pro = session ? await isPro(session.sub) : false;
     // Your own moral or a hero made from a photo makes it a personal story.
+    // One already kept on the account is free to use again (see _lib/samling.ts).
     const wantsPersonal =
-      body.personlig === true ||
-      isCustomMetaphor(options.metaphor) ||
-      Boolean(options.heroToken);
+      body.personlig === true || (await needsMagic(session, options));
     let ticket: string | undefined;
     if (!pro) {
       if (!session) {
         if (wantsPersonal) {
           return res.status(403).json({ error: "Logg inn for å lage en magihistorie." });
         }
-        delete options.artStyle;
       } else if (wantsPersonal) {
         if (
           !(await takeFreeStory(session.sub, true)) &&
@@ -229,7 +230,6 @@ export default async function handler(
         }
         ticket = personalTicket(session.sub);
       } else {
-        delete options.artStyle;
         if (
           !(await takeFreeStory(session.sub)) &&
           !(bought = await useBoughtStory(session.sub, "historie"))

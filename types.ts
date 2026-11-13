@@ -156,6 +156,8 @@ export const CHARACTER_TRAITS: Record<string, { tagline: string; personality: st
 // A hero the family made themselves from a photo. Only the server can read
 // the token; the rest is for showing the hero in the picker.
 export interface OwnHero {
+  // Set once the hero is kept on the account (see services/samling.ts).
+  id?: string;
   name: string;
   tagline: string;
   token: string;

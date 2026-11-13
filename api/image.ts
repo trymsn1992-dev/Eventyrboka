@@ -7,7 +7,9 @@ import {
 } from "./_lib/gemini.js";
 import { heroBible, openHero } from "./_lib/hero.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { allowedArtStyle, mayPersonalize } from "./_lib/access.js";
+import { allowedArtStyle } from "./_lib/access.js";
+import { mayUseOwn } from "./_lib/samling.js";
+import { METAPHORS } from "../types.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
@@ -90,14 +92,21 @@ export default async function handler(
     }
 
     // A hero made from a photo belongs to «Magihistorie» and Prinsen.
-    if (openHero(body.heroToken) && !(await mayPersonalize(session, body.billett))) {
+    // …or is one the family has made before and keeps on the account.
+    if (
+      typeof body.heroToken === "string" &&
+      openHero(body.heroToken) &&
+      !(await mayUseOwn(session, body.billett, { metaphor: METAPHORS[0], heroToken: body.heroToken }))
+    ) {
       return res.status(403).json({ error: "Egen helt er med i magihistorier og Prinsen." });
     }
     // A hero made from a photo is only called by its name in the scene.
     const ownHero = openHero(body.heroToken);
     const characterVisuals = ownHero
       ? `Name: ${ownHero.name} (this is who "${ownHero.name}" in the scene is).\n${ownHero.bible}`
-      : heroBible(character, null) || "a cute children's book character";
+      : `${character ? `Name: ${character.slice(0, 80)} (this is who "${character.slice(0, 80)}" in the scene is).\n` : ""}${
+          heroBible(character, null) || "a cute children's book character"
+        }`;
 
     const sideCharacters = parseSideCharacters(body.sideCharacters);
     const sideCharsBlock = sideCharacters.length
@@ -114,12 +123,8 @@ export default async function handler(
 
     const sheet = parseDataUrl(body.characterSheet);
 
-    // Other drawing styles than the standard one are for Pro.
-    const artStyle = await allowedArtStyle(
-      session,
-      body.artStyle,
-      body.billett
-    );
+    // Everyone picks their own drawing style.
+    const artStyle = allowedArtStyle(body.artStyle);
 
     const referenceNote = sheet
       ? "\nA REFERENCE IMAGE of the main character is attached. The character in the scene MUST match this reference exactly — same colors, same clothing items, same accessories, same body proportions. Do not deviate.\n"
@@ -136,6 +141,7 @@ ${FRAMING_RULE}
 Scene to illustrate: ${prompt}
 
 Rules:
+- The main character MUST be clearly visible in the picture, doing what the scene describes. This holds even if the scene description does not mention the main character, or says they are not visible: then place them naturally in the middle of the scene. Never draw only an empty room or landscape.
 - Keep the main character visually identical to the reference and bible above.
 - Keep every side character identical to its bible each time it appears.
 - Keep the art style described under "Style" above, the same on every page, and consistent character scale.

@@ -5,7 +5,8 @@ import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, c
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
 import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2, Pencil } from 'lucide-react';
-import { forgetOwnHero, loadOwnHero, makeHero, preparePhoto, saveOwnHero } from '../services/hero';
+import { loadOwnHero, makeHero, preparePhoto, saveOwnHero, selectOwnHero } from '../services/hero';
+import { SavedMoral, cachedCollection, loadCollection, removeHero } from '../services/samling';
 
 interface SetupScreenProps {
   // `personal`: make it a «Magihistorie» (own moral, chosen drawing style, read-aloud).
@@ -159,6 +160,32 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   // last one made is kept in this browser and can be picked again.
   const [ownHero, setOwnHero] = useState<OwnHero | null>(loadOwnHero);
   const [useOwnHero, setUseOwnHero] = useState(false);
+  // Every hero and typed moral kept on the account (services/samling.ts),
+  // shown as cards that can be picked again. Without a login: the last hero
+  // made in this browser.
+  const [heroes, setHeroes] = useState<OwnHero[]>(() => {
+    const saved = cachedCollection().heroes;
+    const local = loadOwnHero();
+    return local && !saved.some(h => h.token === local.token) ? [local, ...saved] : saved;
+  });
+  const [savedMorals, setSavedMorals] = useState<SavedMoral[]>(() => cachedCollection().morals);
+  // The moral in use was picked from the saved ones, not typed just now.
+  const [moralFromSaved, setMoralFromSaved] = useState(false);
+  useEffect(() => {
+    if (!loggedIn) return;
+    let gone = false;
+    void loadCollection(true).then(collection => {
+      if (gone) return;
+      setHeroes(prev => [
+        ...prev.filter(h => !collection.heroes.some(s => s.token === h.token)),
+        ...collection.heroes,
+      ]);
+      setSavedMorals(collection.morals);
+    });
+    return () => {
+      gone = true;
+    };
+  }, [loggedIn]);
   // The little form for making one: open, with a name, a photo and a status.
   const [heroFormOpen, setHeroFormOpen] = useState(false);
   const [heroName, setHeroName] = useState('');
@@ -170,15 +197,17 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [heroError, setHeroError] = useState<string | null>(null);
   const heroNameRef = useRef<HTMLInputElement>(null);
   const heroFileRef = useRef<HTMLInputElement>(null);
-  // An own hero belongs to «Magihistorie», like your own moral.
-  const ownHeroPicked = useOwnHero && personal && ownHero !== null;
+  // Making a hero of your own is magic («Magihistorie»), like typing your own
+  // moral. One already kept on the account (it has an id) can be picked in
+  // any story.
+  const ownHeroPicked = useOwnHero && ownHero !== null && (personal || Boolean(ownHero.id));
   const options: StoryOptions = {
     ...picked,
     ...(ownHeroPicked && ownHero ? { character: ownHero.name, heroToken: ownHero.token } : {}),
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
     duration: preferences.duration ?? DURATIONS[1],
-    // Other drawing styles than the standard one belong to «Magihistorie».
-    artStyle: personal ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
+    // Everyone picks their own drawing style (on Min side).
+    artStyle: preferences.artStyle ?? DEFAULT_ART_STYLE,
   };
   // The story picked is neither free this week nor already bought.
   const mustPay =
@@ -258,8 +287,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const pickPlain = () => {
     setWantsPersonal(false);
     setPersonalNote(false);
-    setUseCustomMoral(false);
-    setUseOwnHero(false);
+    // What is already kept on the account stays picked; what is new is magic.
+    if (!moralFromSaved) setUseCustomMoral(false);
+    if (!ownHero?.id) setUseOwnHero(false);
     setHeroFormOpen(false);
   };
   // True when the story is (now) a «Magihistorie»; otherwise says why not.
@@ -281,6 +311,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       return;
     }
     setUseCustomMoral(true);
+    if (moralFromSaved) setCustomMoral('');
+    setMoralFromSaved(false);
     // Stay here and put the cursor in the field — there is something to type.
     window.clearTimeout(advanceTimer.current);
     window.setTimeout(() => customMoralRef.current?.focus(), 0);
@@ -292,19 +324,25 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       ?.querySelector('[data-story-kind]')
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
-  const pickOwnHero = () => {
-    // Your own hero makes it a «Magihistorie».
-    if (!pickPersonal()) {
+  // A moral the family typed before, picked again. No magic needed.
+  const pickSavedMoral = (moral: SavedMoral) => {
+    setUseCustomMoral(true);
+    setMoralFromSaved(true);
+    setCustomMoral(moral.text);
+    advanceFrom('metaphor');
+  };
+  // A hero the family made before, picked again. No magic needed once it is
+  // kept on the account; one that only lives in this browser still is.
+  const pickSavedHero = (hero: OwnHero) => {
+    if (!hero.id && !pickPersonal()) {
       showStoryKind();
       return;
     }
-    if (ownHero) {
-      setUseOwnHero(true);
-      setHeroFormOpen(false);
-      advanceFrom('character');
-      return;
-    }
-    openHeroForm();
+    selectOwnHero(hero);
+    setOwnHero(hero);
+    setUseOwnHero(true);
+    setHeroFormOpen(false);
+    advanceFrom('character');
   };
   const openHeroForm = () => {
     if (!pickPersonal()) {
@@ -362,6 +400,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const handleAcceptHero = () => {
     if (!heroDraft) return;
     void saveOwnHero(heroDraft);
+    setHeroes(prev => [heroDraft, ...prev.filter(h => h.token !== heroDraft.token)]);
     setOwnHero(heroDraft);
     setUseOwnHero(true);
     setHeroDraft(null);
@@ -377,7 +416,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     void handleMakeHero();
   };
   const handleForgetHero = () => {
-    forgetOwnHero();
+    if (!ownHero) return;
+    // The saved copy may have got its id since the card was drawn.
+    const saved = cachedCollection().heroes.find(h => h.token === ownHero.token);
+    void removeHero(saved ?? ownHero);
+    setHeroes(prev => prev.filter(h => h.token !== ownHero.token));
     setOwnHero(null);
     setUseOwnHero(false);
     setHeroFormOpen(false);
@@ -386,12 +429,13 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const start = mustPay ? onBuy : onStart;
-    if (!useCustomMoral || !personal) {
+    if (!useCustomMoral || !(personal || moralFromSaved)) {
       start(options, personal);
       return;
     }
     const metaphor = cleanCustomMetaphor(customMoral);
     if (!metaphor) {
+      setMoralFromSaved(false);
       customMoralRef.current?.focus();
       return;
     }
@@ -402,8 +446,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     // On a phone the card fills the screen edge to edge: a frame around it
     // only takes room from the pictures. From tablet width it is a framed card.
     // The negative margins cancel the padding of <main> in App.tsx (p-4).
-    <div className="min-h-screen -mx-4 -mt-4 w-[calc(100%+2rem)] sm:mx-0 sm:mt-0 sm:w-full flex flex-col items-center pb-8 sm:pt-4 sm:pb-12 sm:px-6 lg:px-8">
-      <div className="max-w-4xl w-full space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 px-4 py-5 sm:p-8 sm:rounded-3xl sm:shadow-2xl sm:border-4 border-indigo-100 dark:border-indigo-900 mb-8 sm:mb-12">
+    <div className="min-h-screen -mx-4 -mt-4 -mb-4 w-[calc(100%+2rem)] sm:mx-0 sm:mt-0 sm:mb-0 sm:w-full flex flex-col items-center sm:pt-4 sm:pb-12 sm:px-6 lg:px-8">
+      <div className="max-w-4xl w-full space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 px-4 py-5 sm:p-8 sm:rounded-3xl sm:shadow-2xl sm:border-4 border-indigo-100 dark:border-indigo-900 sm:mb-12">
         <div className="text-center">
           <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">Lag din fortelling!</h2>
         </div>
@@ -427,7 +471,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   {!personal && <SelectedBadge />}
                   <span className="block text-base sm:text-lg font-bold">{STORY_NAME}</span>
                   <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
-                    Velg blant lærepengene våre. Tegnet i akvarell.
+                    Velg blant heltene og lærepengene våre, eller dem dere har laget før.
                   </span>
                   <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
                     {FREE_STORIES_PER_WEEK} gratis hver uke{canBuy && ` · ellers ${PRICE_SIMPLE_STORY_KR} kr`}
@@ -442,7 +486,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   {personal && <SelectedBadge />}
                   <span className="block text-base sm:text-lg font-bold">{PERSONAL_STORY_NAME}</span>
                   <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
-                    Egen helt fra et bilde, egen lærepenge, valgfri tegnestil og opplesning.
+                    Lag en ny helt fra et bilde, skriv en ny lærepenge og få opplesning.
                   </span>
                   <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
                     1 gratis hver uke{canBuy && ` · ellers ${PRICE_PERSONAL_STORY_KR} kr`}
@@ -525,44 +569,59 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   </button>
                 );
               })}
+              {/* The heroes the family has made themselves, to pick again. */}
+              {heroes.map((hero) => {
+                const isSelected = ownHeroPicked && ownHero?.token === hero.token;
+                return (
+                  <button
+                    key={hero.token}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => pickSavedHero(hero)}
+                    className={`group relative p-2 sm:p-3 rounded-2xl border-2 flex flex-col items-center text-center gap-2 transition-all duration-200 ${cardClass(isSelected)}`}
+                  >
+                    {isSelected && <SelectedBadge />}
+                    <div className="relative w-full aspect-square rounded-xl bg-white overflow-hidden flex items-center justify-center">
+                      <img
+                        src={hero.sheet}
+                        alt=""
+                        className={`w-full h-full object-cover object-top transition-transform duration-300 ease-out ${isSelected ? 'scale-110' : 'group-hover:scale-105'}`}
+                      />
+                      <Sparkles aria-hidden="true" className="absolute top-1.5 left-1.5 w-5 h-5 text-amber-400 drop-shadow" />
+                    </div>
+                    <span className="pb-1">
+                      <span className="block text-sm sm:text-base font-bold leading-tight">{hero.name}</span>
+                      <span className="block mt-1 text-[11px] sm:text-xs font-medium leading-snug opacity-75">
+                        {hero.tagline || 'Helten dere har laget selv'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Your own hero, drawn from a photo of a toy or a drawing. */}
-            <div className={`relative rounded-2xl border-2 transition-all duration-200 ${cardClass(ownHeroPicked || heroFormOpen)}`}>
-              {ownHeroPicked && <SelectedBadge />}
+            <div className={`relative rounded-2xl border-2 transition-all duration-200 ${cardClass(heroFormOpen)}`}>
               <button
                 type="button"
-                aria-pressed={ownHeroPicked}
-                onClick={pickOwnHero}
+                aria-expanded={heroFormOpen}
+                onClick={openHeroForm}
                 className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
               >
                 <MagicCircle>
-                  {ownHero ? (
-                    <img src={ownHero.sheet} alt="" className="w-full h-full bg-white object-cover object-top" />
-                  ) : (
-                    <Camera className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-500 dark:text-indigo-300" />
-                  )}
+                  <Camera className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-500 dark:text-indigo-300" />
                 </MagicCircle>
                 <span>
                   <span className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold leading-snug">
-                    {ownHero ? ownHero.name : 'Lag din egen helt'}
+                    {heroes.length > 0 ? 'Lag en ny helt' : 'Lag din egen helt'}
                   </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">
-                    {ownHero
-                      ? ownHero.tagline || 'Helten dere har laget selv'
-                      : 'Ta bilde av kosedyret, en leke eller en tegning'}
+                    Ta bilde av kosedyret, en leke eller en tegning
                   </span>
                 </span>
               </button>
-              {ownHero && !heroFormOpen && (
+              {ownHeroPicked && ownHero && !heroFormOpen && (
                 <div className="px-3 pb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs sm:text-sm">
-                  <button
-                    type="button"
-                    onClick={openHeroForm}
-                    className="underline decoration-dotted underline-offset-4 hover:text-indigo-600 dark:hover:text-indigo-300"
-                  >
-                    Lag en ny helt
-                  </button>
                   <button
                     type="button"
                     onClick={handleForgetHero}
@@ -778,13 +837,36 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   </button>
                 );
               })}
+              {/* The morals the family has typed before, to pick again. */}
+              {savedMorals.map((moral) => {
+                const isSelected = useCustomMoral && moralFromSaved && customMoral === moral.text;
+                return (
+                  <button
+                    key={moral.text}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => pickSavedMoral(moral)}
+                    className={`group relative p-2 pr-10 rounded-2xl border-2 flex items-center gap-3 sm:gap-4 text-left transition-all duration-200 ${cardClass(isSelected)}`}
+                  >
+                    {isSelected && <SelectedBadge />}
+                    <div className="relative shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                      <Lightbulb className="w-8 h-8 sm:w-9 sm:h-9 text-amber-500 dark:text-amber-300" />
+                      <Sparkles aria-hidden="true" className="absolute top-1 left-1 w-4 h-4 text-amber-400 drop-shadow" />
+                    </div>
+                    <span>
+                      <span className="block text-sm sm:text-base font-bold leading-snug">{moral.text}</span>
+                      <span className="block text-[11px] sm:text-xs font-medium opacity-75">Deres egen</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             {/* Your own moral: a card that opens a text field. */}
-            <div className={`relative rounded-2xl border-2 transition-all duration-200 ${cardClass(useCustomMoral)}`}>
-              {useCustomMoral && <SelectedBadge />}
+            <div className={`relative rounded-2xl border-2 transition-all duration-200 ${cardClass(useCustomMoral && !moralFromSaved)}`}>
+              {useCustomMoral && !moralFromSaved && <SelectedBadge />}
               <button
                 type="button"
-                aria-pressed={useCustomMoral}
+                aria-pressed={useCustomMoral && !moralFromSaved}
                 onClick={pickCustomMoral}
                 className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
               >
@@ -798,7 +880,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå</span>
                 </span>
               </button>
-              {useCustomMoral && (
+              {useCustomMoral && !moralFromSaved && (
                 <div className="px-3 pb-3">
                   <input
                     ref={customMoralRef}

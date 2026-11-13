@@ -530,14 +530,14 @@ export async function loadStories(innlogget: boolean): Promise<SavedStory[]> {
 // of 1.5–2 MB; as JPEG they are a tenth of that, which makes saving fast on
 // mobile and keeps every upload far under Vercel's 4.5 MB request limit.
 // Falls back to the original if the browser can't do it or it isn't smaller.
-export async function compressImage(dataUrl: string): Promise<string> {
+export async function compressImage(dataUrl: string, maxPx = 1280): Promise<string> {
   try {
     const img = new Image();
     img.src = dataUrl;
     await img.decode();
     const scale = Math.min(
       1,
-      1280 / Math.max(img.naturalWidth, img.naturalHeight)
+      maxPx / Math.max(img.naturalWidth, img.naturalHeight)
     );
     const w = Math.round(img.naturalWidth * scale);
     const h = Math.round(img.naturalHeight * scale);
