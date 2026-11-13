@@ -2,7 +2,8 @@
 // up at all, and which setup choices the user has saved. The response shape
 // drives the login/logout button in the header.
 // POST: saves the setup choices (age group, reading length and drawing style)
-// to the account, picks the free plan, or redeems a code for Pro.
+// to the account, picks the free plan, redeems a share link for Pro, or
+// counts a story that was started before logging in.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   SESSION_LIFETIME_SEC,
@@ -16,7 +17,7 @@ import {
   setPlan,
   supabaseReady,
 } from "./_lib/supabase.js";
-import { freeStoriesLeft, validProCode } from "./_lib/access.js";
+import { freeStoriesLeft, isPro, takeFreeStory, validProLink } from "./_lib/access.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { AGE_GROUPS, ART_STYLES, DURATIONS } from "../types.js";
 
@@ -59,29 +60,50 @@ export default async function handler(
       res.end();
       return;
     }
+    const body = (req.body ?? {}) as {
+      valg?: unknown;
+      plan?: unknown;
+      lenke?: unknown;
+      gjestehistorie?: unknown;
+    };
+
+    // A share link that gives Pro. The key is checked before the login, so
+    // the page can tell a visitor at once whether their link works: 400 =
+    // not a valid link, 401 = valid, log in to use it.
+    if (body.lenke !== undefined) {
+      // Guessing keys should be slow.
+      if (!rateLimit(`lenke:${getClientIp(req)}`).ok) {
+        res.statusCode = 429;
+        res.end();
+        return;
+      }
+      if (!validProLink(body.lenke)) {
+        res.statusCode = 400;
+        res.end();
+        return;
+      }
+      if (!session) {
+        res.statusCode = 401;
+        res.end();
+        return;
+      }
+      const saved = await setPlan(session.sub, "pro");
+      res.statusCode = saved ? 204 : 503;
+      res.end();
+      return;
+    }
+
     if (!session) {
       res.statusCode = 401;
       res.end();
       return;
     }
-    const body = (req.body ?? {}) as { valg?: unknown; plan?: unknown; kode?: unknown };
 
-    // Redeem a code for Pro.
-    if (body.kode !== undefined) {
-      // Guessing codes should be slow.
-      if (!rateLimit(`kode:${getClientIp(req)}`).ok) {
-        res.statusCode = 429;
-        res.end();
-        return;
-      }
-      if (!validProCode(body.kode)) {
-        res.statusCode = 400;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({ error: "Koden stemmer ikke." }));
-        return;
-      }
-      const saved = await setPlan(session.sub, "pro");
-      res.statusCode = saved ? 204 : 503;
+    // A story started before logging in is read on: on the free plan it
+    // is this week's free story. 429 when that one is already used.
+    if (body.gjestehistorie !== undefined) {
+      const ok = (await isPro(session.sub)) || (await takeFreeStory(session.sub));
+      res.statusCode = ok ? 204 : 429;
       res.end();
       return;
     }

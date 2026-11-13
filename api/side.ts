@@ -9,7 +9,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, isPro, requireLogin } from "./_lib/access.js";
+import { isCustomMetaphor, isPro } from "./_lib/access.js";
+import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
@@ -21,7 +22,7 @@ import {
   storySeeds,
   type SideCharacterInput,
 } from "./_lib/story-seeds.js";
-import { DURATION_DENSITY, TOTAL_PAGES, type StoryOptions } from "../types.js";
+import { DURATION_DENSITY, GUEST_PAGES, TOTAL_PAGES, type StoryOptions } from "../types.js";
 
 // Full Flash first: lite's prose was noticeably flatter. Pages are written in
 // the background while the reader reads, so the extra seconds are hidden.
@@ -261,19 +262,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const session = requireLogin(req, res);
-  if (!session) return;
+  const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
     return res.status(429).json({ error: "Du må vente litt før du fortsetter." });
-  }
-
-  // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "text");
-  if (!budget.ok) {
-    return res.status(429).json({ error: budget.message });
   }
 
   try {
@@ -283,7 +277,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!options || !pages) {
       return res.status(400).json({ error: "Ugyldig forespørsel." });
     }
-    if (isCustomMetaphor(options.metaphor) && !(await isPro(session.sub))) {
+    // Without a login only the first pages are written.
+    if (!session && pages.length + 1 > GUEST_PAGES) {
+      return res.status(401).json({ error: "Logg inn for å lese videre." });
+    }
+
+    // Daily spending cap (see _lib/budget.ts).
+    const budget = await spend(req, "text", !session);
+    if (!budget.ok) {
+      return res.status(429).json({ error: budget.message });
+    }
+
+    if (isCustomMetaphor(options.metaphor) && !(session && (await isPro(session.sub)))) {
       return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
     }
     const seed = parseSeed(body.seed);

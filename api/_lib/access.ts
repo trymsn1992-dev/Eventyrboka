@@ -1,5 +1,6 @@
-// Who may do what. Making stories requires a login; Pro adds unlimited
-// stories, read-aloud, the choice of drawing style and your own moral. Everything is
+// Who may do what. The first pages of a story can be read without a login
+// (GUEST_PAGES); going on requires one. Pro adds unlimited stories,
+// read-aloud, the choice of drawing style and your own moral. Everything is
 // checked here on the server — the browser only hides the buttons.
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -29,16 +30,20 @@ export async function isPro(vippsSub: string): Promise<boolean> {
   return (await getAccount(vippsSub)).plan === "pro";
 }
 
-// The friend code that unlocks Pro. Only its SHA-256 is kept in the code.
-const PRO_CODE_SHA256 =
-  "4e8ed9dff07d85f00590fd65f8e7b3d945ce75dbe70c9ec28b3a411655c8edb7";
+// Share links that give Pro: https://www.magiboka.no/?prinsen=<key>.
+// Whoever opens one and logs in gets Pro. Only the SHA-256 of each key is
+// kept here. Remove a line to stop that link from working (those who already
+// used it keep Pro); add a line to make a new link.
+const PRO_LINK_SHA256 = [
+  "b1841cd7940513b6c70bb91cd76252b9e8f7cdb1c492908e69e892382c97db38",
+];
 
-export function validProCode(input: unknown): boolean {
+export function validProLink(input: unknown): boolean {
   if (typeof input !== "string") return false;
-  const cleaned = input.trim().toUpperCase().slice(0, 64);
-  if (!cleaned) return false;
-  const got = createHash("sha256").update(cleaned).digest();
-  return timingSafeEqual(got, Buffer.from(PRO_CODE_SHA256, "hex"));
+  const key = input.trim();
+  if (!key || key.length > 64) return false;
+  const got = createHash("sha256").update(key).digest();
+  return PRO_LINK_SHA256.some((hex) => timingSafeEqual(got, Buffer.from(hex, "hex")));
 }
 
 export const isCustomMetaphor = (metaphor: string): boolean =>
@@ -47,17 +52,18 @@ export const isCustomMetaphor = (metaphor: string): boolean =>
 // The drawing style this user may use: the one asked for if they are on
 // Pro, otherwise the standard one. Only looks the plan up when it matters.
 export async function allowedArtStyle(
-  vippsSub: string,
+  session: Session | null,
   requested: unknown
 ): Promise<string> {
   if (
+    !session ||
     typeof requested !== "string" ||
     !ART_STYLES.includes(requested) ||
     requested === DEFAULT_ART_STYLE
   ) {
     return DEFAULT_ART_STYLE;
   }
-  return (await isPro(vippsSub)) ? requested : DEFAULT_ART_STYLE;
+  return (await isPro(session.sub)) ? requested : DEFAULT_ART_STYLE;
 }
 
 const quotaKey = (vippsSub: string) => `bruker:${vippsSub}:uke`;

@@ -6,7 +6,8 @@ import {
   FRAMING_RULE,
 } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { allowedArtStyle, requireLogin } from "./_lib/access.js";
+import { allowedArtStyle } from "./_lib/access.js";
+import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
 
@@ -71,8 +72,8 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const session = requireLogin(req, res);
-  if (!session) return;
+  // Guests get pictures for the pages they may read (see GUEST_PAGES).
+  const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
@@ -81,7 +82,7 @@ export default async function handler(
   }
 
   // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "image");
+  const budget = await spend(req, "image", !session);
   if (!budget.ok) {
     return res.status(429).json({ error: budget.message });
   }
@@ -117,7 +118,7 @@ export default async function handler(
     const sheet = parseDataUrl(body.characterSheet);
 
     // Other drawing styles than the standard one are for Pro.
-    const artStyle = await allowedArtStyle(session.sub, body.artStyle);
+    const artStyle = await allowedArtStyle(session, body.artStyle);
 
     const referenceNote = sheet
       ? "\nA REFERENCE IMAGE of the main character is attached. The character in the scene MUST match this reference exactly — same colors, same clothing items, same accessories, same body proportions. Do not deviate.\n"

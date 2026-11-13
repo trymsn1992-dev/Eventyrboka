@@ -4,25 +4,29 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, TOTAL_PAGES } from './types';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, GUEST_PAGES, PLAN_NAMES, TOTAL_PAGES } from './types';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage } from './services/geminiService';
 import {
   AccountStatus,
   chooseFreePlan,
+  claimGuestStory,
   deleteStory as deleteStoryAccount,
   fetchStatus,
+  forgetShareLink,
   initialStatus,
   loadLocalPreferences,
   loadStories,
   logout,
-  redeemProCode,
+  pendingShareLink,
+  redeemShareLink,
   rememberPreferences,
   rememberStatus,
   saveStory as saveStoryAccount,
   SetupPreferences,
 } from './services/account';
+import { PendingStory, savePendingStory, takePendingStory } from './services/guestStory';
 import { logEvent, logStoryStarted } from './services/analytics';
-import { AlertCircle, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -57,9 +61,19 @@ const App: React.FC = () => {
   // Set while re-reading a saved story, so saving again updates that story
   // (same id, same stored illustrations) instead of making a copy.
   const [loadedStory, setLoadedStory] = useState<{ id: string; createdAt: number } | null>(null);
+  // The story on screen was started without a login and is not yet counted
+  // as anyone's: only the first GUEST_PAGES pages can be read.
+  const [guestStory, setGuestStory] = useState(false);
+  // "Log in to read on", shown when a guest picks a choice past those pages.
+  const [loginGate, setLoginGate] = useState(false);
+  const [leavingForLogin, setLeavingForLogin] = useState(false);
+  // A good-news message (the red one is `error`).
+  const [notice, setNotice] = useState<string | null>(null);
+  // A share link for Prinsen was opened, and is waiting for a login.
+  const [linkWaiting, setLinkWaiting] = useState(false);
 
-  // Theme state. The initial `dark` class is set by an inline script in
-  // index.html that reads localStorage + prefers-color-scheme before React
+  // Theme state. Dark unless the visitor has chosen light: the `dark` class
+  // is set by an inline script in index.html before React
   // mounts, so the page doesn't flash the wrong background on cold load.
   // We mirror that into React state here so the toggle button can flip it.
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -145,9 +159,33 @@ const App: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const status = await fetchStatus();
+      let status = await fetchStatus();
       if (cancelled) return;
+      // A share link for Prinsen opened in this browser: use it now if
+      // logged in, otherwise ask for a login.
+      const link = pendingShareLink();
+      if (link && status.plan === 'pro') {
+        forgetShareLink();
+      } else if (link) {
+        const result = await redeemShareLink(link);
+        if (cancelled) return;
+        if (result === 'ok') {
+          forgetShareLink();
+          status = { ...status, plan: 'pro', freeLeft: null };
+          rememberStatus(status);
+          setNotice(`Velkommen! Du har fått ${PLAN_NAMES.pro}.`);
+          logEvent('Prinsen-lenke brukt');
+        } else if (result === 'login') {
+          setLinkWaiting(true);
+        } else if (result === 'wrong') {
+          forgetShareLink();
+          setError('Lenken virker ikke lenger.');
+        }
+      }
       setAccount(status);
+      // Back from logging in halfway through a story: open it again.
+      const pending = takePendingStory();
+      if (pending) restorePendingStory(pending, status.innlogget);
       const fromAccount = Object.fromEntries(
         Object.entries(status.valg).filter(([k]) => !touchedPrefs.current.has(k))
       ) as SetupPreferences;
@@ -192,6 +230,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     await logout();
     setAccount({ ...account, innlogget: false, fornavn: '', valg: {}, plan: null, freeLeft: null });
+    setNotice(null);
     setView('setup');
     // After sign-out, the user sees their local IndexedDB stories again.
     try {
@@ -210,6 +249,11 @@ const App: React.FC = () => {
   // chosen. Tapping a choice turns the page at once if it's ready, otherwise
   // "Neste side blir til…" shows until it is. Only the page the reader
   // actually lands on gets an illustration.
+  //
+  // A story can be started without a login. Such a story stops at
+  // GUEST_PAGES: the choice on that page asks for a login, the story waits
+  // in the browser meanwhile (services/guestStory.ts), and reading on counts
+  // it as the account's story (unlockGuestStory).
 
   // Bumped for every new story, load and restart; async results that belong
   // to an older run are dropped.
@@ -217,19 +261,106 @@ const App: React.FC = () => {
   // Character sheet for the current story. Made up front for new stories,
   // lazily for saved ones (only needed if the reader takes a new branch).
   const sheetRef = useRef<Promise<string | undefined> | null>(null);
+  // The same sheet once it has arrived, so it can follow the story to Vipps and back.
+  const sheetValue = useRef<string | undefined>(undefined);
   // Next-page requests, keyed by run + branch point + choice.
   const branchCache = useRef(new Map<string, Promise<StorySegment>>());
+  // The running attempt to count a guest story on the account.
+  const unlocking = useRef<Promise<boolean> | null>(null);
 
   const resetFlow = () => {
     runRef.current += 1;
     branchCache.current.clear();
     sheetRef.current = null;
+    sheetValue.current = undefined;
+    unlocking.current = null;
     setWaitingFor(null);
+    setGuestStory(false);
+    setLoginGate(false);
   };
 
   const getSheet = (opts: StoryOptions) => {
-    if (!sheetRef.current) sheetRef.current = generateCharacterSheet(opts.character, opts.artStyle);
+    if (!sheetRef.current) {
+      const run = runRef.current;
+      sheetRef.current = generateCharacterSheet(opts.character, opts.artStyle).then(sheet => {
+        if (runRef.current === run) sheetValue.current = sheet;
+        return sheet;
+      });
+    }
     return sheetRef.current;
+  };
+
+  // Count the guest story on screen as the logged-in user's, so it can be
+  // read to the end. Asked once however many times it is called.
+  const unlockGuestStory = (): Promise<boolean> => {
+    if (!unlocking.current) {
+      const run = runRef.current;
+      unlocking.current = claimGuestStory().then(result => {
+        if (runRef.current !== run) return false;
+        if (result === 'ok') {
+          setGuestStory(false);
+          // On the free plan this was the week's free story.
+          setAccount(prev =>
+            prev.plan === 'pro' || prev.freeLeft === null
+              ? prev
+              : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
+          );
+          return true;
+        }
+        unlocking.current = null;
+        if (result === 'login') {
+          setAccount(prev => ({ ...prev, innlogget: false }));
+          setLoginGate(true);
+        } else {
+          setError(
+            result === 'used'
+              ? 'Du har brukt ukas gratis historie, så dette eventyret kan ikke fortsette nå. En ny historie kommer på mandag.'
+              : 'Noe gikk galt. Prøv igjen om litt.'
+          );
+        }
+        return false;
+      });
+    }
+    return unlocking.current;
+  };
+
+  // Page `i` is the last one a guest story may show.
+  const needsUnlock = (i: number) => guestStory && i >= GUEST_PAGES - 1;
+
+  // A choice on a page that needs the story unlocked: ask for a login, or
+  // unlock and go on.
+  const continueGuestStory = async (label: string, go: () => void) => {
+    if (!account.innlogget) {
+      setLoginGate(true);
+      logEvent('Innlogging bedt om', { side: currentPageIndex + 1 });
+      return;
+    }
+    const run = runRef.current;
+    setWaitingFor(label);
+    setError(null);
+    const ok = await unlockGuestStory();
+    if (runRef.current !== run) return;
+    if (ok) go();
+    else setWaitingFor(null);
+  };
+
+  // Keep the story in the browser, then go to Vipps.
+  const loginFromStory = async () => {
+    if (leavingForLogin) return;
+    setLeavingForLogin(true);
+    logEvent('Vipps-innlogging klikket');
+    if (options && storyMeta && segments.length > 0) {
+      await savePendingStory({
+        options,
+        segments,
+        chosenByPage,
+        seed: storyMeta.seed,
+        premise: storyMeta.premise,
+        pageIndex: currentPageIndex,
+        sheet: sheetValue.current,
+      });
+    }
+    window.location.href = '/api/vipps/start';
   };
 
   // Every named side character along the path up to and including page `upTo`.
@@ -315,12 +446,14 @@ const App: React.FC = () => {
     const i = currentPageIndex;
     const seg = segments[i];
     if (!seg || seg.isEnding || i !== segments.length - 1) return;
+    // The next pages of a guest story are written once it is unlocked.
+    if (needsUnlock(i)) return;
     seg.choices.forEach((_, k) => {
       requestBranch(segments, chosenByPage, i, k).catch(() => undefined);
     });
     // requestBranch is recreated every render; the cache makes repeats free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, currentPageIndex, segments, chosenByPage, storyMeta, options]);
+  }, [view, currentPageIndex, segments, chosenByPage, storyMeta, options, guestStory]);
 
   // Turn to the page behind `choiceIdx` on page `i`, waiting for it if needed.
   const goToBranch = async (i: number, choiceIdx: number, label: string) => {
@@ -368,15 +501,18 @@ const App: React.FC = () => {
     try {
       // Start the character sheet now so it's ready for page 1's picture.
       void getSheet(selectedOptions);
-      const { segment: opener, premise } = await generateOpener(selectedOptions, seed);
+      const { segment: opener, premise, guest } = await generateOpener(selectedOptions, seed);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
+      setGuestStory(guest);
       // One of this week's free stories is used.
-      setAccount(prev =>
-        prev.plan === 'pro' || prev.freeLeft === null
-          ? prev
-          : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
-      );
+      if (!guest) {
+        setAccount(prev =>
+          prev.plan === 'pro' || prev.freeLeft === null
+            ? prev
+            : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
+        );
+      }
       setStoryMeta({ seed, premise });
       setSegments([opener]);
       setView('reading');
@@ -404,6 +540,10 @@ const App: React.FC = () => {
       setCurrentPageIndex(i + 1);
       return;
     }
+    if (needsUnlock(i)) {
+      void continueGuestStory(choice.text, () => void goToBranch(i, k, choice.text));
+      return;
+    }
     void goToBranch(i, k, choice.text);
   };
 
@@ -415,7 +555,41 @@ const App: React.FC = () => {
       setCurrentPageIndex(i + 1);
       return;
     }
+    if (needsUnlock(i)) {
+      void continueGuestStory('Avslutt historien', () => void goToBranch(i, -1, 'Avslutt historien'));
+      return;
+    }
     void goToBranch(i, -1, 'Avslutt historien');
+  };
+
+  // Open the story that was waiting while the reader logged in.
+  const restorePendingStory = (pending: PendingStory, innlogget: boolean) => {
+    resetFlow();
+    if (pending.sheet) {
+      sheetRef.current = Promise.resolve(pending.sheet);
+      sheetValue.current = pending.sheet;
+    }
+    setOptions(pending.options);
+    setPlan(null);
+    setStoryMeta({ seed: pending.seed, premise: pending.premise });
+    setSegments(pending.segments);
+    setChosenByPage(pending.chosenByPage);
+    setCurrentPageIndex(pending.pageIndex);
+    setLoadedStory(null);
+    setGuestStory(true);
+    setView('reading');
+    if (innlogget) void unlockGuestStory();
+    // A picture that hadn't arrived when the reader left is drawn now.
+    const page = pending.segments[pending.pageIndex];
+    if (page && !page.imageBase64) {
+      const seen = new Map<string, SideCharacter>();
+      pending.segments
+        .slice(0, pending.pageIndex + 1)
+        .forEach(seg => (seg.sideCharacters ?? []).forEach(s => {
+          if (!seen.has(s.name.toLowerCase())) seen.set(s.name.toLowerCase(), s);
+        }));
+      void attachIllustrationAt(pending.pageIndex, page, pending.options, [...seen.values()]);
+    }
   };
 
   const handleRestart = () => {
@@ -431,7 +605,7 @@ const App: React.FC = () => {
     setError(null);
   };
 
-  // Gratis or Pro. Pro is unlocked with a code for now.
+  // Gratis or Pro. Pro is given through a share link for now.
   const isPro = account.plan === 'pro';
   const openPlan = () => {
     resetFlow();
@@ -454,12 +628,6 @@ const App: React.FC = () => {
     const ok = await chooseFreePlan();
     if (ok) applyPlan('gratis');
     return ok;
-  };
-  const handleRedeem = async (code: string) => {
-    const result = await redeemProCode(code);
-    logEvent('Kode prøvd', { gyldig: result === 'ok' });
-    if (result === 'ok') applyPlan('pro');
-    return result;
   };
 
   // Min side: saved stories and the remembered choices.
@@ -485,6 +653,7 @@ const App: React.FC = () => {
       plan: plan ?? undefined,
       premise: storyMeta?.premise,
       seed: storyMeta?.seed,
+      ...(guestStory ? { guestStarted: true } : {}),
     };
 
     try {
@@ -531,6 +700,7 @@ const App: React.FC = () => {
     setCurrentPageIndex(0);
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
+    setGuestStory(story.guestStarted === true);
     setView('reading');
     logEvent('Lagret eventyr åpnet');
   };
@@ -642,6 +812,24 @@ const App: React.FC = () => {
               </div>
             </div>
           </header>
+          {linkWaiting && !account.innlogget && (
+            <div className="bg-amber-100 dark:bg-amber-900 text-amber-950 dark:text-amber-50 text-sm md:text-base py-2.5 px-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center">
+              <span className="font-semibold">
+                Du har fått {PLAN_NAMES.pro}: så mange historier dere vil, med alt inkludert.
+              </span>
+              {account.vippsReady ? (
+                <a
+                  href="/api/vipps/start"
+                  onClick={() => logEvent('Vipps-innlogging klikket')}
+                  className="inline-flex items-center px-4 py-1.5 rounded-full bg-[#FF5B24] text-[#1A0B05] font-bold hover:bg-[#FF7445] whitespace-nowrap"
+                >
+                  Logg inn med Vipps
+                </a>
+              ) : (
+                <span>Logg inn for å ta den i bruk.</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -676,6 +864,55 @@ const App: React.FC = () => {
              <button onClick={() => setError(null)} className="ml-4 font-bold">✕</button>
            </div>
         )}
+        {notice && !error && (
+          <div role="status" className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-emerald-100 border border-emerald-400 text-emerald-800 px-4 py-3 rounded flex items-center shadow-lg">
+            <CheckCircle2 className="w-5 h-5 mr-2 shrink-0" />
+            <span>{notice}</span>
+            <button onClick={() => setNotice(null)} aria-label="Lukk" className="ml-4 font-bold">✕</button>
+          </div>
+        )}
+
+        {/* A guest has read the free pages: log in to read on. */}
+        {isReading && loginGate && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logg-inn-tittel"
+          >
+            <div className="w-full max-w-md rounded-3xl bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 shadow-2xl p-6 sm:p-8 text-center">
+              <h2 id="logg-inn-tittel" className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
+                Logg inn for å lese videre
+              </h2>
+              <p className="mt-3 text-base text-gray-600 dark:text-gray-300">
+                Eventyret venter her mens du logger inn. Én historie er gratis hver uke.
+              </p>
+              {account.vippsReady || !account.checked ? (
+                <button
+                  type="button"
+                  onClick={loginFromStory}
+                  disabled={leavingForLogin}
+                  className="mt-6 flex w-full justify-center items-center gap-2 rounded-full bg-[#FF5B24] text-[#1A0B05] text-lg font-bold py-4 px-6 shadow-lg hover:bg-[#FF7445] disabled:opacity-70 transition-colors"
+                >
+                  {leavingForLogin && <Loader2 className="w-5 h-5 animate-spin" />}
+                  Logg inn med Vipps
+                </button>
+              ) : (
+                <p className="mt-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-4 px-4 font-semibold text-gray-600 dark:text-gray-300">
+                  Innlogging er ikke tilgjengelig akkurat nå. Prøv igjen om litt.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setLoginGate(false)}
+                disabled={leavingForLogin}
+                className="mt-4 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline underline-offset-4"
+              >
+                Ikke nå
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Loading Overlay when starting story */}
         {view === 'setup' && isLoading && (
@@ -692,7 +929,6 @@ const App: React.FC = () => {
             <PlanScreen
               currentPlan={null}
               onChooseFree={handleChooseFree}
-              onRedeem={handleRedeem}
               onBack={() => undefined}
             />
           ) : (
@@ -702,7 +938,6 @@ const App: React.FC = () => {
           <PlanScreen
             currentPlan={account.plan}
             onChooseFree={handleChooseFree}
-            onRedeem={handleRedeem}
             onBack={handleRestart}
           />
         ) : view === 'setup' ? (
@@ -716,15 +951,8 @@ const App: React.FC = () => {
             isPro={isPro}
             freeLeft={account.freeLeft}
             onOpenPlan={openPlan}
-            login={
-              account.innlogget
-                ? 'in'
-                : !account.checked
-                  ? 'unknown'
-                  : account.vippsReady
-                    ? 'out'
-                    : 'unavailable'
-            }
+            loggedIn={account.innlogget}
+            canLogIn={account.vippsReady}
           />
         ) : view === 'profile' ? (
           <ProfileScreen

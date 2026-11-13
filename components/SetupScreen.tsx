@@ -4,7 +4,7 @@ import { SetupPreferences } from '../services/account';
 import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, PLAN_NAMES, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check, Loader2 } from 'lucide-react';
+import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
@@ -21,11 +21,11 @@ interface SetupScreenProps {
   // Free stories left this week (null when unknown or on Pro).
   freeLeft: number | null;
   onOpenPlan: () => void;
-  // Making a story needs a login. Without one the choices can still be
-  // made, and the start button is a Vipps login instead.
-  //  - "unknown": the server hasn't answered yet
-  //  - "unavailable": logged out, and Vipps login isn't set up
-  login: 'in' | 'out' | 'unknown' | 'unavailable';
+  // A story can be started without a login; reading past the first pages
+  // (GUEST_PAGES) needs one.
+  loggedIn: boolean;
+  // Vipps login is set up, so a guest can be offered it.
+  canLogIn: boolean;
 }
 
 // Hero and moral picked before logging in survive the trip to Vipps and back.
@@ -107,9 +107,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   isPro,
   freeLeft,
   onOpenPlan,
-  login,
+  loggedIn,
+  canLogIn,
 }) => {
-  const loggedIn = login === 'in';
   // Hero and moral are picked fresh for every story; the rest is remembered.
   const [picked, setPicked] = useState(loadPicked);
   useEffect(() => {
@@ -196,7 +196,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       if (loggedIn) {
         onOpenPlan();
       } else {
-        // Not logged in yet: point at the login button instead.
+        // Not logged in yet: point at the login link by the start button.
         formRef.current
           ?.querySelector(`[data-step="${STEPS.length}"]`)
           ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -211,7 +211,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loggedIn) return;
     if (!useCustomMoral) {
       onStart(options);
       return;
@@ -381,44 +380,38 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           </div>
 
           <div className="pt-6 scroll-mb-6" data-step={4}>
-            {loggedIn ? (
-              <Button
-                type="submit"
-                fullWidth
-                disabled={isLoading || outOfFreeStories}
-                className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
-              >
-                {isLoading ? (
-                  "Tryller frem historien og tegner bilder..."
-                ) : (
+            <Button
+              type="submit"
+              fullWidth
+              disabled={isLoading || outOfFreeStories}
+              className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
+            >
+              {isLoading ? (
+                "Tryller frem historien og tegner bilder..."
+              ) : (
+                <>
+                  <Sparkles className="h-6 w-6" />
+                  Start Eventyret
+                </>
+              )}
+            </Button>
+
+            {/* Guests can start right away; the login comes on page 2. */}
+            {!loggedIn && (
+              <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                Start uten å logge inn. For å lese hele eventyret logger du inn med Vipps underveis.
+                {canLogIn && (
                   <>
-                    <Sparkles className="h-6 w-6" />
-                    Start Eventyret
+                    {' '}
+                    <a
+                      href="/api/vipps/start"
+                      onClick={() => logEvent('Vipps-innlogging klikket')}
+                      className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
+                    >
+                      Logg inn nå
+                    </a>
                   </>
                 )}
-              </Button>
-            ) : login === 'out' ? (
-              // Not logged in: the way to start is to log in first.
-              <a
-                href="/api/vipps/start"
-                onClick={() => logEvent('Vipps-innlogging klikket')}
-                className="flex w-full justify-center items-center gap-3 rounded-full bg-[#FF5B24] text-[#1A0B05] text-lg sm:text-xl font-bold py-6 px-6 text-center shadow-xl hover:bg-[#FF7445] hover:shadow-2xl transform hover:-translate-y-1 transition-all"
-              >
-                Logg inn med Vipps for å lage eventyr
-              </a>
-            ) : login === 'unavailable' ? (
-              <p className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-5 px-4 text-center font-semibold text-gray-600 dark:text-gray-300">
-                Innlogging er ikke tilgjengelig akkurat nå. Prøv igjen om litt.
-              </p>
-            ) : (
-              <div className="flex justify-center py-6" role="status" aria-label="Laster">
-                <Loader2 className="w-7 h-7 animate-spin text-indigo-400" />
-              </div>
-            )}
-
-            {login === 'out' && (
-              <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                Én historie gratis hver uke.
               </p>
             )}
 

@@ -188,17 +188,80 @@ export async function chooseFreePlan(): Promise<boolean> {
   }
 }
 
-// Try a code for Pro: "ok", "wrong" (not a valid code) or "error".
-export async function redeemProCode(code: string): Promise<"ok" | "wrong" | "error"> {
+// A share link that gives Prinsen looks like /?prinsen=<key>. The key is
+// taken out of the address at once (before the page view is measured) and
+// kept in this browser until it has been used — which needs a login.
+const LINK_PARAM = "prinsen";
+const LINK_KEY = "magiboka_lenke";
+
+export function captureShareLink(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get(LINK_PARAM);
+    if (key === null) return;
+    params.delete(LINK_PARAM);
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname +
+        (params.toString() ? `?${params.toString()}` : "") +
+        window.location.hash
+    );
+    if (key.trim()) localStorage.setItem(LINK_KEY, key.trim().slice(0, 64));
+  } catch {
+    // Private mode — the link only works if the visitor is already logged in.
+  }
+}
+
+export function pendingShareLink(): string | null {
+  try {
+    return localStorage.getItem(LINK_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function forgetShareLink(): void {
+  try {
+    localStorage.removeItem(LINK_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// Use a share link: "ok" (the account is Prinsen now), "login" (the link is
+// good — log in to use it), "wrong" (not a valid link) or "error".
+export async function redeemShareLink(
+  key: string
+): Promise<"ok" | "login" | "wrong" | "error"> {
   try {
     const r = await fetch("/api/meg", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kode: code }),
+      body: JSON.stringify({ lenke: key }),
     });
     if (r.ok) return "ok";
+    if (r.status === 401) return "login";
     return r.status === 400 ? "wrong" : "error";
+  } catch {
+    return "error";
+  }
+}
+
+// Read on in a story that was started before logging in. On the free plan
+// it becomes this week's free story: "used" when that one is already gone.
+export async function claimGuestStory(): Promise<"ok" | "used" | "login" | "error"> {
+  try {
+    const r = await fetch("/api/meg", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gjestehistorie: true }),
+    });
+    if (r.ok) return "ok";
+    if (r.status === 429) return "used";
+    return r.status === 401 ? "login" : "error";
   } catch {
     return "error";
   }

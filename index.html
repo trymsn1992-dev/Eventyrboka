@@ -9,19 +9,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       // Toggle dark mode by adding/removing the `dark` class on <html>.
-      // App.tsx reads prefers-color-scheme and localStorage("magiboka_theme")
-      // on mount and keeps the class in sync with the chosen theme.
+      // Dark is the default; localStorage("magiboka_theme") holds the choice
+      // of someone who has switched. App.tsx reads the class on mount and
+      // keeps it in sync with the chosen theme.
       tailwind.config = { darkMode: 'class' };
-      // Pre-apply the saved theme before React renders so the page doesn't
+      // Pre-apply the theme before React renders so the page doesn't
       // flash the wrong background on cold load.
       (function () {
+        var stored = null;
         try {
-          var stored = localStorage.getItem('magiboka_theme');
-          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (stored === 'dark' || (stored === null && prefersDark)) {
-            document.documentElement.classList.add('dark');
-          }
+          stored = localStorage.getItem('magiboka_theme');
         } catch (e) { /* localStorage blocked in private mode — ignore */ }
+        if (stored !== 'light') document.documentElement.classList.add('dark');
       })();
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400&family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">

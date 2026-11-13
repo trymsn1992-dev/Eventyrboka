@@ -73,9 +73,9 @@ interface PageResponse {
 export const generateOpener = async (
   options: StoryOptions,
   seed: number
-): Promise<{ segment: StorySegment; premise: string }> => {
+): Promise<{ segment: StorySegment; premise: string; guest: boolean }> => {
   const data = await postJson<
-    PageResponse & { premise?: string; sideCharacters?: SideCharacter[] }
+    PageResponse & { premise?: string; sideCharacters?: SideCharacter[]; gjest?: boolean }
   >("/api/opener", { options, seed });
   return {
     segment: {
@@ -86,6 +86,8 @@ export const generateOpener = async (
       sideCharacters: data.sideCharacters ?? [],
     },
     premise: data.premise ?? "",
+    // The server saw no login: the story stops at GUEST_PAGES until there is one.
+    guest: data.gjest === true,
   };
 };
 

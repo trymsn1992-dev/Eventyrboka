@@ -2,7 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { startAnalytics } from './services/analytics';
+import { captureShareLink } from './services/account';
 
+// First, so the key of a share link never ends up in the page-view statistics.
+captureShareLink();
 startAnalytics();
 
 const rootElement = document.getElementById('root');

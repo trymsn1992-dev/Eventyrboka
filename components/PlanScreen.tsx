@@ -13,7 +13,6 @@ interface PlanScreenProps {
   // The plan the user is on; null the first time, right after login.
   currentPlan: Plan | null;
   onChooseFree: () => Promise<boolean>;
-  onRedeem: (code: string) => Promise<'ok' | 'wrong' | 'error'>;
   // Leave the page (only offered once a plan has been chosen).
   onBack: () => void;
 }
@@ -59,12 +58,11 @@ const CurrentLabel = () => (
 // The choice between Askeladden (pay per story, one free a week) and
 // Prinsen (weekly price, everything included). Shown right after the first
 // login, and later from Min side. Two equal, plainly presented options —
-// no badges, no pressure. Nothing can be bought yet: Prinsen is unlocked
-// with a code, and "tell me" counts how many would want it.
-export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFree, onRedeem, onBack }) => {
-  const [busy, setBusy] = useState<'free' | 'code' | null>(null);
-  const [code, setCode] = useState('');
-  const [codeMessage, setCodeMessage] = useState('');
+// no badges, no pressure. Nothing can be bought yet: Prinsen is given
+// through a share link (see api/_lib/access.ts), and "tell me" counts how
+// many would want it.
+export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFree, onBack }) => {
+  const [busy, setBusy] = useState<'free' | null>(null);
   const [freeFailed, setFreeFailed] = useState(false);
   const [interested, setInterested] = useState(false);
   const isPro = currentPlan === 'pro';
@@ -79,17 +77,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
     const ok = await onChooseFree();
     setBusy(null);
     if (!ok) setFreeFailed(true);
-  };
-
-  const redeem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim() || busy) return;
-    setBusy('code');
-    setCodeMessage('');
-    const result = await onRedeem(code);
-    setBusy(null);
-    if (result === 'wrong') setCodeMessage('Koden stemmer ikke. Sjekk at den er skrevet riktig.');
-    if (result === 'error') setCodeMessage('Noe gikk galt. Prøv igjen om litt.');
   };
 
   return (
@@ -147,60 +134,25 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({ currentPlan, onChooseFre
                 Lag en historie
               </button>
             ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {PLAN_NAMES.pro} kan ikke kjøpes ennå.{' '}
-                  {interested ? (
-                    <span role="status" className="font-semibold text-gray-900 dark:text-gray-100">
-                      Takk, vi sier fra når det er mulig.
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInterested(true);
-                        logEvent('Prinsen-interesse', { plan: currentPlan ?? 'ikke valgt' });
-                      }}
-                      className="font-semibold text-indigo-600 dark:text-indigo-300 underline underline-offset-4 hover:text-indigo-800 dark:hover:text-indigo-100"
-                    >
-                      Si fra når det er mulig
-                    </button>
-                  )}
-                </p>
-
-                <form onSubmit={redeem}>
-                  <label htmlFor="pro-kode" className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                    Har du en kode?
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="pro-kode"
-                      type="text"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      maxLength={64}
-                      autoComplete="off"
-                      autoCapitalize="characters"
-                      spellCheck={false}
-                      placeholder="Skriv koden her"
-                      className="min-w-0 flex-1 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100 placeholder:normal-case placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={busy !== null || !code.trim()}
-                      className="shrink-0 rounded-xl border border-indigo-600 text-indigo-700 dark:text-indigo-200 dark:border-indigo-400 font-semibold px-5 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                    >
-                      {busy === 'code' && <Loader2 className="w-4 h-4 animate-spin" />}
-                      Bruk kode
-                    </button>
-                  </div>
-                  {codeMessage && (
-                    <p role="alert" className="mt-2 text-sm font-semibold text-red-600 dark:text-red-400">
-                      {codeMessage}
-                    </p>
-                  )}
-                </form>
-              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {PLAN_NAMES.pro} kan ikke kjøpes ennå.{' '}
+                {interested ? (
+                  <span role="status" className="font-semibold text-gray-900 dark:text-gray-100">
+                    Takk, vi sier fra når det er mulig.
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInterested(true);
+                      logEvent('Prinsen-interesse', { plan: currentPlan ?? 'ikke valgt' });
+                    }}
+                    className="font-semibold text-indigo-600 dark:text-indigo-300 underline underline-offset-4 hover:text-indigo-800 dark:hover:text-indigo-100"
+                  >
+                    Si fra når det er mulig
+                  </button>
+                )}
+              </p>
             )}
           </section>
         </div>

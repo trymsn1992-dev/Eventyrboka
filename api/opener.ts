@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isCustomMetaphor, isPro, requireLogin, takeFreeStory } from "./_lib/access.js";
+import { isCustomMetaphor, isPro, takeFreeStory } from "./_lib/access.js";
+import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
@@ -166,8 +167,9 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const session = requireLogin(req, res);
-  if (!session) return;
+  // No login needed to start a story: the first pages are free to read
+  // (GUEST_PAGES). Guests get the standard story, like the free plan.
+  const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
@@ -178,7 +180,7 @@ export default async function handler(
   }
 
   // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "story");
+  const budget = await spend(req, "story", !session);
   if (!budget.ok) {
     return res.status(429).json({ error: budget.message });
   }
@@ -190,14 +192,16 @@ export default async function handler(
       return res.status(400).json({ error: "Ugyldige historievalg." });
     }
 
-    // Free plan: no own moral, standard drawing style, and a weekly quota.
-    const pro = await isPro(session.sub);
+    // Free plan and guests: no own moral and the standard drawing style.
+    // The free plan also has a weekly quota; a guest's story is counted
+    // against it when they log in to read on (see /api/meg).
+    const pro = session ? await isPro(session.sub) : false;
     if (!pro) {
       if (isCustomMetaphor(options.metaphor)) {
         return res.status(403).json({ error: "Egen lærepenge er med i Prinsen." });
       }
       delete options.artStyle;
-      if (!(await takeFreeStory(session.sub))) {
+      if (session && !(await takeFreeStory(session.sub))) {
         return res.status(429).json({
           error: "Du har brukt ukas gratis historie. En ny kommer på mandag.",
           grense: "uke",
@@ -267,6 +271,8 @@ export default async function handler(
       illustrationPrompt: parsed.illustrationPrompt,
       premise: typeof parsed.premise === "string" ? parsed.premise : "",
       sideCharacters: parseSideCharacters(parsed.sideCharacters).slice(0, 2),
+      // Started without a login: the client asks for one after GUEST_PAGES.
+      gjest: !session,
     });
   } catch (error) {
     console.error("Opener error:", error);
