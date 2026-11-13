@@ -399,8 +399,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
-      <div className="max-w-4xl w-full space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-2xl border-2 sm:border-4 border-indigo-100 dark:border-indigo-900 mb-8 sm:mb-12">
+    // On a phone the card fills the screen edge to edge: a frame around it
+    // only takes room from the pictures. From tablet width it is a framed card.
+    // The negative margins cancel the padding of <main> in App.tsx (p-4).
+    <div className="min-h-screen -mx-4 -mt-4 w-[calc(100%+2rem)] sm:mx-0 sm:mt-0 sm:w-full flex flex-col items-center pb-8 sm:pt-4 sm:pb-12 sm:px-6 lg:px-8">
+      <div className="max-w-4xl w-full space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 px-4 py-5 sm:p-8 sm:rounded-3xl sm:shadow-2xl sm:border-4 border-indigo-100 dark:border-indigo-900 mb-8 sm:mb-12">
         <div className="text-center">
           <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">Lag din fortelling!</h2>
         </div>

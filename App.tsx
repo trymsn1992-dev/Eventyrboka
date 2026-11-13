@@ -932,37 +932,41 @@ const App: React.FC = () => {
             href={FEEDBACK_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-1.5 sm:py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
           >
             <MessageSquare className="w-4 h-4 shrink-0" />
-            <span className="text-center">
-              Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
+            {/* One line on a phone: the short version of the sentence. */}
+            <span className="text-center whitespace-nowrap">
+              <span className="sm:hidden">Hjelp oss – </span>
+              <span className="hidden sm:inline">Hjelp oss å gjøre Magiboka bedre — </span>
+              <span className="underline font-semibold">gi tilbakemelding</span>
             </span>
           </a>
-          <header className="bg-white dark:bg-gray-900 shadow-sm py-4 px-6">
-            <div className="max-w-7xl mx-auto flex justify-between items-center gap-3">
+          <header className="bg-white dark:bg-gray-900 shadow-sm py-2.5 px-4 sm:py-4 sm:px-6">
+            <div className="max-w-7xl mx-auto flex justify-between items-center gap-2 sm:gap-3">
               <button
                 onClick={handleRestart}
-                className="flex items-center cursor-pointer bg-white dark:bg-[#000c31] rounded-xl px-2 py-1 dark:p-0 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-indigo-900"
+                className="flex shrink-0 items-center cursor-pointer bg-white dark:bg-[#000c31] rounded-xl px-2 py-1 dark:p-0 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-indigo-900"
                 aria-label="Magiboka — til forsiden"
               >
                 {/* The dark logo carries its own night-blue background and padding. */}
-                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-8 md:h-10 w-auto dark:hidden" />
-                <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-10 md:h-12 w-auto" />
+                <img src="/magiboka-logo.webp" alt="Magiboka" className="h-7 sm:h-8 md:h-10 w-auto dark:hidden" />
+                <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-9 sm:h-10 md:h-12 w-auto" />
               </button>
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1 sm:gap-3">
                 {account.innlogget && account.plan && (
                 <button
                   onClick={openProfile}
                   aria-current={view === 'profile' ? 'page' : undefined}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
                     view === 'profile'
                       ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-100'
                       : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <Library className="w-4 h-4" />
-                  <span>Min side</span>
+                  <Library className="w-4 h-4 shrink-0" />
+                  {/* On the very narrowest phones the icon and the count say it. */}
+                  <span className="max-[339px]:sr-only">Min side</span>
                   {savedStories.length > 0 && (
                     <span className="ml-0.5 min-w-[1.25rem] px-1 rounded-full bg-indigo-600 text-white text-xs leading-5 text-center">
                       {savedStories.length}
@@ -978,11 +982,11 @@ const App: React.FC = () => {
                   {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
                 {account.innlogget ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <div className="flex items-center gap-1 sm:gap-2 text-sm text-gray-700 dark:text-gray-200">
                     <span className="hidden sm:inline font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
                     <button
                       onClick={handleLogout}
-                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      className="inline-flex items-center justify-center gap-1 w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-1 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                       aria-label="Logg ut"
                     >
                       <LogOut className="w-4 h-4" />
