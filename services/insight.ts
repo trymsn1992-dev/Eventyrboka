@@ -72,6 +72,7 @@ function send(fields: Fields): void {
 const SOURCE_KEY = "magiboka_kilde";
 const SOURCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const VISIT_KEY = "magiboka_besok";
+const VISIT_GAP_MS = 30 * 60 * 1000;
 const KNOWN_SITES = [
   "facebook", "instagram", "google", "bing", "tiktok", "snapchat", "linkedin",
   "youtube", "pinterest", "reddit", "duckduckgo", "messenger",
@@ -123,14 +124,14 @@ export function captureSource(): void {
       source = { kilde: "direkte" };
     }
   }
-  // One visit per browser session. Coming back from Vipps (sometimes in a
-  // new tab) is the same visit.
+  // One visit per half hour of use, across tabs: a page that is loaded twice
+  // (a second tab, a preloaded copy, the way back from Vipps) is the same visit.
   try {
-    if (/vipps/i.test(document.referrer)) return;
-    if (sessionStorage.getItem(VISIT_KEY)) return;
-    sessionStorage.setItem(VISIT_KEY, "1");
+    const last = Number(localStorage.getItem(VISIT_KEY)) || 0;
+    localStorage.setItem(VISIT_KEY, String(Date.now()));
+    if (Date.now() - last < VISIT_GAP_MS) return;
   } catch {
-    // Counted anyway.
+    // Private mode: counted anyway.
   }
   insightEvent("Besøk", { enhet: device() });
 }
