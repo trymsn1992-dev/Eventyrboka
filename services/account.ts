@@ -21,9 +21,44 @@ export interface AccountStatus {
   valg: SetupPreferences;
   // Gratis or Pro; null until the user has chosen (the plan page is shown).
   plan: Plan | null;
-  // Free stories left this week (a «Din historie» needs them all). null on
+  // Free stories left this week (a «Magihistorie» needs them all). null on
   // Pro (no limit) or when unknown.
   freeLeft: number | null;
+  // Single stories / Prinsen can be bought with Vipps.
+  canBuy: boolean;
+  canSubscribe: boolean;
+  // Bought stories not yet made.
+  credits: StoryCredits;
+  // The Prinsen subscription paid with Vipps, if there is one.
+  subscription: Subscription | null;
+}
+
+export interface StoryCredits {
+  plain: number;
+  personal: number;
+}
+
+export interface Subscription {
+  // stoppet: cancelled, Prinsen lasts until paidUntil.
+  status: "aktiv" | "stoppet";
+  // YYYY-MM-DD: the next charge (aktiv) or the last day (stoppet).
+  paidUntil: string;
+}
+
+const count = (v: unknown): number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+
+function cleanCredits(raw: unknown): StoryCredits {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return { plain: count(r.plain ?? r.historie), personal: count(r.personal ?? r.dinHistorie) };
+}
+
+function cleanSubscription(raw: unknown): Subscription | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const paidUntil = r.paidUntil ?? r.betaltTil;
+  if ((r.status !== "aktiv" && r.status !== "stoppet") || typeof paidUntil !== "string") return null;
+  return { status: r.status, paidUntil };
 }
 
 // The setup choices we remember between visits.
@@ -93,6 +128,10 @@ function cachedStatus(): AccountStatus | null {
       valg: cleanPreferences(raw.valg),
       plan: cleanPlan(raw.plan),
       freeLeft: typeof raw.freeLeft === "number" ? raw.freeLeft : null,
+      canBuy: Boolean(raw.canBuy),
+      canSubscribe: Boolean(raw.canSubscribe),
+      credits: cleanCredits(raw.credits),
+      subscription: cleanSubscription(raw.subscription),
     };
   } catch {
     return null;
@@ -123,6 +162,10 @@ export const emptyStatus = (): AccountStatus => ({
   valg: {},
   plan: null,
   freeLeft: null,
+  canBuy: false,
+  canSubscribe: false,
+  credits: { plain: 0, personal: 0 },
+  subscription: null,
 });
 
 // /api/meg is slow (cold start) or down when env vars are missing, so we
@@ -149,6 +192,10 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       valg?: unknown;
       plan?: unknown;
       gratisIgjen?: unknown;
+      kjopKlar?: boolean;
+      abonnementKlar?: boolean;
+      tilGode?: unknown;
+      abonnement?: unknown;
     };
     const status: AccountStatus = {
       checked: true,
@@ -159,6 +206,10 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       valg: cleanPreferences(data.valg),
       plan: cleanPlan(data.plan),
       freeLeft: typeof data.gratisIgjen === "number" ? data.gratisIgjen : null,
+      canBuy: Boolean(data.kjopKlar),
+      canSubscribe: Boolean(data.abonnementKlar),
+      credits: cleanCredits(data.tilGode),
+      subscription: cleanSubscription(data.abonnement),
     };
     cacheStatus(status);
     return status;
@@ -252,7 +303,8 @@ export async function redeemShareLink(
 
 // Read on in a story that was started before logging in. On the free plan
 // it becomes this week's free story: "used" when that one is already gone.
-export async function claimGuestStory(): Promise<"ok" | "used" | "login" | "error"> {
+// "bought": it was paid for with a bought story instead.
+export async function claimGuestStory(): Promise<"ok" | "bought" | "used" | "login" | "error"> {
   try {
     const r = await fetch("/api/meg", {
       method: "POST",
@@ -260,12 +312,184 @@ export async function claimGuestStory(): Promise<"ok" | "used" | "login" | "erro
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gjestehistorie: true }),
     });
+    if (r.status === 200) return "bought";
     if (r.ok) return "ok";
     if (r.status === 429) return "used";
     return r.status === 401 ? "login" : "error";
   } catch {
     return "error";
   }
+}
+
+// ---- Payment with Vipps (api/betaling.ts) ----------------------------------
+
+async function postPayment<T>(body: unknown): Promise<T> {
+  const r = await fetch("/api/betaling", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await r.json().catch(() => ({}))) as T & { error?: string };
+  if (!r.ok) throw new Error(data.error || "Noe gikk galt. Prøv igjen om litt.");
+  return data;
+}
+
+// The story to make once it is paid for. Kept in this browser while the
+// buyer is at Vipps.
+export interface StoryOrder {
+  options: StoryOptions;
+  personal: boolean;
+}
+const ORDER_KEY = "magiboka_bestilling";
+const ORDER_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+// Go to Vipps to pay for one story. Only returns if that failed (throws).
+export async function buyStory(order: StoryOrder): Promise<void> {
+  const { url } = await postPayment<{ url: string }>({
+    kjop: order.personal ? "din-historie" : "historie",
+  });
+  try {
+    localStorage.setItem(ORDER_KEY, JSON.stringify({ ...order, savedAt: Date.now() }));
+  } catch {
+    // Private mode — the story is still paid for, it just has to be picked again.
+  }
+  window.location.href = url;
+}
+
+// The story that was being bought, once.
+export function takeStoryOrder(): StoryOrder | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ORDER_KEY) || "null");
+    localStorage.removeItem(ORDER_KEY);
+    if (
+      raw &&
+      typeof raw === "object" &&
+      raw.options &&
+      typeof raw.options === "object" &&
+      typeof raw.savedAt === "number" &&
+      Date.now() - raw.savedAt < ORDER_MAX_AGE_MS
+    ) {
+      return { options: raw.options as StoryOptions, personal: raw.personal === true };
+    }
+  } catch {
+    // Nothing usable stored.
+  }
+  return null;
+}
+
+// Go to Vipps to approve the Prinsen agreement. Throws if that failed.
+export async function subscribe(): Promise<void> {
+  const { url } = await postPayment<{ url: string }>({ abonner: true });
+  window.location.href = url;
+}
+
+// Cancel Prinsen. Resolves to the last day it lasts (YYYY-MM-DD).
+export async function cancelSubscription(): Promise<string> {
+  return (await postPayment<{ betaltTil: string }>({ stopp: true })).betaltTil;
+}
+
+// Vipps sends the buyer back to /?betalt=<reference> (one story) or
+// /?avtale=<reference> (Prinsen). The reference is taken out of the address
+// at once, before the page view is measured.
+export interface PaymentReturn {
+  kind: "kjop" | "avtale";
+  reference: string;
+}
+let paymentReturn: PaymentReturn | null = null;
+
+export function capturePaymentReturn(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const bought = params.get("betalt");
+    const agreed = params.get("avtale");
+    if (bought === null && agreed === null) return;
+    paymentReturn = bought
+      ? { kind: "kjop", reference: bought }
+      : agreed
+        ? { kind: "avtale", reference: agreed }
+        : null;
+    params.delete("betalt");
+    params.delete("avtale");
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname +
+        (params.toString() ? `?${params.toString()}` : "") +
+        window.location.hash
+    );
+  } catch {
+    // ignore
+  }
+}
+
+const WAITING_KEY = "magiboka_betaling_venter";
+
+// The payment to ask about on this load: the one in the address, or one
+// that could not be settled last time.
+export function takePaymentReturn(): PaymentReturn | null {
+  let r = paymentReturn;
+  paymentReturn = null;
+  try {
+    const waiting = JSON.parse(localStorage.getItem(WAITING_KEY) || "null");
+    localStorage.removeItem(WAITING_KEY);
+    if (
+      !r &&
+      waiting &&
+      (waiting.kind === "kjop" || waiting.kind === "avtale") &&
+      typeof waiting.reference === "string" &&
+      typeof waiting.savedAt === "number" &&
+      Date.now() - waiting.savedAt < 24 * 60 * 60 * 1000
+    ) {
+      r = { kind: waiting.kind, reference: waiting.reference };
+    }
+  } catch {
+    // ignore
+  }
+  return r;
+}
+
+// Ask again on the next visit.
+export function keepPaymentReturn(back: PaymentReturn): void {
+  try {
+    localStorage.setItem(WAITING_KEY, JSON.stringify({ ...back, savedAt: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
+
+export interface PaymentResult {
+  // paid: the money is taken / the agreement runs. cancelled: nothing was
+  // paid. pending: Vipps hasn't said yet. error: could not be checked.
+  status: "paid" | "cancelled" | "pending" | "error";
+  // It belongs to the account logged in here.
+  mine: boolean;
+  personal: boolean;
+}
+
+// Ask the server how the payment went. Vipps can take a few seconds to
+// settle, so "not yet" is asked again for a while.
+export async function confirmPayment(back: PaymentReturn): Promise<PaymentResult> {
+  const result: PaymentResult = { status: "pending", mine: false, personal: false };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    try {
+      const data = await postPayment<{ status?: string; type?: string; min?: boolean }>({
+        bekreft: back.reference,
+        slag: back.kind,
+      });
+      result.mine = Boolean(data.min);
+      result.personal = data.type === "din-historie";
+      if (data.status === "betalt" || data.status === "aktiv") return { ...result, status: "paid" };
+      if (data.status === "avbrutt" || data.status === "ukjent") {
+        return { ...result, status: "cancelled" };
+      }
+      result.status = data.status === "venter" ? "pending" : "error";
+    } catch {
+      result.status = "error";
+    }
+  }
+  return result;
 }
 
 export async function logout(): Promise<void> {

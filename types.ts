@@ -92,7 +92,7 @@ export interface SavedStory {
   // Started without a login and not yet counted as anyone's story: only
   // the first GUEST_PAGES pages can be read until it is.
   guestStarted?: boolean;
-  // A «Din historie» made on the free plan carries the server's ticket for
+  // A «Magihistorie» made on the free plan carries the server's ticket for
   // it, so read-aloud and its drawing style keep working when it is re-read.
   personalTicket?: string;
 }
@@ -187,15 +187,20 @@ export function cleanCustomMetaphor(input: unknown): string | null {
 // user they are Askeladden and Prinsen.
 //  - Askeladden: free stories each week, then pay per story.
 //  - Prinsen: a weekly price, no commitment, everything included.
-// There are two kinds of story. To the user they are «Historie» and «Din
-// historie»; in the code the second one is "personal": your own moral, a
+// There are two kinds of story. To the user they are «Vanlig historie» and
+// «Magihistorie»; in the code the second one is "personal": your own moral, a
 // chosen drawing style and read-aloud. Each week Askeladden gets two of the
 // first kind or one of the second for free. Payment is not built yet — the
 // prices are shown, and Prinsen is given through a share link.
 export type Plan = "gratis" | "pro";
 export const PLAN_NAMES: Record<Plan, string> = { gratis: "Askeladden", pro: "Prinsen" };
-export const STORY_NAME = "Historie";
-export const PERSONAL_STORY_NAME = "Din historie";
+export const STORY_NAME = "Vanlig historie";
+export const PERSONAL_STORY_NAME = "Magihistorie";
+// The names inside a sentence: "2 vanlige historier", "1 magihistorie".
+export const storyCount = (n: number, personal = false): string =>
+  personal
+    ? `${n} ${n === 1 ? "magihistorie" : "magihistorier"}`
+    : `${n} ${n === 1 ? "vanlig historie" : "vanlige historier"}`;
 // The week's free stories, counted in plain stories. A personal one uses all of them.
 export const FREE_STORIES_PER_WEEK = 2;
 export const PRICE_SIMPLE_STORY_KR = 10;

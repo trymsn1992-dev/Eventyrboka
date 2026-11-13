@@ -139,3 +139,67 @@ revoke all on function public.bruk_ukeskvote(text, integer) from public, anon, a
 revoke all on function public.les_ukeskvote(text) from public, anon, authenticated;
 grant execute on function public.bruk_ukeskvote(text, integer) to service_role;
 grant execute on function public.les_ukeskvote(text) to service_role;
+
+-- Betaling med Vipps (se api/_lib/betaling.ts).
+--
+-- Kjøp av enkelthistorier. Én rad per kjøp; referanse er den samme som hos
+-- Vipps. Et betalt kjøp som ikke er brukt, er en historie brukeren har til gode.
+--   status: opprettet (sendt til Vipps) | betalt | avbrutt
+--   type:   historie | din-historie
+create table if not exists public.kjop (
+  referanse  text primary key,
+  vipps_sub  text not null references public.brukere(vipps_sub) on delete cascade,
+  type       text not null,
+  belop      integer not null,            -- i øre
+  status     text not null default 'opprettet',
+  brukt      timestamptz,
+  betalt     timestamptz,
+  opprettet  timestamptz not null default now()
+);
+create index if not exists kjop_bruker_idx on public.kjop (vipps_sub, status);
+alter table public.kjop enable row level security;
+
+-- Prinsen-abonnement. Én rad per avtale hos Vipps.
+--   status:    venter (ikke godkjent ennå) | aktiv | stoppet (sagt opp, varer
+--              ut betalt tid) | avsluttet
+--   betalt_til: dagen neste uke begynner, og neste trekk forfaller
+--   trekk_id / trekk_forfall: trekket som er bestilt hos Vipps, om noe
+create table if not exists public.avtaler (
+  avtale_id     text primary key,
+  referanse     text not null unique,     -- vår egen, står i adressen tilbake fra Vipps
+  vipps_sub     text not null references public.brukere(vipps_sub) on delete cascade,
+  status        text not null default 'venter',
+  betalt_til    date,
+  trekk_id      text,
+  trekk_forfall date,
+  opprettet     timestamptz not null default now(),
+  oppdatert     timestamptz not null default now()
+);
+create index if not exists avtaler_bruker_idx on public.avtaler (vipps_sub, opprettet desc);
+alter table public.avtaler enable row level security;
+
+-- Bruker én kjøpt historie av typen, den eldste først. Svarer med
+-- referansen, eller NULL når brukeren ikke har noen til gode.
+create or replace function public.bruk_kjop(p_sub text, p_type text)
+returns text
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_ref text;
+begin
+  update kjop set brukt = now()
+   where referanse = (
+     select referanse from kjop
+      where vipps_sub = p_sub and type = p_type
+        and status = 'betalt' and brukt is null
+      order by opprettet
+      limit 1
+      for update skip locked)
+  returning referanse into v_ref;
+  return v_ref;
+end;
+$$;
+
+revoke all on function public.bruk_kjop(text, text) from public, anon, authenticated;
+grant execute on function public.bruk_kjop(text, text) to service_role;

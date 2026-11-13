@@ -1,6 +1,6 @@
 import React from 'react';
 import { SetupPreferences } from '../services/account';
-import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, SavedStory, normalizeAgeGroup } from '../types';
+import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PERSONAL_STORY_NAME, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { ProBadge, SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
 import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
@@ -20,7 +20,7 @@ interface ProfileScreenProps {
   onLoadStory: (story: SavedStory) => void;
   onDeleteStory: (e: React.MouseEvent, id: string) => void;
   onBack: () => void;
-  // On Pro every story uses the chosen drawing style; otherwise only «Din historie» does.
+  // On Pro every story uses the chosen drawing style; otherwise only «Magihistorie» does.
   isPro: boolean;
   onOpenPlan: () => void;
 }
@@ -190,7 +190,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </div>
             {!isPro && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Brukes når dere lager {PERSONAL_STORY_NAME}. {STORY_NAME} tegnes alltid i akvarell.
+                Brukes når dere lager en magihistorie. En vanlig historie tegnes alltid i akvarell.
               </p>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">

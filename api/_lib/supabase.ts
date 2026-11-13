@@ -265,10 +265,10 @@ export async function setPlan(
   }
 }
 
-// Calls one of the weekly-quota functions in supabase/schema.sql. Returns
-// null when it can't be reached, so the caller decides what that means.
+// Calls one of the functions in supabase/schema.sql. Returns null when it
+// can't be reached, so the caller decides what that means.
 export async function quotaRpc<T>(
-  fn: "bruk_ukeskvote" | "les_ukeskvote",
+  fn: "bruk_ukeskvote" | "les_ukeskvote" | "bruk_kjop",
   args: Record<string, unknown>
 ): Promise<T | null> {
   if (!supabaseReady()) return null;
@@ -280,7 +280,7 @@ export async function quotaRpc<T>(
     });
     if (!r.ok) {
       console.error(
-        `Ukeskvote (${fn}) svarte HTTP ${r.status}. Er supabase/schema.sql kjørt? ${(
+        `Supabase-funksjonen ${fn} svarte HTTP ${r.status}. Er supabase/schema.sql kjørt? ${(
           await r.text()
         ).slice(0, 200)}`
       );
@@ -288,7 +288,37 @@ export async function quotaRpc<T>(
     }
     return (await r.json()) as T;
   } catch (err) {
-    console.error(`Ukeskvote (${fn}) feilet:`, (err as Error).message);
+    console.error(`Supabase-funksjonen ${fn} feilet:`, (err as Error).message);
+    return null;
+  }
+}
+
+// Plain table access for the payment tables (kjop, avtaler). `query` is a
+// PostgREST filter such as "referanse=eq.abc". Rows on success, null on failure.
+export async function tableRequest<T>(
+  method: "GET" | "POST" | "PATCH",
+  table: "kjop" | "avtaler",
+  query: string,
+  body?: Record<string, unknown>
+): Promise<T[] | null> {
+  if (!supabaseReady()) return null;
+  try {
+    const r = await fetch(`${supabaseUrl()}/rest/v1/${table}${query ? `?${query}` : ""}`, {
+      method,
+      headers: { ...headers(), Prefer: "return=representation" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!r.ok) {
+      console.error(
+        `Supabase ${method} ${table} svarte HTTP ${r.status}. Er supabase/schema.sql kjørt? ${(
+          await r.text()
+        ).slice(0, 200)}`
+      );
+      return null;
+    }
+    return (await r.json()) as T[];
+  } catch (err) {
+    console.error(`Supabase ${method} ${table} feilet:`, (err as Error).message);
     return null;
   }
 }

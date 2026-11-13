@@ -289,7 +289,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (isCustomMetaphor(options.metaphor) && !(await mayPersonalize(session, body.billett))) {
-      return res.status(403).json({ error: "Egen lærepenge er med i Din historie og Prinsen." });
+      return res.status(403).json({ error: "Egen lærepenge er med i magihistorier og Prinsen." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";

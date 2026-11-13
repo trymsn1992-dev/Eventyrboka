@@ -1,6 +1,7 @@
 // GET: tells the client whether the user is logged in, whether login is wired
 // up at all, and which setup choices the user has saved. The response shape
 // drives the login/logout button in the header.
+// It also says what can be bought with Vipps and what the user has paid for.
 // POST: saves the setup choices (age group, reading length and drawing style)
 // to the account, picks the free plan, redeems a share link for Pro, or
 // counts a story that was started before logging in.
@@ -19,6 +20,14 @@ import {
 } from "./_lib/supabase.js";
 import { freeStoriesLeft, isPro, takeFreeStory, validProLink } from "./_lib/access.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
+import {
+  boughtStories,
+  purchasesReady,
+  subscriptionOf,
+  subscriptionReady,
+  useBoughtStory,
+  type Subscription,
+} from "./_lib/betaling.js";
 import { AGE_GROUPS, ART_STYLES, DURATIONS } from "../types.js";
 
 const DAY_SEC = 24 * 60 * 60;
@@ -100,11 +109,18 @@ export default async function handler(
     }
 
     // A story started before logging in is read on: on the free plan it
-    // is one of this week's free stories. 429 when they are used up.
+    // is one of this week's free stories, or else a bought one. 429 when
+    // there is neither.
     if (body.gjestehistorie !== undefined) {
-      const ok = (await isPro(session.sub)) || (await takeFreeStory(session.sub));
-      res.statusCode = ok ? 204 : 429;
-      res.end();
+      if ((await isPro(session.sub)) || (await takeFreeStory(session.sub))) {
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
+      const bought = await useBoughtStory(session.sub, "historie");
+      res.statusCode = bought ? 200 : 429;
+      if (bought) res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.end(bought ? JSON.stringify({ kjopt: true }) : undefined);
       return;
     }
 
@@ -134,6 +150,9 @@ export default async function handler(
   let plan: "gratis" | "pro" | null = null;
   // Free stories left this week (a personal one needs them all); null on Pro.
   let gratisIgjen: number | null = null;
+  // Bought stories not yet made, and the Prinsen subscription if there is one.
+  let tilGode = { historie: 0, dinHistorie: 0 };
+  let abonnement: Subscription | null = null;
   if (session) {
     // Renew the login at most once a day, so it never runs out for someone
     // who keeps coming back.
@@ -141,10 +160,14 @@ export default async function handler(
     if (age > DAY_SEC) {
       res.setHeader("Set-Cookie", sessionCookie(session.sub, session.fornavn || ""));
     }
-    const [account, left] = await Promise.all([
+    const [account, left, bought, subscription] = await Promise.all([
       getAccount(session.sub),
       freeStoriesLeft(session.sub),
+      boughtStories(session.sub),
+      subscriptionOf(session.sub),
     ]);
+    tilGode = bought;
+    abonnement = subscription;
     valg = cleanPreferences(account.innstillinger);
     plan = account.plan;
     gratisIgjen = plan === "pro" ? null : left;
@@ -159,6 +182,11 @@ export default async function handler(
       valg,
       plan,
       gratisIgjen,
+      // Whether single stories and Prinsen can be bought with Vipps yet.
+      kjopKlar: purchasesReady(),
+      abonnementKlar: subscriptionReady(),
+      tilGode,
+      abonnement: abonnement && { status: abonnement.status, betaltTil: abonnement.paidUntil },
     })
   );
 }

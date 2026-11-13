@@ -30,7 +30,7 @@ export default async function handler(
   if (!(await mayPersonalize(session, ticket))) {
     return res
       .status(403)
-      .json({ error: "Opplesning er med i Din historie og Prinsen." });
+      .json({ error: "Opplesning er med i magihistorier og Prinsen." });
   }
 
   const limit = rateLimit(getClientIp(req));

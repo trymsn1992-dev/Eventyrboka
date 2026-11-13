@@ -1,6 +1,6 @@
 import { Choice, SideCharacter, StoryOptions, StorySegment } from "../types";
 
-// The ticket of the story on screen, when it is a «Din historie» made on the
+// The ticket of the story on screen, when it is a «Magihistorie» made on the
 // free plan (see api/_lib/access.ts). Sent along with that story's requests.
 let storyTicket: string | null = null;
 export const setStoryTicket = (ticket: string | null): void => {
@@ -85,15 +85,23 @@ interface PageResponse {
 export const generateOpener = async (
   options: StoryOptions,
   seed: number,
-  // Ask for a «Din historie» (own moral, chosen drawing style, read-aloud).
+  // Ask for a «Magihistorie» (own moral, chosen drawing style, read-aloud).
   personal: boolean
-): Promise<{ segment: StorySegment; premise: string; guest: boolean; ticket: string | null }> => {
+): Promise<{
+  segment: StorySegment;
+  premise: string;
+  guest: boolean;
+  ticket: string | null;
+  // Paid for with a bought story, not one of the week's free ones.
+  bought: boolean;
+}> => {
   const data = await postJson<
     PageResponse & {
       premise?: string;
       sideCharacters?: SideCharacter[];
       gjest?: boolean;
       billett?: string;
+      kjopt?: boolean;
     }
   >("/api/opener", { options, seed, personlig: personal });
   return {
@@ -108,6 +116,7 @@ export const generateOpener = async (
     // The server saw no login: the story stops at GUEST_PAGES until there is one.
     guest: data.gjest === true,
     ticket: typeof data.billett === "string" ? data.billett : null,
+    bought: data.kjopt === true,
   };
 };
 

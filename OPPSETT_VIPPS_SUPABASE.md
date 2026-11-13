@@ -92,6 +92,28 @@ Skriptet setter også automatisk **VIPPS_MILJO = test** og lager en **SESSION_SE
 
 ---
 
+## 4. Betaling med Vipps (enkelthistorier og Prinsen)
+
+Koden ligger klar, men er slått av til du har gjort dette:
+
+1. **Bestill produktene** i [portal.vippsmobilepay.com](https://portal.vippsmobilepay.com) for salgsstedet Magiboka:
+   - **Integrert betaling** — kjøp av Vanlig historie (10 kr) og Magihistorie (20 kr).
+   - **Faste betalinger** — Prinsen (20 kr per uke).
+   De kan slås på hver for seg, etter hvert som Vipps godkjenner dem.
+2. **Kjør skjemaet på nytt:** kopier hele [`supabase/schema.sql`](supabase/schema.sql) inn i Supabase → SQL Editor og trykk **Run**. Det lager tabellene `kjop` og `avtaler`.
+3. **Dobbeltklikk `Slå på Vipps-betaling.command`.** Den legger inn `VIPPS_SUBSCRIPTION_KEY`, `VIPPS_MSN`, `VIPPS_BETALING`, `VIPPS_ABONNEMENT` og `CRON_SECRET`, og publiserer på nytt.
+4. **Prøv selv:** bruk opp ukas gratis historier og kjøp en. Tegn Prinsen, og si opp igjen fra plansiden.
+
+Slik virker det:
+
+- **Enkeltkjøp:** kjøperen sendes til Vipps og tilbake til `/?betalt=…`. Da trekkes beløpet, og historien lages. En betalt historie som ikke er laget, står som «til gode» på kontoen.
+- **Prinsen:** første uke trekkes når avtalen godkjennes. Deretter bestiller den daglige jobben (`/api/trekk`, kl. 04:00 UTC, se `vercel.json`) neste ukes trekk tre dager før. Feiler trekket etter tre dagers forsøk, avsluttes abonnementet.
+- **Oppsigelse:** på plansiden eller i Vipps-appen. Prinsen varer ut den betalte uka.
+- **Se pengene:** `select * from kjop order by opprettet desc;` og `select * from avtaler order by opprettet desc;` i Supabase.
+- **Slå av igjen:** sett `VIPPS_BETALING` eller `VIPPS_ABONNEMENT` til `0` i Vercel og publiser på nytt. Avtaler som alt løper, må da stoppes i Vipps-portalen.
+
+---
+
 ## Feilsøking
 
 | Symptom | Mest sannsynlig årsak |
@@ -100,6 +122,8 @@ Skriptet setter også automatisk **VIPPS_MILJO = test** og lager en **SESSION_SE
 | `?vipps=feil` i adressen etter innlogging | Sjekk Vercel-loggene: `vercel logs --prod`. Oftest feil tilbakeadresse (steg 2c) eller feil nøkler. |
 | «Hei, [tomt]» etter innlogging | Vipps userinfo-kallet feilet. Sjekk at scope `openid name` er godkjent for salgsenheten. |
 | Historier lagres ikke for innloggede brukere | `SUPABASE_URL` eller `SUPABASE_SERVICE_KEY` mangler, eller skjemaet (steg 1b) er ikke kjørt. |
+| Kjøpsknappen vises ikke | `VIPPS_BETALING`/`VIPPS_ABONNEMENT` er ikke `1`, eller `VIPPS_SUBSCRIPTION_KEY`/`VIPPS_MSN` mangler. `/api/meg` viser `kjopKlar` og `abonnementKlar`. |
+| «Fikk ikke kontakt med Vipps» ved kjøp | Produktet er ikke godkjent for salgsstedet, feil nøkkel, eller `supabase/schema.sql` er ikke kjørt på nytt. Se `vercel logs --prod`. |
 | Alle logges ut når jeg oppdaterer | `SESSION_SECRET` ble endret. Den må ligge fast — ellers er alle cookies ugyldige. |
 
 Hvis Vipps krever PNG og ikke SVG: åpne `public/magiboka-logo-firkant.svg` i Preview, velg **File → Export…**, format **PNG**, oppløsning 1024×1024. Du kan også be meg om en ferdig PNG.

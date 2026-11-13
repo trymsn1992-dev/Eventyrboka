@@ -49,7 +49,7 @@ export function validProLink(input: unknown): boolean {
 export const isCustomMetaphor = (metaphor: string): boolean =>
   !METAPHORS.includes(metaphor);
 
-// A personal story («Din historie») made on the free plan gets a signed
+// A personal story («Magihistorie») made on the free plan gets a signed
 // ticket from /api/opener. The client sends it along with the later
 // requests of that story, and it gives what Pro gives: your own moral, the
 // chosen drawing style and read-aloud. It belongs to one account.

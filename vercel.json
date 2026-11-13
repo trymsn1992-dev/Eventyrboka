@@ -1,5 +1,6 @@
 {
   "regions": ["arn1"],
+  "crons": [{ "path": "/api/trekk", "schedule": "0 4 * * *" }],
   "headers": [
     {
       "source": "/(.*)",

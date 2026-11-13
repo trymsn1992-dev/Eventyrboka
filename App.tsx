@@ -4,11 +4,18 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PLAN_NAMES, TOTAL_PAGES } from './types';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
 import {
   AccountStatus,
+  buyStory,
+  cancelSubscription,
   chooseFreePlan,
+  confirmPayment,
+  keepPaymentReturn,
+  subscribe,
+  takePaymentReturn,
+  takeStoryOrder,
   claimGuestStory,
   deleteStory as deleteStoryAccount,
   fetchStatus,
@@ -64,7 +71,7 @@ const App: React.FC = () => {
   // The story on screen was started without a login and is not yet counted
   // as anyone's: only the first GUEST_PAGES pages can be read.
   const [guestStory, setGuestStory] = useState(false);
-  // The ticket of a «Din historie» made on the free plan: it gives this
+  // The ticket of a «Magihistorie» made on the free plan: it gives this
   // story read-aloud and its drawing style, and is saved with it.
   const [storyTicket, setTicketState] = useState<string | null>(null);
   const applyTicket = (ticket: string | null) => {
@@ -189,10 +196,53 @@ const App: React.FC = () => {
           setError('Lenken virker ikke lenger.');
         }
       }
+      // Back from paying with Vipps: ask how it went.
+      const back = takePaymentReturn();
+      let startNow: ReturnType<typeof takeStoryOrder> = null;
+      if (back) {
+        setNotice('Sjekker betalingen …');
+        const result = await confirmPayment(back);
+        if (cancelled) return;
+        const order = back.kind === 'kjop' ? takeStoryOrder() : null;
+        if (result.status === 'paid') {
+          status = await fetchStatus();
+          if (cancelled) return;
+          const mine = result.mine && status.innlogget;
+          if (back.kind === 'avtale') {
+            setNotice(
+              mine
+                ? `Velkommen! Du er ${PLAN_NAMES.pro} nå.`
+                : `Abonnementet er i gang. Logg inn med Vipps her for å bruke ${PLAN_NAMES.pro}.`
+            );
+            logEvent('Prinsen kjøpt');
+          } else {
+            const name = result.personal ? PERSONAL_STORY_NAME : STORY_NAME;
+            if (mine && order) startNow = order;
+            setNotice(
+              !mine
+                ? 'Betalingen er registrert. Logg inn med Vipps her for å lage historien.'
+                : order
+                  ? 'Takk for kjøpet! Historien lages nå.'
+                  : `Takk for kjøpet! Du har en ${name.toLowerCase()} til gode. Velg helt og start.`
+            );
+            logEvent('Historie kjøpt', { type: name });
+          }
+        } else if (result.status === 'cancelled') {
+          setNotice(null);
+          setError('Betalingen ble avbrutt. Ingenting er trukket.');
+        } else {
+          keepPaymentReturn(back);
+          setNotice(null);
+          setError(
+            'Vi fikk ikke bekreftet betalingen ennå. Last siden på nytt om litt. Er det betalt, går ingenting tapt.'
+          );
+        }
+      }
       setAccount(status);
+      if (startNow) void handleStartStory(startNow.options, startNow.personal, status.plan === 'pro');
       // Back from logging in halfway through a story: open it again.
       const pending = takePendingStory();
-      if (pending) restorePendingStory(pending, status.innlogget);
+      if (pending && !startNow) restorePendingStory(pending, status.innlogget);
       const fromAccount = Object.fromEntries(
         Object.entries(status.valg).filter(([k]) => !touchedPrefs.current.has(k))
       ) as SetupPreferences;
@@ -215,8 +265,11 @@ const App: React.FC = () => {
   // ?vipps=ok / ?vipps=feil / ?vipps=avbrutt are set by /api/vipps/tilbake.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Vipps links here from the Prinsen agreement in the app.
+    const toPlan = params.get('side') === 'plan';
+    if (toPlan) setView('plan');
     const code = params.get('vipps');
-    if (!code) return;
+    if (!code && !toPlan) return;
     const message: Record<string, string> = {
       ok: 'Du er logget inn.',
       avbrutt: 'Vipps-innloggingen ble avbrutt.',
@@ -224,9 +277,10 @@ const App: React.FC = () => {
       'ikke-klar': 'Vipps-innlogging er ikke satt opp ennå.',
       oppdater: 'Du må oppdatere Vipps-appen for å logge inn.',
     };
-    const msg = message[code];
+    const msg = code ? message[code] : undefined;
     if (msg && code !== 'ok') setError(msg);
     params.delete('vipps');
+    params.delete('side');
     const url =
       window.location.pathname +
       (params.toString() ? `?${params.toString()}` : '') +
@@ -236,7 +290,16 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    setAccount({ ...account, innlogget: false, fornavn: '', valg: {}, plan: null, freeLeft: null });
+    setAccount({
+      ...account,
+      innlogget: false,
+      fornavn: '',
+      valg: {},
+      plan: null,
+      freeLeft: null,
+      credits: { plain: 0, personal: 0 },
+      subscription: null,
+    });
     setNotice(null);
     setView('setup');
     // After sign-out, the user sees their local IndexedDB stories again.
@@ -305,13 +368,16 @@ const App: React.FC = () => {
       const run = runRef.current;
       unlocking.current = claimGuestStory().then(result => {
         if (runRef.current !== run) return false;
-        if (result === 'ok') {
+        if (result === 'ok' || result === 'bought') {
           setGuestStory(false);
-          // On the free plan this was one of the week's free stories.
+          // On the free plan this was one of the week's free stories, or
+          // else a bought one.
           setAccount(prev =>
-            prev.plan === 'pro' || prev.freeLeft === null
-              ? prev
-              : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
+            result === 'bought'
+              ? { ...prev, credits: { ...prev.credits, plain: Math.max(0, prev.credits.plain - 1) } }
+              : prev.plan === 'pro' || prev.freeLeft === null
+                ? prev
+                : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
           );
           return true;
         }
@@ -493,7 +559,12 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartStory = async (selectedOptions: StoryOptions, personal: boolean) => {
+  // `pro`: given when the account state on screen may not have landed yet.
+  const handleStartStory = async (
+    selectedOptions: StoryOptions,
+    personal: boolean,
+    pro = account.plan === 'pro'
+  ) => {
     resetFlow();
     const run = runRef.current;
     setOptions(selectedOptions);
@@ -508,18 +579,25 @@ const App: React.FC = () => {
     const seed = Math.floor(Math.random() * 1_000_000_000);
     try {
       // Start the character sheet now so it's ready for page 1's picture.
-      // A «Din historie» on the free plan gets its drawing style through
+      // A «Magihistorie» on the free plan gets its drawing style through
       // the ticket that comes with page 1, so its sheet waits for that.
-      const usesTicket = personal && account.plan !== 'pro';
+      const usesTicket = personal && !pro;
       if (!usesTicket) void getSheet(selectedOptions);
-      const { segment: opener, premise, guest, ticket } = await generateOpener(selectedOptions, seed, personal);
+      const { segment: opener, premise, guest, ticket, bought } = await generateOpener(selectedOptions, seed, personal);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
-      logEvent('Historietype', { type: personal ? 'Din historie' : 'Historie' });
+      logEvent('Historietype', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
       applyTicket(ticket);
       setGuestStory(guest);
-      // The week's free stories: a plain one uses one, a personal one all.
-      if (!guest) {
+      // A bought story is spent, or else the week's free stories: a plain
+      // one uses one, a personal one all.
+      if (bought) {
+        const kind = personal ? 'personal' : 'plain';
+        setAccount(prev => ({
+          ...prev,
+          credits: { ...prev.credits, [kind]: Math.max(0, prev.credits[kind] - 1) },
+        }));
+      } else if (!guest) {
         setAccount(prev =>
           prev.plan === 'pro' || prev.freeLeft === null
             ? prev
@@ -636,6 +714,44 @@ const App: React.FC = () => {
     logEvent('Plan valgt', { plan });
     setView('setup');
     window.scrollTo({ top: 0 });
+  };
+  // Pay for one story with Vipps; it is made when the buyer comes back.
+  const [leavingToPay, setLeavingToPay] = useState(false);
+  const handleBuyStory = async (selectedOptions: StoryOptions, personal: boolean) => {
+    if (leavingToPay) return;
+    setLeavingToPay(true);
+    setError(null);
+    logEvent('Kjøp startet', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
+    try {
+      await buyStory({ options: selectedOptions, personal });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen om litt.');
+      setLeavingToPay(false);
+    }
+  };
+  // Prinsen: approve the agreement in Vipps. Resolves to an error message.
+  const handleSubscribe = async (): Promise<string | null> => {
+    logEvent('Prinsen-kjøp startet');
+    try {
+      await subscribe();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen om litt.';
+    }
+  };
+  const handleCancelSubscription = async (): Promise<string | null> => {
+    try {
+      const paidUntil = await cancelSubscription();
+      setAccount(prev => {
+        const next = { ...prev, subscription: { status: 'stoppet' as const, paidUntil } };
+        rememberStatus(next);
+        return next;
+      });
+      logEvent('Prinsen sagt opp');
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen om litt.';
+    }
   };
   const handleChooseFree = async (): Promise<boolean> => {
     const ok = await chooseFreePlan();
@@ -949,6 +1065,11 @@ const App: React.FC = () => {
               currentPlan={null}
               onChooseFree={handleChooseFree}
               onBack={() => undefined}
+              canBuy={account.canBuy}
+              canSubscribe={account.canSubscribe}
+              subscription={account.subscription}
+              onSubscribe={handleSubscribe}
+              onCancel={handleCancelSubscription}
             />
           ) : (
             <Loader2 className="w-8 h-8 mt-24 animate-spin text-indigo-400" aria-label="Laster" />
@@ -958,11 +1079,19 @@ const App: React.FC = () => {
             currentPlan={account.plan}
             onChooseFree={handleChooseFree}
             onBack={handleRestart}
+            canBuy={account.canBuy}
+            canSubscribe={account.canSubscribe}
+            subscription={account.subscription}
+            onSubscribe={handleSubscribe}
+            onCancel={handleCancelSubscription}
           />
         ) : view === 'setup' ? (
           <SetupScreen 
             onStart={handleStartStory} 
-            isLoading={isLoading} 
+            isLoading={isLoading || leavingToPay} 
+            credits={account.credits}
+            canBuy={account.canBuy}
+            onBuy={handleBuyStory}
             preferences={prefs}
             onPreferenceChange={updatePrefs}
             askForAge={!ageKnown}

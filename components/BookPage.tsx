@@ -53,7 +53,7 @@ interface BookPageProps {
   pageNumber: number;
   totalPages?: number; // Total estimated pages
   // Read-aloud is a Pro feature.
-  // Read-aloud is part of «Din historie» and Prinsen.
+  // Read-aloud is part of «Magihistorie» and Prinsen.
   readAloud: boolean;
 }
 
@@ -605,7 +605,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                 </button>
                 {showProNote && (
                   <p role="status" className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 text-center">
-                    Opplesning er med i Din historie og i Prinsen.
+                    Opplesning er med i magihistorier og i Prinsen.
                   </p>
                 )}
               </div>

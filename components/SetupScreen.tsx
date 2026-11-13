@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
 import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check, BookOpen } from 'lucide-react';
 
 interface SetupScreenProps {
-  // `personal`: make it a «Din historie» (own moral, chosen drawing style, read-aloud).
+  // `personal`: make it a «Magihistorie» (own moral, chosen drawing style, read-aloud).
   onStart: (options: StoryOptions, personal: boolean) => void;
   isLoading: boolean;
   // The remembered choices (age, length, drawing style). Age and drawing
@@ -17,7 +17,7 @@ interface SetupScreenProps {
   // No age has been saved yet (first visit): ask for it here as well.
   askForAge: boolean;
   onOpenProfile: () => void;
-  // On Pro every story is a «Din historie», and there is no weekly limit.
+  // On Pro every story is a «Magihistorie», and there is no weekly limit.
   isPro: boolean;
   // Free stories left this week (null when unknown or on Pro). A «Din
   // historie» needs all of them.
@@ -26,6 +26,11 @@ interface SetupScreenProps {
   // A story can be started without a login; reading past the first pages
   // (GUEST_PAGES) needs one.
   loggedIn: boolean;
+  // Bought stories not yet made, whether more can be bought with Vipps, and
+  // the way to buy the one picked here (the story starts when it is paid).
+  credits: { plain: number; personal: number };
+  canBuy: boolean;
+  onBuy: (options: StoryOptions, personal: boolean) => void;
   // Vipps login is set up, so a guest can be offered it.
   canLogIn: boolean;
 }
@@ -82,7 +87,7 @@ export const styleArt = (character: string, style: string): string | undefined =
 };
 
 // Marks something that needs Prinsen (the "pro" plan) — or, with another
-// label, «Din historie».
+// label, «Magihistorie».
 export const ProBadge = ({ className = '', label = PLAN_NAMES.pro }: { className?: string; label?: string }) => (
   <span className={`inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 whitespace-nowrap ${className}`}>
     {label}
@@ -112,6 +117,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   onOpenPlan,
   loggedIn,
   canLogIn,
+  credits,
+  canBuy,
+  onBuy,
 }) => {
   // Hero and moral are picked fresh for every story; the rest is remembered.
   const [picked, setPicked] = useState(loadPicked);
@@ -122,23 +130,31 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       // Private mode — the picks just won't survive the login.
     }
   }, [picked]);
-  // The kind of story. Prinsen always gets «Din historie». Askeladden picks:
-  // it is free while none of the week's free stories are used. Guests get
-  // the plain kind.
+  // The kind of story. Prinsen always gets «Magihistorie». Askeladden picks:
+  // it is free while none of the week's free stories are used, and can
+  // otherwise be bought. Guests get the plain kind.
   const [wantsPersonal, setWantsPersonal] = useState(false);
   const [personalNote, setPersonalNote] = useState(false);
+  const freePersonal = freeLeft === null || freeLeft >= FREE_STORIES_PER_WEEK;
   const canPickPersonal =
-    loggedIn && !isPro && (freeLeft === null || freeLeft >= FREE_STORIES_PER_WEEK);
+    loggedIn && !isPro && (freePersonal || credits.personal > 0 || canBuy);
   const personal = isPro || (wantsPersonal && canPickPersonal);
   const options: StoryOptions = {
     ...picked,
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
     duration: preferences.duration ?? DURATIONS[1],
-    // Other drawing styles than the standard one belong to «Din historie».
+    // Other drawing styles than the standard one belong to «Magihistorie».
     artStyle: personal ? preferences.artStyle ?? DEFAULT_ART_STYLE : DEFAULT_ART_STYLE,
   };
-  const outOfFreeStories = loggedIn && !isPro && freeLeft === 0;
-  // Buying single stories isn't possible yet; count who would have.
+  // The story picked is neither free this week nor already bought.
+  const mustPay =
+    loggedIn &&
+    !isPro &&
+    freeLeft !== null &&
+    (personal ? !freePersonal && credits.personal === 0 : freeLeft === 0 && credits.plain === 0);
+  const price = personal ? PRICE_PERSONAL_STORY_KR : PRICE_SIMPLE_STORY_KR;
+  const outOfFreeStories = mustPay && !canBuy;
+  // While single stories can't be bought yet: count who would have.
   const [wantsToBuy, setWantsToBuy] = useState(false);
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
@@ -206,7 +222,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setPersonalNote(false);
     setUseCustomMoral(false);
   };
-  // True when the story is (now) a «Din historie»; otherwise says why not.
+  // True when the story is (now) a «Magihistorie»; otherwise says why not.
   const pickPersonal = (): boolean => {
     if (personal) return true;
     if (canPickPersonal) {
@@ -218,7 +234,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     return false;
   };
   const pickCustomMoral = () => {
-    // Your own moral makes it a «Din historie».
+    // Your own moral makes it a «Magihistorie».
     if (!pickPersonal()) {
       window.clearTimeout(advanceTimer.current);
       formRef.current
@@ -234,8 +250,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const start = mustPay ? onBuy : onStart;
     if (!useCustomMoral || !personal) {
-      onStart(options, personal);
+      start(options, personal);
       return;
     }
     const metaphor = cleanCustomMetaphor(customMoral);
@@ -243,7 +260,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       customMoralRef.current?.focus();
       return;
     }
-    onStart({ ...options, metaphor }, personal);
+    start({ ...options, metaphor }, personal);
   };
 
   return (
@@ -255,7 +272,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
         <form ref={formRef} className="mt-6 sm:mt-10 space-y-8 sm:space-y-12" onSubmit={handleSubmit}>
 
-          {/* Which kind of story (Prinsen always gets «Din historie») */}
+          {/* Which kind of story (Prinsen always gets «Magihistorie») */}
           {!isPro && (
             <div className="space-y-3 sm:space-y-4" data-story-kind>
               <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
@@ -275,7 +292,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     Velg blant lærepengene våre. Tegnet i akvarell.
                   </span>
                   <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    {FREE_STORIES_PER_WEEK} gratis hver uke
+                    {FREE_STORIES_PER_WEEK} gratis hver uke{canBuy && ` · ellers ${PRICE_SIMPLE_STORY_KR} kr`}
                   </span>
                 </button>
                 <button
@@ -290,20 +307,20 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     Egen lærepenge, valgfri tegnestil og opplesning.
                   </span>
                   <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    1 gratis hver uke
+                    1 gratis hver uke{canBuy && ` · ellers ${PRICE_PERSONAL_STORY_KR} kr`}
                   </span>
                 </button>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Hver uke får dere {FREE_STORIES_PER_WEEK} {STORY_NAME} eller 1 {PERSONAL_STORY_NAME} gratis.
+                Hver uke får dere {storyCount(FREE_STORIES_PER_WEEK)} eller {storyCount(1, true)} gratis.
               </p>
               {personalNote && !canPickPersonal && (
                 <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                   {loggedIn ? (
-                    `${PERSONAL_STORY_NAME} bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
+                    `En magihistorie bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
                   ) : (
                     <>
-                      Logg inn for å lage {PERSONAL_STORY_NAME}.
+                      Logg inn for å lage en magihistorie.
                       {canLogIn && (
                         <>
                           {' '}
@@ -478,7 +495,12 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
               className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
             >
               {isLoading ? (
-                "Tryller frem historien og tegner bilder..."
+                mustPay ? "Åpner Vipps..." : "Tryller frem historien og tegner bilder..."
+              ) : mustPay && canBuy ? (
+                <>
+                  <Sparkles className="h-6 w-6" />
+                  Kjøp og start – {price} kr med Vipps
+                </>
               ) : (
                 <>
                   <Sparkles className="h-6 w-6" />
@@ -486,6 +508,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </>
               )}
             </Button>
+            {mustPay && canBuy && (
+              <p className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
+                Du betaler {price} kr i Vipps, og historien lages med en gang du er tilbake.
+              </p>
+            )}
 
             {/* Guests can start right away; the login comes on page 2. */}
             {!loggedIn && (
@@ -509,11 +536,20 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             {/* Free plan: how many stories are left this week. */}
             {loggedIn && !isPro && freeLeft !== null && (
               <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
-                {outOfFreeStories
-                  ? `Dere har brukt ukas gratis historier. Nye kommer på mandag. Kjøp av flere (${STORY_NAME} ${PRICE_SIMPLE_STORY_KR} kr, ${PERSONAL_STORY_NAME} ${PRICE_PERSONAL_STORY_KR} kr) kommer snart.`
+                {credits.plain + credits.personal > 0
+                  ? `Dere har til gode: ${[
+                      credits.plain > 0 && storyCount(credits.plain),
+                      credits.personal > 0 && storyCount(credits.personal, true),
+                    ]
+                      .filter(Boolean)
+                      .join(' og ')}.`
+                  : outOfFreeStories
+                  ? `Dere har brukt ukas gratis historier. Nye kommer på mandag. Kjøp av flere (vanlig historie ${PRICE_SIMPLE_STORY_KR} kr, magihistorie ${PRICE_PERSONAL_STORY_KR} kr) kommer snart.`
+                  : freeLeft === 0
+                  ? 'Dere har brukt ukas gratis historier. Nye kommer på mandag.'
                   : freeLeft >= FREE_STORIES_PER_WEEK
-                    ? `Ukas gratis historier er klare: ${FREE_STORIES_PER_WEEK} ${STORY_NAME} eller 1 ${PERSONAL_STORY_NAME}.`
-                    : `Dere har ${freeLeft} gratis ${STORY_NAME} igjen denne uka.`}
+                    ? `Ukas gratis historier er klare: ${storyCount(FREE_STORIES_PER_WEEK)} eller ${storyCount(1, true)}.`
+                    : `Dere har ${storyCount(freeLeft)} igjen gratis denne uka.`}
                 {' '}
                 <button
                   type="button"

@@ -4,6 +4,7 @@ import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { isCustomMetaphor, isPro, personalTicket, takeFreeStory } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
+import { giveBackBoughtStory, useBoughtStory } from "./_lib/betaling.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { withModelFallback } from "./_lib/retry.js";
@@ -151,7 +152,7 @@ interface OpenerRequestBody {
   options: unknown;
   // Shared with every /api/side call of the same story (see story-seeds.ts).
   seed?: unknown;
-  // The reader asked for a personal story («Din historie»).
+  // The reader asked for a personal story («Magihistorie»).
   personlig?: unknown;
 }
 
@@ -187,6 +188,8 @@ export default async function handler(
     return res.status(429).json({ error: budget.message });
   }
 
+  // A bought story spent on this request; given back if the story fails.
+  let bought: string | null = null;
   try {
     const body = (req.body ?? {}) as OpenerRequestBody;
     const options = validateOptions(body.options);
@@ -197,28 +200,35 @@ export default async function handler(
     // Guests and the free plan get a plain story: no own moral and the
     // standard drawing style. The free plan may instead spend the whole
     // week on one personal story. A guest's story is counted when they log
-    // in to read on (see /api/meg).
+    // in to read on (see /api/meg). When the week's free ones are used, a
+    // bought story is spent instead (see _lib/betaling.ts).
     const pro = session ? await isPro(session.sub) : false;
     const wantsPersonal = body.personlig === true || isCustomMetaphor(options.metaphor);
     let ticket: string | undefined;
     if (!pro) {
       if (!session) {
         if (wantsPersonal) {
-          return res.status(403).json({ error: "Logg inn for å lage Din historie." });
+          return res.status(403).json({ error: "Logg inn for å lage en magihistorie." });
         }
         delete options.artStyle;
       } else if (wantsPersonal) {
-        if (!(await takeFreeStory(session.sub, true))) {
+        if (
+          !(await takeFreeStory(session.sub, true)) &&
+          !(bought = await useBoughtStory(session.sub, "din-historie"))
+        ) {
           return res.status(429).json({
             error:
-              "Din historie bruker begge ukas gratis historier, og du har allerede brukt av dem. Nye kommer på mandag.",
+              "En magihistorie bruker begge ukas gratis historier, og du har allerede brukt av dem. Nye kommer på mandag.",
             grense: "uke",
           });
         }
         ticket = personalTicket(session.sub);
       } else {
         delete options.artStyle;
-        if (!(await takeFreeStory(session.sub))) {
+        if (
+          !(await takeFreeStory(session.sub)) &&
+          !(bought = await useBoughtStory(session.sub, "historie"))
+        ) {
           return res.status(429).json({
             error: "Du har brukt ukas gratis historier. Nye kommer på mandag.",
             grense: "uke",
@@ -293,9 +303,12 @@ export default async function handler(
       gjest: !session,
       // A personal story on the free plan: sent back with its later requests.
       billett: ticket,
+      // Paid for with a bought story, not one of the week's free ones.
+      kjopt: Boolean(bought),
     });
   } catch (error) {
     console.error("Opener error:", error);
+    if (bought) await giveBackBoughtStory(bought);
     const msg = error instanceof Error ? error.message : String(error);
     if (/UNAVAILABLE|high demand|503|timed out|timeout/i.test(msg)) {
       return res.status(503).json({
