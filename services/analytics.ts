@@ -1,6 +1,7 @@
 // Usage measurement with Vercel Web Analytics: page views plus a handful of
 // named events, so we can see how far people get (started -> pages read ->
-// finished -> saved). It uses no cookies and stores nothing about who the
+// finished -> saved). Per-story detail goes to our own database instead
+// (see insight.ts). It uses no cookies and stores nothing about who the
 // visitor is.
 //
 // Rules for what goes in an event:

@@ -32,6 +32,7 @@ import {
   SetupPreferences,
 } from './services/account';
 import { PendingStory, savePendingStory, takePendingStory } from './services/guestStory';
+import { insightLoggedIn, insightPage, insightResume, insightSaved, insightStarted, insightStop } from './services/insight';
 import { logEvent, logStoryStarted } from './services/analytics';
 import { AlertCircle, CheckCircle2, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
@@ -370,6 +371,7 @@ const App: React.FC = () => {
         if (runRef.current !== run) return false;
         if (result === 'ok' || result === 'bought') {
           setGuestStory(false);
+          insightLoggedIn();
           // On the free plan this was one of the week's free stories, or
           // else a bought one.
           setAccount(prev =>
@@ -549,6 +551,12 @@ const App: React.FC = () => {
       setCurrentPageIndex(i + 1);
       logEvent('Side lest', { side: i + 2 });
       if (next.isEnding) logEvent('Eventyr ferdig', { sider: i + 2, avsluttetTidlig: choiceIdx === -1 });
+      insightPage(
+        i + 2,
+        Array.from({ length: i + 1 }, (_, j) => chosen[j] ?? 0),
+        next.isEnding,
+        choiceIdx === -1
+      );
       void attachIllustrationAt(i + 1, next, options, sideCharactersAlong([...segs, next], i + 1));
     } catch (err) {
       if (runRef.current !== run) return;
@@ -587,6 +595,11 @@ const App: React.FC = () => {
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
       logEvent('Historietype', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
+      insightStarted(selectedOptions, {
+        personal,
+        who: guest ? 'gjest' : pro ? 'prinsen' : 'askeladden',
+        bought: Boolean(bought),
+      });
       applyTicket(ticket);
       setGuestStory(guest);
       // A bought story is spent, or else the week's free stories: a plain
@@ -669,6 +682,7 @@ const App: React.FC = () => {
     setLoadedStory(null);
     setGuestStory(true);
     setView('reading');
+    insightResume();
     if (innlogget) void unlockGuestStory();
     // A picture that hadn't arrived when the reader left is drawn now.
     const page = pending.segments[pending.pageIndex];
@@ -685,6 +699,7 @@ const App: React.FC = () => {
 
   const handleRestart = () => {
     resetFlow();
+    insightStop();
     setSegments([]);
     setOptions(null);
     setPlan(null);
@@ -790,6 +805,7 @@ const App: React.FC = () => {
       const ok = await saveStoryAccount(newStory, account.innlogget);
       if (!ok) throw new Error('save-failed');
       logEvent('Eventyr lagret', { innlogget: account.innlogget });
+      insightSaved();
       setSavedStories(prev =>
         prev.some(s => s.id === newStory.id)
           ? prev.map(s => (s.id === newStory.id ? newStory : s))
@@ -807,6 +823,8 @@ const App: React.FC = () => {
 
   const handleLoadStory = (story: SavedStory) => {
     resetFlow();
+    // A saved story is not a new one: its row is left as it was.
+    insightStop();
     // Backward compatibility for stories saved before duration was added
     const storyOptions = { ...story.options };
     if (!storyOptions.duration) {

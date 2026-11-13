@@ -145,3 +145,20 @@ Hvis Vipps krever PNG og ikke SVG: åpne `public/magiboka-logo-firkant.svg` i Pr
 - `vercel.json` — Stockholm-region og sikkerhetsheadere.
 
 Logger du ut, blir lokale historier (fra guest-modus) stående — de forsvinner ikke. Logger du inn med en bruker som har historier lokalt, flyttes de automatisk opp til kontoen første gang.
+
+## Innsikt: hva folk gjør i historiene
+
+Hver historie som startes får én rad i tabellen `innsikt` (helt, lærepenge,
+type, hvor mange sider som ble lest, stjerner, lagret osv.). Raden sier
+ingenting om hvem leseren er.
+
+1. Kjør `supabase/schema.sql` på nytt i Supabase → SQL Editor (trygt å kjøre flere ganger).
+2. Se tallene i Supabase → Table Editor, eller i SQL Editor:
+
+| Vil du vite | Kjør |
+| --- | --- |
+| Hvor langt folk kommer | `select * from innsikt_frafall;` |
+| Hva som er mest populært, og stjerner per helt/type/lærepenge | `select * from innsikt_populaert;` |
+| Hvor mange stjerner folk gir | `select * from innsikt_stjerner;` |
+| Utviklingen uke for uke | `select * from innsikt_uker;` |
+| Alt, rad for rad | `select * from innsikt order by startet desc;` |

@@ -203,3 +203,143 @@ $$;
 
 revoke all on function public.bruk_kjop(text, text) from public, anon, authenticated;
 grant execute on function public.bruk_kjop(text, text) to service_role;
+
+-- Innsikt. Én rad per historie som blir startet (se services/insight.ts og
+-- api/innsikt.ts). Raden handler om historien, ikke om leseren: ingen
+-- vipps_sub, ingen IP, og aldri noe brukeren har skrevet selv (egen
+-- lærepenge står som «Egen»).
+--   type:  vanlig | magi            hvem: gjest | askeladden | prinsen
+--   sider: siden leseren kom lengst til (1 = bare åpningen)
+--   valg:  hva som ble valgt på hver side, f.eks. «0,1,0» (-1 = avsluttet av voksen)
+create table if not exists public.innsikt (
+  id               uuid primary key,
+  startet          timestamptz not null default now(),
+  oppdatert        timestamptz not null default now(),
+  helt             text,
+  moral            text,
+  alder            text,
+  stil             text,
+  lengde           text,
+  type             text,
+  hvem             text,
+  enhet            text,
+  kjopt            boolean not null default false,
+  logget_inn       boolean not null default false,   -- gjest som logget inn for å lese videre
+  sider            integer not null default 1,
+  ferdig           boolean not null default false,
+  avsluttet_tidlig boolean not null default false,
+  valg             text,
+  sekunder         integer,                          -- fra start til siste livstegn
+  stjerner         integer,
+  lagret           boolean not null default false,
+  les_hoyt         boolean not null default false
+);
+create index if not exists innsikt_startet_idx on public.innsikt (startet desc);
+alter table public.innsikt enable row level security;
+
+-- Legger inn eller oppdaterer raden. Det som er kjent blir stående: sider
+-- går bare oppover, og ferdig/lagret/les_hoyt blir aldri slått av igjen.
+create or replace function public.logg_innsikt(p jsonb)
+returns boolean
+language sql
+set search_path = public
+as $$
+  insert into innsikt as i (
+    id, helt, moral, alder, stil, lengde, type, hvem, enhet, kjopt, logget_inn,
+    sider, ferdig, avsluttet_tidlig, valg, sekunder, stjerner, lagret, les_hoyt)
+  values (
+    (p->>'id')::uuid, p->>'helt', p->>'moral', p->>'alder', p->>'stil', p->>'lengde',
+    p->>'type', p->>'hvem', p->>'enhet',
+    coalesce((p->>'kjopt')::boolean, false),
+    coalesce((p->>'logget_inn')::boolean, false),
+    coalesce((p->>'sider')::integer, 1),
+    coalesce((p->>'ferdig')::boolean, false),
+    coalesce((p->>'avsluttet_tidlig')::boolean, false),
+    p->>'valg', (p->>'sekunder')::integer, (p->>'stjerner')::integer,
+    coalesce((p->>'lagret')::boolean, false),
+    coalesce((p->>'les_hoyt')::boolean, false))
+  on conflict (id) do update set
+    oppdatert        = now(),
+    helt             = coalesce(i.helt, excluded.helt),
+    moral            = coalesce(i.moral, excluded.moral),
+    alder            = coalesce(i.alder, excluded.alder),
+    stil             = coalesce(i.stil, excluded.stil),
+    lengde           = coalesce(i.lengde, excluded.lengde),
+    type             = coalesce(i.type, excluded.type),
+    hvem             = coalesce(i.hvem, excluded.hvem),
+    enhet            = coalesce(i.enhet, excluded.enhet),
+    kjopt            = i.kjopt or excluded.kjopt,
+    logget_inn       = i.logget_inn or excluded.logget_inn,
+    sider            = greatest(i.sider, excluded.sider),
+    ferdig           = i.ferdig or excluded.ferdig,
+    avsluttet_tidlig = i.avsluttet_tidlig or excluded.avsluttet_tidlig,
+    valg             = case when length(coalesce(excluded.valg, '')) >= length(coalesce(i.valg, ''))
+                            then coalesce(excluded.valg, i.valg) else i.valg end,
+    sekunder         = greatest(i.sekunder, excluded.sekunder),
+    stjerner         = coalesce(excluded.stjerner, i.stjerner),
+    lagret           = i.lagret or excluded.lagret,
+    les_hoyt         = i.les_hoyt or excluded.les_hoyt
+  returning true;
+$$;
+
+revoke all on function public.logg_innsikt(jsonb) from public, anon, authenticated;
+grant execute on function public.logg_innsikt(jsonb) to service_role;
+
+-- Ferdige oversikter. Åpne dem i Supabase -> Table Editor, eller kjør
+-- f.eks.  select * from innsikt_frafall;  i SQL Editor.
+
+-- Hvor langt folk kommer: hvor mange historier som nådde hver side.
+create or replace view public.innsikt_frafall with (security_invoker = true) as
+select s.side,
+       count(*) filter (where i.sider >= s.side) as historier,
+       round(100.0 * count(*) filter (where i.sider >= s.side) / nullif(count(*), 0)) as prosent
+  from generate_series(1, 5) as s(side)
+ cross join public.innsikt i
+ group by s.side
+ order by s.side;
+
+-- Hva som er mest populært, og hvordan det går med det. Én rad per verdi av
+-- hvert valg (helt, lærepenge, type, hvem, alder, tegnestil, lengde, enhet).
+create or replace view public.innsikt_populaert with (security_invoker = true) as
+select v.hva, v.verdi,
+       count(*)                                   as startet,
+       count(*) filter (where i.ferdig)           as ferdig,
+       round(100.0 * count(*) filter (where i.ferdig) / count(*)) as ferdig_prosent,
+       round(avg(i.sider), 1)                     as snitt_sider,
+       count(i.stjerner)                          as vurderinger,
+       round(avg(i.stjerner), 2)                  as snitt_stjerner,
+       count(*) filter (where i.lagret)           as lagret
+  from public.innsikt i
+ cross join lateral (values
+   ('helt', i.helt), ('lærepenge', i.moral), ('type', i.type), ('hvem', i.hvem),
+   ('alder', i.alder), ('tegnestil', i.stil), ('lengde', i.lengde), ('enhet', i.enhet)
+ ) as v(hva, verdi)
+ where v.verdi is not null
+ group by v.hva, v.verdi
+ order by v.hva, startet desc;
+
+-- Hvor mange stjerner folk gir.
+create or replace view public.innsikt_stjerner with (security_invoker = true) as
+select stjerner, count(*) as antall
+  from public.innsikt
+ where stjerner is not null
+ group by stjerner
+ order by stjerner desc;
+
+-- Uke for uke (mandag norsk tid).
+create or replace view public.innsikt_uker with (security_invoker = true) as
+select date_trunc('week', startet at time zone 'Europe/Oslo')::date as uke,
+       count(*)                                          as startet,
+       count(*) filter (where ferdig)                    as ferdig,
+       count(*) filter (where hvem = 'gjest')            as gjester,
+       count(*) filter (where hvem = 'gjest' and logget_inn) as gjester_logget_inn,
+       count(*) filter (where type = 'magi')             as magihistorier,
+       count(*) filter (where kjopt)                     as kjopte,
+       round(avg(stjerner), 2)                           as snitt_stjerner,
+       round(avg(sekunder) filter (where ferdig) / 60.0, 1) as snitt_minutter_ferdig
+  from public.innsikt
+ group by 1
+ order by 1 desc;
+
+revoke all on public.innsikt_frafall, public.innsikt_populaert, public.innsikt_stjerner, public.innsikt_uker
+  from anon, authenticated;

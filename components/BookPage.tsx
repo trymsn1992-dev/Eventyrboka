@@ -6,6 +6,7 @@ import { ArrowDown, ArrowRight, ChevronLeft, RefreshCw, CheckCircle, Sparkles, S
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
+import { insightRated, insightReadAloud } from '../services/insight';
 import { ProBadge } from './SetupScreen';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
@@ -265,6 +266,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     setIsLoadingAudio(true);
     setAudioProgress(0);
     logEvent('Les høyt');
+    insightReadAloud();
 
     // The API gives no progress, and making the voice takes about a minute:
     // fill the bar to 90 % over roughly that long.
@@ -667,6 +669,7 @@ export const BookPage: React.FC<BookPageProps> = ({
                             onClick={() => {
                               setRating(star);
                               logEvent('Vurdering', { stjerner: star });
+                              insightRated(star);
                             }}
                             onMouseEnter={() => setHoverRating(star)}
                             className="p-1 transition-transform hover:scale-110 active:scale-95"
