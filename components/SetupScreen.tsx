@@ -4,7 +4,7 @@ import { SetupPreferences } from '../services/account';
 import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, cleanHeroTraits, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2 } from 'lucide-react';
+import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2, Pencil } from 'lucide-react';
 import { forgetOwnHero, loadOwnHero, makeHero, preparePhoto, saveOwnHero } from '../services/hero';
 
 interface SetupScreenProps {
@@ -89,6 +89,21 @@ export const styleArt = (character: string, style: string): string | undefined =
 
 // Marks something that needs Prinsen (the "pro" plan) — or, with another
 // label, «Magihistorie».
+// A glowing, slowly turning ring around what belongs to «Magihistorie»:
+// your own hero and your own moral. The content inside stands still.
+export const MagicCircle = ({ children }: { children: React.ReactNode }) => (
+  <span className="relative shrink-0 w-16 h-16 sm:w-20 sm:h-20">
+    <span
+      aria-hidden="true"
+      className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,#fbbf24,#f472b6,#818cf8,#34d399,#fbbf24)] shadow-[0_0_14px_rgba(167,139,250,0.6)] motion-safe:animate-[spin_10s_linear_infinite]"
+    />
+    <span className="absolute inset-[3px] rounded-full bg-white dark:bg-gray-900 overflow-hidden flex items-center justify-center">
+      {children}
+    </span>
+    <Sparkles aria-hidden="true" className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 text-amber-400 drop-shadow" />
+  </span>
+);
+
 export const ProBadge = ({ className = '', label = PLAN_NAMES.pro }: { className?: string; label?: string }) => (
   <span className={`inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 whitespace-nowrap ${className}`}>
     {label}
@@ -518,15 +533,13 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 onClick={pickOwnHero}
                 className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
               >
-                {ownHero ? (
-                  <span className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white overflow-hidden">
-                    <img src={ownHero.sheet} alt="" className="w-full h-full object-cover object-top" />
-                  </span>
-                ) : (
-                  <span className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
-                    <Camera className="w-7 h-7 text-indigo-500" />
-                  </span>
-                )}
+                <MagicCircle>
+                  {ownHero ? (
+                    <img src={ownHero.sheet} alt="" className="w-full h-full bg-white object-cover object-top" />
+                  ) : (
+                    <Camera className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-500 dark:text-indigo-300" />
+                  )}
+                </MagicCircle>
                 <span>
                   <span className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     {ownHero ? ownHero.name : 'Lag din egen helt'}
@@ -772,13 +785,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 onClick={pickCustomMoral}
                 className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
               >
-                <img
-                  src="/magiboka-ikon.png?v=2"
-                  alt=""
-                  width={192}
-                  height={192}
-                  className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl"
-                />
+                <MagicCircle>
+                  <Pencil className="w-7 h-7 sm:w-8 sm:h-8 text-amber-500 dark:text-amber-300" />
+                </MagicCircle>
                 <span>
                   <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     Skriv din egen
