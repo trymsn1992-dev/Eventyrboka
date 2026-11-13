@@ -147,7 +147,6 @@
       }
       .book-turn-under,
       .book-turn-blank,
-      .book-turn-magic,
       .book-turn-sheet {
         position: absolute;
       }
@@ -161,74 +160,42 @@
       html.dark .book-turn-face {
         background: #1f2937;
       }
-      /* Blank paper over the new text. The shimmer wipes it away from the
-         spine outwards: the mask is three pages wide with a soft edge in the
-         middle, and slides to the right. */
+      /* Blank paper over the new text until the turning page has passed. */
       .book-turn-blank {
         background: #fdfbf7;
         border-radius: 0 1.25rem 1.25rem 0;
-        -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 47%, #000 53%, #000 100%);
-        mask-image: linear-gradient(90deg, transparent 0%, transparent 47%, #000 53%, #000 100%);
-        -webkit-mask-size: 300% 100%;
-        mask-size: 300% 100%;
-        -webkit-mask-position: 100% 0;
-        mask-position: 100% 0;
       }
       html.dark .book-turn-blank {
         background: #1f2937;
       }
       .book-turn-go .book-turn-blank {
-        animation: bookTurnWipe var(--turn) linear forwards;
+        animation: bookTurnBlank var(--turn) ease-out forwards;
       }
-      @keyframes bookTurnWipe {
-        0%, 35% { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
-        95%, 100% { -webkit-mask-position: 25% 0; mask-position: 25% 0; }
+      @keyframes bookTurnBlank {
+        0%, 45% { opacity: 1; }
+        90%, 100% { opacity: 0; }
       }
-      .book-turn-magic {
-        overflow: hidden;
-        border-radius: 0 1.25rem 1.25rem 0;
-      }
-      /* The shimmer rides on the edge of the wipe. */
-      .book-turn-shimmer {
+      /* Stardust falling from the edge of the turning page. */
+      .book-turn-stars {
         position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 18%;
-        opacity: 0;
-        transform: translateX(-330%);
-        background: linear-gradient(90deg,
-          rgba(251,191,36,0) 0%,
-          rgba(251,191,36,0.35) 35%,
-          rgba(254,243,199,0.9) 50%,
-          rgba(196,181,253,0.35) 65%,
-          rgba(196,181,253,0) 100%);
-        filter: blur(5px);
-      }
-      .book-turn-go .book-turn-shimmer {
-        animation: bookTurnShimmer var(--turn) linear forwards;
-      }
-      @keyframes bookTurnShimmer {
-        0%, 35% { opacity: 0; transform: translateX(-330%); }
-        38%     { opacity: 1; }
-        92%     { opacity: 1; }
-        95%, 100% { opacity: 0; transform: translateX(506%); }
+        inset: 0;
       }
       .book-turn-star {
         position: absolute;
+        margin: -8px 0 0 -8px;
         opacity: 0;
         background: #fbbf24;
         clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
       }
-      .book-turn-star:nth-child(3n)   { background: #fde68a; }
+      .book-turn-star:nth-child(3n)   { background: #fef3c7; }
       .book-turn-star:nth-child(4n+1) { background: #c4b5fd; }
       .book-turn-go .book-turn-star {
-        animation: bookTurnStar 0.8s ease-out both;
+        animation: bookTurnStar 1.1s ease-out both;
       }
       @keyframes bookTurnStar {
-        0%   { opacity: 0; transform: translateY(8px) scale(0) rotate(0deg); }
-        35%  { opacity: 1; transform: translateY(0) scale(1) rotate(40deg); }
-        100% { opacity: 0; transform: translateY(-18px) scale(0.2) rotate(90deg); }
+        0%   { opacity: 0; transform: translate(0, 0) scale(0) rotate(0deg); }
+        18%  { opacity: 1; transform: translate(0, 0) scale(1.15) rotate(30deg); }
+        100% { opacity: 0; transform: translate(var(--drift), var(--fall)) scale(0.25) rotate(140deg); }
       }
       .book-turn-sheet {
         transform-origin: left center;
@@ -244,14 +211,28 @@
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
       }
-      /* A thin golden rim on the free edge of the turning page. */
-      .book-turn-front {
-        border-radius: 0 1.25rem 1.25rem 0;
-        box-shadow: inset -5px 0 12px -4px rgba(251,191,36,0.6);
+      .book-turn-front { border-radius: 0 1.25rem 1.25rem 0; }
+      .book-turn-back { transform: rotateY(180deg); }
+      /* The free edge of the turning page glows while it is in the air. */
+      .book-turn-edge {
+        position: absolute;
+        top: 1%;
+        bottom: 1%;
+        right: -2px;
+        width: 4px;
+        border-radius: 4px;
+        background: #fde68a;
+        box-shadow: 0 0 10px 3px rgba(251,191,36,0.9), 0 0 34px 12px rgba(251,191,36,0.45), 0 0 60px 20px rgba(196,181,253,0.25);
+        opacity: 0;
       }
-      .book-turn-back {
-        transform: rotateY(180deg);
-        box-shadow: inset 5px 0 12px -4px rgba(251,191,36,0.6);
+      .book-turn-go .book-turn-edge {
+        animation: bookTurnEdge var(--turn) var(--turn-ease) forwards;
+      }
+      @keyframes bookTurnEdge {
+        0%   { opacity: 0; }
+        12%  { opacity: 1; }
+        85%  { opacity: 1; }
+        100% { opacity: 0; }
       }
       /* The page darkens a little as it stands up, and lightens as it lands. */
       .book-turn-face::after {

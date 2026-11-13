@@ -1,5 +1,6 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
 import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
@@ -22,8 +23,27 @@ const copyPage = (page: HTMLElement): HTMLElement => {
     if (el.scrollTop > 0 && to[i]) to[i].dataset.turnScroll = String(el.scrollTop);
   });
   copy.removeAttribute('id');
+  // A copy must never be mistaken for the page itself.
+  copy.removeAttribute('data-book-left');
+  copy.removeAttribute('data-book-right');
   Object.assign(copy.style, { width: '100%', height: '100%', margin: '0', transition: 'none', flex: 'none' });
   return copy;
+};
+
+// The turning page's own pace, the same curve as --turn-ease in index.html:
+// how far the page has come (0-1) when `time` (0-1) of the turn has passed.
+const turnProgress = (time: number): number => {
+  const [x1, y1, x2, y2] = [0.45, 0.05, 0.25, 1];
+  const curve = (a: number, b: number, t: number) =>
+    3 * a * t * (1 - t) * (1 - t) + 3 * b * t * t * (1 - t) + t * t * t;
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (curve(x1, x2, mid) < time) low = mid;
+    else high = mid;
+  }
+  return curve(y1, y2, (low + high) / 2);
 };
 
 const turnsAsBook = (): boolean =>
@@ -78,7 +98,8 @@ interface BookPageProps {
   readAloud: boolean;
 }
 
-export const BookPage: React.FC<BookPageProps> = ({
+const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivElement | null> }> = ({
+  hostRef,
   segment,
   onChoice,
   onRestart,
@@ -213,114 +234,6 @@ export const BookPage: React.FC<BookPageProps> = ({
     setTurn(t => t + 1);
   }, [pageKey]);
 
-  // On a wide screen the book lies open, so the turn is a real one: the old
-  // right-hand page is lifted over the spine and lands as the new left-hand
-  // page, and a golden shimmer with a sprinkle of stars writes the new text
-  // onto the blank page behind it (see .book-turn-* in index.html). The old
-  // pages are copied here, while rendering, because the document still shows
-  // them at this point.
-  const leftPageRef = useRef<HTMLDivElement>(null);
-  const rightPageRef = useRef<HTMLDivElement>(null);
-  const turnLayerRef = useRef<HTMLDivElement>(null);
-  const shownKey = useRef(pageKey);
-  const oldPages = useRef<{ left: HTMLElement; right: HTMLElement } | null>(null);
-  // The turn on screen. A turn is never restarted halfway: a page change
-  // that lands while one is running just lets it finish.
-  const turnRef = useRef<{ root: HTMLElement; timer: number } | null>(null);
-  const endTurn = () => {
-    const turn = turnRef.current;
-    if (!turn) return;
-    window.clearTimeout(turn.timer);
-    turn.root.remove();
-    turnRef.current = null;
-  };
-  useEffect(() => endTurn, []);
-  if (shownKey.current !== pageKey) {
-    shownKey.current = pageKey;
-    oldPages.current =
-      !turnRef.current && turnsAsBook() && leftPageRef.current && rightPageRef.current
-        ? { left: copyPage(leftPageRef.current), right: copyPage(rightPageRef.current) }
-        : null;
-  }
-  useLayoutEffect(() => {
-    const old = oldPages.current;
-    oldPages.current = null;
-    const layer = turnLayerRef.current;
-    const left = leftPageRef.current;
-    const right = rightPageRef.current;
-    if (!old || turnRef.current || !layer || !left || !right) return;
-
-    const frame = layer.getBoundingClientRect();
-    const piece = (className: string, ...children: HTMLElement[]) => {
-      const el = document.createElement('div');
-      el.className = className;
-      el.append(...children);
-      return el;
-    };
-    const placed = (className: string, over: HTMLElement, ...children: HTMLElement[]) => {
-      const box = over.getBoundingClientRect();
-      const el = piece(className, ...children);
-      Object.assign(el.style, {
-        left: `${box.left - frame.left}px`,
-        top: `${box.top - frame.top}px`,
-        width: `${box.width}px`,
-        height: `${box.height}px`,
-      });
-      return el;
-    };
-
-    // The old picture stays on the left until the turning page covers it.
-    const under = placed('book-turn-under', left, old.left);
-    // The right-hand page is blank paper while the old page is lifted. The
-    // shimmer then sweeps across it, the new text appears behind the
-    // shimmer, and stars twinkle where it has just passed.
-    const blank = placed('book-turn-blank', right);
-    const stars = Array.from({ length: 18 }, (_, i) => {
-      const star = piece('book-turn-star');
-      const x = 0.04 + 0.92 * ((i + Math.random()) / 18);
-      const size = 8 + Math.random() * 12;
-      Object.assign(star.style, {
-        left: `${x * 100}%`,
-        top: `${6 + Math.random() * 88}%`,
-        width: `${size}px`,
-        height: `${size}px`,
-        // In step with the shimmer, which crosses the page from 35% to 95%.
-        animationDelay: `calc(var(--turn) * ${(0.33 + 0.6 * x).toFixed(3)})`,
-      });
-      return star;
-    });
-    const magic = placed('book-turn-magic', right, piece('book-turn-shimmer'), ...stars);
-    const sheet = placed(
-      'book-turn-sheet',
-      right,
-      piece('book-turn-face book-turn-front', old.right),
-      piece('book-turn-face book-turn-back', copyPage(left))
-    );
-    // The lifted page gets its depth from the stage; the flat pieces lie
-    // outside it, so they can never be sorted in front of the page.
-    const stage = piece('book-turn-stage', sheet);
-    const root = piece('book-turn', under, blank, magic, stage);
-    // Decode the copied pictures before the first frame, so the old picture
-    // never blinks.
-    root.querySelectorAll('img').forEach(img => {
-      img.decoding = 'sync';
-    });
-    layer.replaceChildren(root);
-    root.querySelectorAll<HTMLElement>('[data-turn-scroll]').forEach(el => {
-      el.scrollTop = Number(el.dataset.turnScroll);
-    });
-
-    // The page has landed: only the last of the magic is left.
-    sheet.addEventListener('animationend', event => {
-      if (event.target !== sheet) return;
-      stage.remove();
-      under.remove();
-    });
-    turnRef.current = { root, timer: window.setTimeout(endTurn, 2800) };
-    // Start once the copies are on screen, so no part of the turn is lost
-    // to a slow first frame.
-    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('book-turn-go')));
-  }, [pageKey]);
 
   useEffect(() => {
     // The page changed, or its illustration just landed: offer saving again
@@ -531,10 +444,10 @@ export const BookPage: React.FC<BookPageProps> = ({
   const progress = totalPages ? Math.min((pageNumber / totalPages) * 100, 100) : 0;
 
   return (
-    <div className="relative w-full max-w-6xl">
-    {/* The page turn on wide screens is built here, outside the book, so the
-        lifted page is not cut off at the book's edges. */}
-    <div ref={turnLayerRef} aria-hidden="true" className="book-turn-layer" />
+    <div ref={hostRef} className="relative w-full max-w-6xl">
+    {/* The page turn on wide screens is built here (see BookPage below),
+        outside the book, so the lifted page is not cut off at its edges. */}
+    <div data-turn-layer aria-hidden="true" className="book-turn-layer" />
     <div className="relative flex flex-col lg:flex-row w-full lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden lg:border-r-4 border-gray-200 dark:border-gray-700">
       
       {/* The page being turned. A new key restarts the animation. */}
@@ -546,7 +459,7 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div ref={leftPageRef} className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
+        <div data-book-left className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
              <div className={`relative w-full flex-none lg:flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 lg:rounded-md overflow-hidden flex items-center justify-center lg:shadow-none min-h-[280px] ${isGenerating ? 'h-[70vh]' : 'h-[58vh]'} max-h-[133.34vw] lg:h-auto lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
@@ -573,7 +486,7 @@ export const BookPage: React.FC<BookPageProps> = ({
         </div>
 
         {/* Right Page: Text and Choices (Bottom on Mobile) */}
-        <div ref={rightPageRef} className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
+        <div data-book-right className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
 
           {/* Waiting Panel - only when generating with no choice picked yet
               (legacy fallback; the Neste-side button handles the main case). */}
@@ -997,4 +910,155 @@ export const BookPage: React.FC<BookPageProps> = ({
     </div>
     </div>
   );
+};
+
+const pageKeyOf = (props: BookPageProps): string => `${props.pageNumber}|${props.segment.text}`;
+
+const afterFrames = (frames: number, then: () => void): void => {
+  if (frames <= 0) then();
+  else requestAnimationFrame(() => afterFrames(frames - 1, then));
+};
+
+// The book as the reader sees it. On a wide screen the book lies open, so a
+// new page is turned to for real: the old right-hand page is lifted over the
+// spine and lands as the new left-hand page. The magic is in the turn itself:
+// the edge of the page glows, and stardust falls from it all the way over
+// (see .book-turn-* in index.html).
+//
+// The order matters. The turning page is first laid on top of the old page,
+// as an exact copy of it. Only when that copy is on screen is the page
+// underneath changed to the new one, and only then does the copy start to
+// turn. The new text can therefore never be seen before the page turns, also
+// on a machine that is slow to draw.
+export const BookPage: React.FC<BookPageProps> = props => {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const wanted = pageKeyOf(props);
+  const [shownKey, setShownKey] = useState(wanted);
+  // The latest props of the page on screen. While a turn is being laid out
+  // the old page stays exactly as it was.
+  const held = useRef(props);
+  if (wanted === shownKey) held.current = props;
+  const latest = useRef(props);
+  latest.current = props;
+
+  // The turn on screen. A turn is never restarted halfway: a page change
+  // that lands while one is running is shown at once, under it.
+  const turnRef = useRef<{ root: HTMLElement; timer: number } | null>(null);
+  const endTurn = () => {
+    const turn = turnRef.current;
+    if (!turn) return;
+    window.clearTimeout(turn.timer);
+    turn.root.remove();
+    turnRef.current = null;
+  };
+  useEffect(() => endTurn, []);
+
+  useLayoutEffect(() => {
+    if (wanted === shownKey) return;
+    const host = hostRef.current;
+    const layer = host?.querySelector<HTMLElement>('[data-turn-layer]');
+    const left = host?.querySelector<HTMLElement>('[data-book-left]');
+    const right = host?.querySelector<HTMLElement>('[data-book-right]');
+    if (turnRef.current || !turnsAsBook() || !host || !layer || !left || !right) {
+      setShownKey(wanted);
+      return;
+    }
+
+    const frame = layer.getBoundingClientRect();
+    const piece = (className: string, ...children: HTMLElement[]) => {
+      const el = document.createElement('div');
+      el.className = className;
+      el.append(...children);
+      return el;
+    };
+    const placed = (className: string, over: HTMLElement, ...children: HTMLElement[]) => {
+      const box = over.getBoundingClientRect();
+      const el = piece(className, ...children);
+      Object.assign(el.style, {
+        left: `${box.left - frame.left}px`,
+        top: `${box.top - frame.top}px`,
+        width: `${box.width}px`,
+        height: `${box.height}px`,
+      });
+      return el;
+    };
+    // Decode copied pictures before they are drawn, so none of them blinks.
+    const steady = (el: HTMLElement) => {
+      el.querySelectorAll('img').forEach(img => {
+        img.decoding = 'sync';
+      });
+      return el;
+    };
+
+    // The old picture stays on the left until the turning page covers it.
+    const under = placed('book-turn-under', left, steady(copyPage(left)));
+    // The right-hand page is blank paper while the old page is lifted, and
+    // the new text fades in once the page has passed.
+    const blank = placed('book-turn-blank', right);
+    const edge = piece('book-turn-edge');
+    const sheet = placed(
+      'book-turn-sheet',
+      right,
+      piece('book-turn-face book-turn-front', copyPage(right)),
+      edge
+    );
+    // Stardust: each star appears where the edge of the page is at that
+    // moment, then drifts down and fades.
+    const page = right.getBoundingClientRect();
+    const spine = page.left - frame.left;
+    const depth = 3200;
+    const stars = Array.from({ length: 44 }, (_, i) => {
+      const time = 0.04 + 0.9 * ((i + Math.random()) / 44);
+      const angle = Math.PI * turnProgress(time);
+      const near = depth / (depth - page.width * Math.sin(angle));
+      const star = piece('book-turn-star');
+      const size = 7 + Math.random() * 13;
+      Object.assign(star.style, {
+        left: `${spine + page.width * Math.cos(angle) * near + (Math.random() - 0.5) * 26}px`,
+        top: `${page.top - frame.top + page.height * (0.5 + (Math.random() - 0.5) * 0.98 * near)}px`,
+        width: `${size}px`,
+        height: `${size}px`,
+        animationDelay: `calc(var(--turn) * ${time.toFixed(3)})`,
+      });
+      star.style.setProperty('--fall', `${30 + Math.random() * 70}px`);
+      star.style.setProperty('--drift', `${(Math.random() - 0.5) * 50}px`);
+      return star;
+    });
+    // The lifted page gets its depth from the stage; the flat pieces lie
+    // outside it, so they can never be sorted in front of the page.
+    const stage = piece('book-turn-stage', sheet);
+    const root = piece('book-turn', under, blank, stage, piece('book-turn-stars', ...stars));
+    layer.replaceChildren(root);
+    root.querySelectorAll<HTMLElement>('[data-turn-scroll]').forEach(el => {
+      el.scrollTop = Number(el.dataset.turnScroll);
+    });
+
+    // The page has landed: only the last of the stardust is left.
+    sheet.addEventListener('animationend', event => {
+      if (event.target !== sheet) return;
+      stage.remove();
+      under.remove();
+    });
+    turnRef.current = { root, timer: window.setTimeout(endTurn, 3600) };
+    const running = () => turnRef.current?.root === root;
+
+    // 1. The copy of the old page is on screen.
+    afterFrames(2, () => {
+      if (!running()) return;
+      // 2. Change to the new page underneath it, here and now.
+      flushSync(() => setShownKey(pageKeyOf(latest.current)));
+      afterFrames(2, () => {
+        if (!running()) return;
+        // 3. The back of the turning page is the new left-hand page.
+        const newLeft = host.querySelector<HTMLElement>('[data-book-left]');
+        if (newLeft) {
+          sheet.insertBefore(piece('book-turn-face book-turn-back', steady(copyPage(newLeft))), edge);
+        }
+        // 4. Turn.
+        afterFrames(1, () => root.classList.add('book-turn-go'));
+      });
+    });
+  }, [wanted, shownKey]);
+
+  return <BookPageView {...held.current} hostRef={hostRef} />;
 };
