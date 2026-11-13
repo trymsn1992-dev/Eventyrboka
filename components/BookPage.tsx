@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
 import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
@@ -10,6 +10,26 @@ import { insightError, insightRated, insightReadAloud } from '../services/insigh
 import { ProBadge } from './SetupScreen';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
+
+// A copy of a page as it looks right now, for the page turn on wide screens.
+// Scrolled text keeps its place: the position is noted on the copy and put
+// back once the copy is in the document.
+const copyPage = (page: HTMLElement): HTMLElement => {
+  const copy = page.cloneNode(true) as HTMLElement;
+  const from = page.querySelectorAll<HTMLElement>('*');
+  const to = copy.querySelectorAll<HTMLElement>('*');
+  from.forEach((el, i) => {
+    if (el.scrollTop > 0 && to[i]) to[i].dataset.turnScroll = String(el.scrollTop);
+  });
+  copy.removeAttribute('id');
+  Object.assign(copy.style, { width: '100%', height: '100%', margin: '0', transition: 'none', flex: 'none' });
+  return copy;
+};
+
+const turnsAsBook = (): boolean =>
+  typeof window !== 'undefined' &&
+  window.matchMedia('(min-width: 1024px)').matches &&
+  !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const WAIT_QUESTIONS = [
   "Hva ser du i bildet?",
@@ -191,6 +211,71 @@ export const BookPage: React.FC<BookPageProps> = ({
       return;
     }
     setTurn(t => t + 1);
+  }, [pageKey]);
+
+  // On a wide screen the book lies open, so the turn is a real one: the old
+  // right-hand page is lifted over the spine and lands as the new left-hand
+  // page (see .book-turn-* in index.html). The old pages are copied here,
+  // while rendering, because the document still shows them at this point.
+  const leftPageRef = useRef<HTMLDivElement>(null);
+  const rightPageRef = useRef<HTMLDivElement>(null);
+  const turnLayerRef = useRef<HTMLDivElement>(null);
+  const shownKey = useRef(pageKey);
+  const oldPages = useRef<{ left: HTMLElement; right: HTMLElement } | null>(null);
+  if (shownKey.current !== pageKey) {
+    shownKey.current = pageKey;
+    oldPages.current =
+      turnsAsBook() && leftPageRef.current && rightPageRef.current
+        ? { left: copyPage(leftPageRef.current), right: copyPage(rightPageRef.current) }
+        : null;
+  }
+  useLayoutEffect(() => {
+    const old = oldPages.current;
+    oldPages.current = null;
+    const layer = turnLayerRef.current;
+    const left = leftPageRef.current;
+    const right = rightPageRef.current;
+    if (!old || !layer || !left || !right) return;
+
+    const frame = layer.getBoundingClientRect();
+    const placed = (className: string, over: HTMLElement) => {
+      const box = over.getBoundingClientRect();
+      const el = document.createElement('div');
+      el.className = className;
+      Object.assign(el.style, {
+        left: `${box.left - frame.left}px`,
+        top: `${box.top - frame.top}px`,
+        width: `${box.width}px`,
+        height: `${box.height}px`,
+      });
+      return el;
+    };
+    const face = (className: string, page: HTMLElement) => {
+      const el = document.createElement('div');
+      el.className = `book-turn-face ${className}`;
+      el.appendChild(page);
+      return el;
+    };
+
+    // The old picture stays on the left until the turning page covers it.
+    const under = placed('book-turn-under', left);
+    under.appendChild(old.left);
+    const sheet = placed('book-turn-sheet', right);
+    sheet.append(face('book-turn-front', old.right), face('book-turn-back', copyPage(left)));
+    layer.replaceChildren(under, sheet);
+    layer.querySelectorAll<HTMLElement>('[data-turn-scroll]').forEach(el => {
+      el.scrollTop = Number(el.dataset.turnScroll);
+    });
+
+    const done = () => layer.replaceChildren();
+    sheet.addEventListener('animationend', event => {
+      if (event.target === sheet) done();
+    });
+    const timer = window.setTimeout(done, 1800);
+    return () => {
+      window.clearTimeout(timer);
+      done();
+    };
   }, [pageKey]);
 
   useEffect(() => {
@@ -402,7 +487,11 @@ export const BookPage: React.FC<BookPageProps> = ({
   const progress = totalPages ? Math.min((pageNumber / totalPages) * 100, 100) : 0;
 
   return (
-    <div className="relative flex flex-col lg:flex-row w-full max-w-6xl lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden lg:border-r-4 border-gray-200 dark:border-gray-700">
+    <div className="relative w-full max-w-6xl">
+    {/* The page turn on wide screens is built here, outside the book, so the
+        lifted page is not cut off at the book's edges. */}
+    <div ref={turnLayerRef} aria-hidden="true" className="book-turn-layer" />
+    <div className="relative flex flex-col lg:flex-row w-full lg:h-[90vh] h-auto bg-[#fdfbf7] dark:bg-gray-800 lg:rounded-r-3xl lg:rounded-l-md book-shadow lg:overflow-hidden lg:border-r-4 border-gray-200 dark:border-gray-700">
       
       {/* The page being turned. A new key restarts the animation. */}
       {turn > 0 && <div key={turn} aria-hidden="true" className="page-turn-sheet lg:rounded-r-3xl" />}
@@ -413,7 +502,7 @@ export const BookPage: React.FC<BookPageProps> = ({
       {/* Content Container */}
       
         {/* Left Page: Illustration (Top on Mobile) */}
-        <div className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
+        <div ref={leftPageRef} className={`w-full ${isGenerating ? 'lg:w-3/5' : 'lg:w-1/2'} lg:p-8 lg:ml-10 z-0 flex items-center justify-center bg-opacity-50 relative lg:border-r border-gray-200 dark:border-gray-700 border-dashed lg:page-curl bg-indigo-50/30 dark:bg-indigo-950/20 transition-all duration-500 ease-out`}>
           <div className="w-full h-full flex flex-col items-center justify-center lg:border-4 lg:border-double lg:border-indigo-100 dark:lg:border-indigo-900 lg:rounded-lg lg:p-6 lg:bg-white dark:lg:bg-gray-900 lg:shadow-inner">
              <div className={`relative w-full flex-none lg:flex-1 bg-white dark:bg-gray-900 lg:bg-gray-50 dark:lg:bg-gray-900 lg:rounded-md overflow-hidden flex items-center justify-center lg:shadow-none min-h-[280px] ${isGenerating ? 'h-[70vh]' : 'h-[58vh]'} max-h-[133.34vw] lg:h-auto lg:max-h-full transition-all duration-500 ease-out`}>
                 {/* The loader stays mounted while the image loads so the
@@ -440,7 +529,7 @@ export const BookPage: React.FC<BookPageProps> = ({
         </div>
 
         {/* Right Page: Text and Choices (Bottom on Mobile) */}
-        <div className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
+        <div ref={rightPageRef} className={`w-full ${isGenerating ? 'lg:w-2/5' : 'lg:w-1/2'} bg-[#fdfbf7] dark:bg-gray-800 relative flex flex-col lg:h-full transition-all duration-500 ease-out`}>
 
           {/* Waiting Panel - only when generating with no choice picked yet
               (legacy fallback; the Neste-side button handles the main case). */}
@@ -861,6 +950,7 @@ export const BookPage: React.FC<BookPageProps> = ({
           )}
         </div>
 
+    </div>
     </div>
   );
 };
