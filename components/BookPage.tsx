@@ -260,9 +260,18 @@ export const BookPage: React.FC<BookPageProps> = ({
     // The old picture stays on the left until the turning page covers it.
     const under = placed('book-turn-under', left);
     under.appendChild(old.left);
+    // The new text must not be readable under the page while it is lifted:
+    // the right-hand page is blank paper until the turning page has passed,
+    // and the new text then fades in.
+    const blank = placed('book-turn-blank', right);
     const sheet = placed('book-turn-sheet', right);
     sheet.append(face('book-turn-front', old.right), face('book-turn-back', copyPage(left)));
-    layer.replaceChildren(under, sheet);
+    // The lifted page gets its depth from the stage; the two flat pieces
+    // lie outside it, so they can never be sorted in front of the page.
+    const stage = document.createElement('div');
+    stage.className = 'book-turn-stage';
+    stage.appendChild(sheet);
+    layer.replaceChildren(under, blank, stage);
     layer.querySelectorAll<HTMLElement>('[data-turn-scroll]').forEach(el => {
       el.scrollTop = Number(el.dataset.turnScroll);
     });
@@ -271,7 +280,7 @@ export const BookPage: React.FC<BookPageProps> = ({
     sheet.addEventListener('animationend', event => {
       if (event.target === sheet) done();
     });
-    const timer = window.setTimeout(done, 1800);
+    const timer = window.setTimeout(done, 2600);
     return () => {
       window.clearTimeout(timer);
       done();

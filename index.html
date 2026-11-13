@@ -128,14 +128,33 @@
         inset: 0;
         z-index: 40;
         pointer-events: none;
-        perspective: 3200px;
       }
       @media (min-width: 1024px) {
         .book-turn-layer { display: block; }
       }
+      .book-turn-stage {
+        position: absolute;
+        inset: 0;
+        perspective: 3200px;
+      }
       .book-turn-under,
+      .book-turn-blank,
       .book-turn-sheet {
         position: absolute;
+      }
+      /* Blank paper over the new text until the turning page has passed. */
+      .book-turn-blank {
+        background: #fdfbf7;
+        border-radius: 0 1.25rem 1.25rem 0;
+        animation: bookTurnBlank 1.8s ease-out forwards;
+      }
+      html.dark .book-turn-blank {
+        background: #1f2937;
+      }
+      @keyframes bookTurnBlank {
+        0%   { opacity: 1; }
+        50%  { opacity: 1; }
+        100% { opacity: 0; }
       }
       .book-turn-under,
       .book-turn-face {
@@ -150,7 +169,7 @@
       .book-turn-sheet {
         transform-origin: left center;
         transform-style: preserve-3d;
-        animation: bookTurn 1.25s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+        animation: bookTurn 1.8s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
         will-change: transform;
       }
       .book-turn-face {
@@ -171,11 +190,11 @@
       }
       .book-turn-front::after {
         background: linear-gradient(to right, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
-        animation: bookTurnShadeFront 1.25s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+        animation: bookTurnShadeFront 1.8s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
       }
       .book-turn-back::after {
         background: linear-gradient(to right, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
-        animation: bookTurnShadeBack 1.25s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+        animation: bookTurnShadeBack 1.8s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
       }
       @keyframes bookTurn {
         0%   { transform: rotateY(0deg); }
