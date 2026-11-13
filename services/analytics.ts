@@ -9,6 +9,7 @@
 //  - At most two values per event — that is what the plan allows.
 import { inject, track } from "@vercel/analytics";
 import { METAPHORS, StoryOptions } from "../types";
+import { insightEvent } from "./insight";
 
 type EventData = Record<string, string | number | boolean | null>;
 
@@ -26,6 +27,8 @@ export function startAnalytics(): void {
 }
 
 export function logEvent(name: string, data?: EventData): void {
+  // Our own database too (events outside the story).
+  insightEvent(name, data);
   try {
     track(name, data);
   } catch {
@@ -36,7 +39,8 @@ export function logEvent(name: string, data?: EventData): void {
 // A new story: who, what about, and for whom.
 export function logStoryStarted(options: StoryOptions): void {
   logEvent("Eventyr startet", {
-    helt: options.character,
+    // The name of a hero the family made themselves stays with them.
+    helt: options.heroToken ? "Egen" : options.character,
     moral: METAPHORS.includes(options.metaphor) ? options.metaphor : "Egen",
   });
   logEvent("Eventyr innstillinger", {

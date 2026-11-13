@@ -9,7 +9,7 @@ export const setStoryTicket = (ticket: string | null): void => {
 const withTicket = <B extends object>(body: B): B | (B & { billett: string }) =>
   storyTicket ? { ...body, billett: storyTicket } : body;
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+export async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,12 +32,14 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 export const generateCharacterSheet = async (
   character: string,
-  artStyle?: string
+  artStyle?: string,
+  // Set when the hero was made from a photo (see services/hero.ts).
+  heroToken?: string
 ): Promise<string | undefined> => {
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/character-sheet",
-      withTicket({ character, artStyle })
+      withTicket({ character, artStyle, heroToken })
     );
     return base64 ?? undefined;
   } catch (error) {
@@ -61,6 +63,7 @@ export const generateIllustration = async (
       withTicket({
         prompt: segment.illustrationPrompt,
         character: options.character,
+        heroToken: options.heroToken,
         artStyle: options.artStyle,
         characterSheet,
         sideCharacters,

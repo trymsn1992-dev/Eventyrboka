@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, OwnHero, HERO_NAME_MAX, cleanHeroName, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Pencil, Lightbulb, Calendar, Clock, Check, BookOpen } from 'lucide-react';
+import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2 } from 'lucide-react';
+import { forgetOwnHero, loadOwnHero, makeHero, preparePhoto, saveOwnHero } from '../services/hero';
 
 interface SetupScreenProps {
   // `personal`: make it a «Magihistorie» (own moral, chosen drawing style, read-aloud).
@@ -139,8 +140,23 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const canPickPersonal =
     loggedIn && !isPro && (freePersonal || credits.personal > 0 || canBuy);
   const personal = isPro || (wantsPersonal && canPickPersonal);
+  // A hero made from a photo of a toy or a drawing (services/hero.ts). The
+  // last one made is kept in this browser and can be picked again.
+  const [ownHero, setOwnHero] = useState<OwnHero | null>(loadOwnHero);
+  const [useOwnHero, setUseOwnHero] = useState(false);
+  // The little form for making one: open, with a name, a photo and a status.
+  const [heroFormOpen, setHeroFormOpen] = useState(false);
+  const [heroName, setHeroName] = useState('');
+  const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
+  const [heroBusy, setHeroBusy] = useState(false);
+  const [heroError, setHeroError] = useState<string | null>(null);
+  const heroNameRef = useRef<HTMLInputElement>(null);
+  const heroFileRef = useRef<HTMLInputElement>(null);
+  // An own hero belongs to «Magihistorie», like your own moral.
+  const ownHeroPicked = useOwnHero && personal && ownHero !== null;
   const options: StoryOptions = {
     ...picked,
+    ...(ownHeroPicked && ownHero ? { character: ownHero.name, heroToken: ownHero.token } : {}),
     ageGroup: normalizeAgeGroup(preferences.ageGroup),
     duration: preferences.duration ?? DURATIONS[1],
     // Other drawing styles than the standard one belong to «Magihistorie».
@@ -154,6 +170,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     (personal ? !freePersonal && credits.personal === 0 : freeLeft === 0 && credits.plain === 0);
   const price = personal ? PRICE_PERSONAL_STORY_KR : PRICE_SIMPLE_STORY_KR;
   const outOfFreeStories = mustPay && !canBuy;
+  // Count each time the week's free stories turn out to be used up.
+  useEffect(() => {
+    if (mustPay) logEvent('Kvote truffet', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
+  }, [mustPay, personal]);
   // While single stories can't be bought yet: count who would have.
   const [wantsToBuy, setWantsToBuy] = useState(false);
 
@@ -221,6 +241,8 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setWantsPersonal(false);
     setPersonalNote(false);
     setUseCustomMoral(false);
+    setUseOwnHero(false);
+    setHeroFormOpen(false);
   };
   // True when the story is (now) a «Magihistorie»; otherwise says why not.
   const pickPersonal = (): boolean => {
@@ -231,21 +253,98 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       return true;
     }
     setPersonalNote(true);
+    logEvent('Lås truffet', { funksjon: PERSONAL_STORY_NAME });
     return false;
   };
   const pickCustomMoral = () => {
     // Your own moral makes it a «Magihistorie».
     if (!pickPersonal()) {
-      window.clearTimeout(advanceTimer.current);
-      formRef.current
-        ?.querySelector('[data-story-kind]')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showStoryKind();
       return;
     }
     setUseCustomMoral(true);
     // Stay here and put the cursor in the field — there is something to type.
     window.clearTimeout(advanceTimer.current);
     window.setTimeout(() => customMoralRef.current?.focus(), 0);
+  };
+
+  const showStoryKind = () => {
+    window.clearTimeout(advanceTimer.current);
+    formRef.current
+      ?.querySelector('[data-story-kind]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  const pickOwnHero = () => {
+    // Your own hero makes it a «Magihistorie».
+    if (!pickPersonal()) {
+      showStoryKind();
+      return;
+    }
+    if (ownHero) {
+      setUseOwnHero(true);
+      setHeroFormOpen(false);
+      advanceFrom('character');
+      return;
+    }
+    openHeroForm();
+  };
+  const openHeroForm = () => {
+    if (!pickPersonal()) {
+      showStoryKind();
+      return;
+    }
+    setHeroFormOpen(true);
+    setHeroError(null);
+    window.clearTimeout(advanceTimer.current);
+    window.setTimeout(() => heroNameRef.current?.focus(), 0);
+  };
+  const handleHeroPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Let the same file be picked again after an error.
+    e.target.value = '';
+    if (!file) return;
+    setHeroError(null);
+    try {
+      setHeroPhoto(await preparePhoto(file));
+    } catch (err) {
+      setHeroPhoto(null);
+      setHeroError(err instanceof Error ? err.message : 'Vi klarte ikke å åpne bildet.');
+    }
+  };
+  const handleMakeHero = async () => {
+    const name = cleanHeroName(heroName);
+    if (!name) {
+      setHeroError('Gi helten et navn først.');
+      heroNameRef.current?.focus();
+      return;
+    }
+    if (!heroPhoto) {
+      setHeroError('Ta eller velg et bilde først.');
+      return;
+    }
+    setHeroBusy(true);
+    setHeroError(null);
+    try {
+      const hero = await makeHero(heroPhoto, name, preferences.artStyle);
+      void saveOwnHero(hero);
+      setOwnHero(hero);
+      setUseOwnHero(true);
+      setHeroFormOpen(false);
+      setHeroPhoto(null);
+      setHeroName('');
+      logEvent('Egen helt laget');
+      advanceFrom('character');
+    } catch (err) {
+      setHeroError(err instanceof Error ? err.message : 'Kunne ikke lage helten. Prøv igjen.');
+    } finally {
+      setHeroBusy(false);
+    }
+  };
+  const handleForgetHero = () => {
+    forgetOwnHero();
+    setOwnHero(null);
+    setUseOwnHero(false);
+    setHeroFormOpen(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -304,7 +403,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   {personal && <SelectedBadge />}
                   <span className="block text-base sm:text-lg font-bold">{PERSONAL_STORY_NAME}</span>
                   <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
-                    Egen lærepenge, valgfri tegnestil og opplesning.
+                    Egen helt fra et bilde, egen lærepenge, valgfri tegnestil og opplesning.
                   </span>
                   <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
                     1 gratis hver uke{canBuy && ` · ellers ${PRICE_PERSONAL_STORY_KR} kr`}
@@ -348,14 +447,18 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               {CHARACTERS.map((char) => {
-                const isSelected = options.character === char;
+                const isSelected = !ownHeroPicked && picked.character === char;
                 const art = HERO_ART[char];
                 return (
                   <button
                     key={char}
                     type="button"
                     aria-pressed={isSelected}
-                    onClick={() => handleChange('character', char)}
+                    onClick={() => {
+                      setUseOwnHero(false);
+                      setHeroFormOpen(false);
+                      handleChange('character', char);
+                    }}
                     className={`group relative p-2 sm:p-3 rounded-2xl border-2 flex flex-col items-center text-center gap-2 transition-all duration-200 ${cardClass(isSelected)}`}
                   >
                     {isSelected && <SelectedBadge />}
@@ -383,6 +486,131 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Your own hero, drawn from a photo of a toy or a drawing. */}
+            <div className={`relative rounded-2xl border-2 transition-all duration-200 ${cardClass(ownHeroPicked || heroFormOpen)}`}>
+              {ownHeroPicked && <SelectedBadge />}
+              <button
+                type="button"
+                aria-pressed={ownHeroPicked}
+                onClick={pickOwnHero}
+                className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
+              >
+                {ownHero ? (
+                  <span className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white overflow-hidden">
+                    <img src={ownHero.sheet} alt="" className="w-full h-full object-cover object-top" />
+                  </span>
+                ) : (
+                  <span className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+                    <Camera className="w-7 h-7 text-indigo-500" />
+                  </span>
+                )}
+                <span>
+                  <span className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold leading-snug">
+                    {ownHero ? ownHero.name : 'Lag din egen helt'}
+                    {!personal && <ProBadge label={PERSONAL_STORY_NAME} />}
+                  </span>
+                  <span className="block text-[11px] sm:text-xs font-medium opacity-75">
+                    {ownHero
+                      ? ownHero.tagline || 'Helten dere har laget selv'
+                      : 'Ta bilde av kosedyret, en leke eller en tegning'}
+                  </span>
+                </span>
+              </button>
+              {ownHero && !heroFormOpen && (
+                <div className="px-3 pb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs sm:text-sm">
+                  <button
+                    type="button"
+                    onClick={openHeroForm}
+                    className="underline decoration-dotted underline-offset-4 hover:text-indigo-600 dark:hover:text-indigo-300"
+                  >
+                    Lag en ny helt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleForgetHero}
+                    className="underline decoration-dotted underline-offset-4 hover:text-indigo-600 dark:hover:text-indigo-300"
+                  >
+                    Fjern {ownHero.name}
+                  </button>
+                </div>
+              )}
+              {heroFormOpen && (
+                <div className="px-3 pb-3 space-y-3">
+                  <input
+                    ref={heroNameRef}
+                    type="text"
+                    value={heroName}
+                    onChange={(e) => setHeroName(e.target.value)}
+                    maxLength={HERO_NAME_MAX}
+                    disabled={heroBusy}
+                    onKeyDown={(e) => {
+                      // Enter draws the hero; it must not start the story.
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleMakeHero();
+                      }
+                    }}
+                    placeholder="Hva heter helten? F.eks. Bamse"
+                    aria-label="Navnet på helten"
+                    className="w-full rounded-xl border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900 px-4 py-3 text-base font-semibold text-gray-900 dark:text-gray-100 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
+                  />
+                  <input
+                    ref={heroFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleHeroPhoto}
+                    className="hidden"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  />
+                  <div className="flex items-center gap-3">
+                    {heroPhoto && (
+                      <img
+                        src={heroPhoto}
+                        alt="Bildet dere har valgt"
+                        className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border-2 border-indigo-200 dark:border-indigo-700"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      disabled={heroBusy}
+                      onClick={() => heroFileRef.current?.click()}
+                      className="inline-flex items-center gap-2 rounded-full border-2 border-indigo-300 dark:border-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50"
+                    >
+                      <Camera className="w-4 h-4" />
+                      {heroPhoto ? 'Bytt bilde' : 'Ta eller velg bilde'}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={heroBusy}
+                    onClick={handleMakeHero}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-base font-bold text-white hover:bg-indigo-700 transition-colors disabled:opacity-70"
+                  >
+                    {heroBusy ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Tegner helten … det tar omtrent et halvt minutt
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5" />
+                        Tegn helten
+                      </>
+                    )}
+                  </button>
+                  {heroError && (
+                    <p role="alert" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {heroError}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Bildet brukes bare til å tegne helten, og lagres ikke. Ta bilde av leker og tegninger, ikke av mennesker.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -434,9 +662,13 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 onClick={pickCustomMoral}
                 className="w-full p-2 pr-10 flex items-center gap-3 sm:gap-4 text-left"
               >
-                <span className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
-                  <Pencil className="w-7 h-7 text-amber-500" />
-                </span>
+                <img
+                  src="/magiboka-ikon.png?v=2"
+                  alt=""
+                  width={192}
+                  height={192}
+                  className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl"
+                />
                 <span>
                   <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     Skriv din egen
@@ -491,7 +723,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             <Button
               type="submit"
               fullWidth
-              disabled={isLoading || outOfFreeStories}
+              disabled={isLoading || outOfFreeStories || heroBusy}
               className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
             >
               {isLoading ? (

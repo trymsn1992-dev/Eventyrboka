@@ -162,3 +162,14 @@ ingenting om hvem leseren er.
 | Hvor mange stjerner folk gir | `select * from innsikt_stjerner;` |
 | Utviklingen uke for uke | `select * from innsikt_uker;` |
 | Alt, rad for rad | `select * from innsikt order by startet desc;` |
+| Ventetid på side 1 og hver side etter | `select * from innsikt_ventetid;` |
+| Om ventetiden skremmer folk bort | `select * from innsikt_ventetid_frafall;` |
+| Feil, oppstarter som aldri kom i gang, sider uten bilde | `select * from innsikt_feil;` |
+| Innloggingsveggen på side 2 | `select * from innsikt_vegg;` |
+| Betalingstrakten uke for uke | `select * from innsikt_kjop;` |
+| Alle hendelser med detalj (hvilken lås, hvilken type kjøp) | `select * from innsikt_hendelser_telt;` |
+| Hvor folk kommer fra, og hva de gjør | `select * from innsikt_kilder;` |
+| Prinsen-abonnement og hvor lenge de varer | `select * from innsikt_abonnement;` |
+
+Kilden er `utm_source` i lenken, ellers nettstedet folk kom fra. Bruk lenker som
+`https://www.magiboka.no/?utm_source=facebook&utm_campaign=jul` i annonser og innlegg.

@@ -2,11 +2,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   ai,
   artStyleFor,
-  CHARACTER_DESCRIPTIONS,
   FRAMING_RULE,
 } from "./_lib/gemini.js";
+import { heroBible, openHero } from "./_lib/hero.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { allowedArtStyle } from "./_lib/access.js";
+import { allowedArtStyle, mayPersonalize } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
@@ -17,6 +17,11 @@ interface CharacterSheetRequestBody {
   character?: unknown;
   // Drawing style picked for this story (label from ART_STYLES).
   artStyle?: unknown;
+  // Set when the hero was made from a photo (see _lib/hero.ts). Its first
+  // sheet is drawn from the photo by /api/figur; this endpoint draws it
+  // again from the written description when a saved story is re-read.
+  heroToken?: unknown;
+  billett?: unknown;
 }
 
 // Generates a single canonical "character sheet" image for the main character.
@@ -56,16 +61,20 @@ export default async function handler(
     const character =
       typeof body.character === "string" ? body.character : null;
 
-    if (!character || !CHARACTER_DESCRIPTIONS[character]) {
+    // A hero made from a photo belongs to «Magihistorie» and Prinsen.
+    if (openHero(body.heroToken) && !(await mayPersonalize(session, body.billett))) {
+      return res.status(403).json({ error: "Egen helt er med i magihistorier og Prinsen." });
+    }
+    const bible = heroBible(character, body.heroToken);
+    if (!bible) {
       return res.status(400).json({ error: "Ukjent karakter." });
     }
 
-    const bible = CHARACTER_DESCRIPTIONS[character];
     // Other drawing styles than the standard one are for Pro.
     const artStyle = await allowedArtStyle(
       session,
       body.artStyle,
-      (body as { billett?: unknown }).billett
+      body.billett
     );
 
     const sheetPrompt = `

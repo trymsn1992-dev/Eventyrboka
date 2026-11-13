@@ -268,7 +268,7 @@ export async function setPlan(
 // Calls one of the functions in supabase/schema.sql. Returns null when it
 // can't be reached, so the caller decides what that means.
 export async function quotaRpc<T>(
-  fn: "bruk_ukeskvote" | "les_ukeskvote" | "bruk_kjop" | "logg_innsikt",
+  fn: "bruk_ukeskvote" | "les_ukeskvote" | "bruk_kjop" | "logg_innsikt" | "logg_hendelse",
   args: Record<string, unknown>
 ): Promise<T | null> {
   if (!supabaseReady()) return null;

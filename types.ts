@@ -7,6 +7,10 @@ export interface StoryOptions {
   // Drawing style for the illustrations (one of ART_STYLES). Missing on
   // stories saved before the choice existed — those are watercolour.
   artStyle?: string;
+  // A hero made from a photo of a toy or a drawing (see api/figur.ts). The
+  // token is signed by the server and holds what the hero looks like and is
+  // like; `character` is then the name the family gave it.
+  heroToken?: string;
   // Legacy fields kept optional so saved stories from older versions still load.
   // No longer collected from the user — the planner picks setting and genre naturally.
   theme?: string;
@@ -148,6 +152,32 @@ export const CHARACTER_TRAITS: Record<string, { tagline: string; personality: st
       "Tålmodig og evig optimist. Veldig, veldig treg, men tror selv at han er lynrask. Gir aldri opp. Sier gjerne «Sakte, men super!».",
   },
 };
+
+// A hero the family made themselves from a photo. Only the server can read
+// the token; the rest is for showing the hero in the picker.
+export interface OwnHero {
+  name: string;
+  tagline: string;
+  token: string;
+  // The character sheet drawn from the photo (data URL), and the drawing
+  // style it was drawn in.
+  sheet: string;
+  artStyle: string;
+}
+
+// The name of a hero made from a photo ends up in the story prompts, so
+// only letters, digits, spaces and hyphens get through: 2-24 characters.
+export const HERO_NAME_MAX = 24;
+export function cleanHeroName(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const cleaned = input
+    .replace(/[^\p{L}\p{N} \-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, HERO_NAME_MAX)
+    .trim();
+  return cleaned.length >= 2 ? cleaned : null;
+}
 
 export const METAPHORS = [
   "Det lønner seg å dele",

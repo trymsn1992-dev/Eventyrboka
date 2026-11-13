@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { getClientIp } from "./rate-limit.js";
 import { supabaseKey, supabaseReady, supabaseUrl } from "./supabase.js";
 
-export type BudgetKind = "story" | "image" | "text" | "speech";
+export type BudgetKind = "story" | "image" | "text" | "speech" | "hero";
 
 const intEnv = (name: string, fallback: number): number => {
   const n = Number.parseInt((process.env[name] || "").trim(), 10);
@@ -37,6 +37,8 @@ const PER_STORY: Record<BudgetKind, number> = {
   image: 8,
   text: 20,
   speech: 5,
+  // Heroes made from a photo (api/figur.ts): as many a day as stories.
+  hero: 1,
 };
 
 // What the pages before the login may use: 1 character sheet + 2
@@ -46,6 +48,7 @@ const PER_GUEST_STORY: Record<BudgetKind, number> = {
   image: 3,
   text: 3,
   speech: 0,
+  hero: 0,
 };
 
 const MESSAGES: Record<"alle" | "ip", string> = {

@@ -7,6 +7,7 @@ import { readSession } from "./_lib/session.js";
 import { giveBackBoughtStory, useBoughtStory } from "./_lib/betaling.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
+import { heroLabel } from "./_lib/hero.js";
 import { withModelFallback } from "./_lib/retry.js";
 import {
   SAFETY_RULES,
@@ -102,7 +103,7 @@ function buildSystemInstruction(options: StoryOptions, seed: number): string {
   return `Du er en varm, lekende norsk barnebokforfatter.
 Du skriver ÅPNINGEN til en interaktiv bok for barn (aldersgruppe ${options.ageGroup}).
 
-Karakter: ${options.character}. Metafor: "${options.metaphor}".
+Karakter: ${heroLabel(options)}. Metafor: "${options.metaphor}".
 ${heroAndMoralNotes(options)}
 DETTE ER SIDE 1 AV ${TOTAL_PAGES}. Senere sider skrives ut fra valgene barnet tar.
 
@@ -203,7 +204,11 @@ export default async function handler(
     // in to read on (see /api/meg). When the week's free ones are used, a
     // bought story is spent instead (see _lib/betaling.ts).
     const pro = session ? await isPro(session.sub) : false;
-    const wantsPersonal = body.personlig === true || isCustomMetaphor(options.metaphor);
+    // Your own moral or a hero made from a photo makes it a personal story.
+    const wantsPersonal =
+      body.personlig === true ||
+      isCustomMetaphor(options.metaphor) ||
+      Boolean(options.heroToken);
     let ticket: string | undefined;
     if (!pro) {
       if (!session) {

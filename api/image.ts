@@ -2,11 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   ai,
   artStyleFor,
-  CHARACTER_DESCRIPTIONS,
   FRAMING_RULE,
+  parseDataUrl,
 } from "./_lib/gemini.js";
+import { heroBible, openHero } from "./_lib/hero.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { allowedArtStyle } from "./_lib/access.js";
+import { allowedArtStyle, mayPersonalize } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
@@ -27,20 +28,10 @@ interface ImageRequestBody {
   sideCharacters?: unknown;
   // Drawing style picked for this story (label from ART_STYLES).
   artStyle?: unknown;
-}
-
-// Pulls the raw base64 payload out of a "data:image/*;base64,..." URL.
-// Returns null if the input isn't a well-formed base64 PNG/JPEG data URL.
-function parseDataUrl(
-  input: unknown
-): { mimeType: string; data: string } | null {
-  if (typeof input !== "string") return null;
-  const match = /^data:(image\/(png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
-    input
-  );
-  if (!match) return null;
-  const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
-  return { mimeType, data: match[3] };
+  // Set when the hero was made from a photo (see _lib/hero.ts).
+  heroToken?: unknown;
+  // The ticket of a «Magihistorie» made on the free plan.
+  billett?: unknown;
 }
 
 function parseSideCharacters(input: unknown): SideCharacterInput[] {
@@ -98,9 +89,15 @@ export default async function handler(
       return res.status(400).json({ error: "Mangler scenebeskrivelse." });
     }
 
-    const characterVisuals =
-      (character && CHARACTER_DESCRIPTIONS[character]) ||
-      "a cute children's book character";
+    // A hero made from a photo belongs to «Magihistorie» and Prinsen.
+    if (openHero(body.heroToken) && !(await mayPersonalize(session, body.billett))) {
+      return res.status(403).json({ error: "Egen helt er med i magihistorier og Prinsen." });
+    }
+    // A hero made from a photo is only called by its name in the scene.
+    const ownHero = openHero(body.heroToken);
+    const characterVisuals = ownHero
+      ? `Name: ${ownHero.name} (this is who "${ownHero.name}" in the scene is).\n${ownHero.bible}`
+      : heroBible(character, null) || "a cute children's book character";
 
     const sideCharacters = parseSideCharacters(body.sideCharacters);
     const sideCharsBlock = sideCharacters.length
@@ -121,7 +118,7 @@ export default async function handler(
     const artStyle = await allowedArtStyle(
       session,
       body.artStyle,
-      (body as { billett?: unknown }).billett
+      body.billett
     );
 
     const referenceNote = sheet

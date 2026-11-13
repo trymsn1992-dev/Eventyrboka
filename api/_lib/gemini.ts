@@ -112,3 +112,17 @@ NEVER: remove the shell, make the snail a different color, change cape color, ad
 // Framing rule injected into every image prompt so size and composition stay stable.
 export const FRAMING_RULE =
   "Framing: medium shot, main character fills roughly 55-65% of the frame vertically, same scale across all pages of the book, character fully visible, calm readable composition suitable for a children's book spread.";
+
+// Pulls the raw base64 payload out of a "data:image/*;base64,..." URL.
+// Returns null if the input isn't a well-formed base64 PNG/JPEG/WebP data URL.
+export function parseDataUrl(
+  input: unknown
+): { mimeType: string; data: string } | null {
+  if (typeof input !== "string") return null;
+  const match = /^data:(image\/(png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
+    input
+  );
+  if (!match) return null;
+  const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+  return { mimeType, data: match[3] };
+}

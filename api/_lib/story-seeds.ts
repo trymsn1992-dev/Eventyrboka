@@ -5,6 +5,7 @@
 // own seed and pulled the story in different directions.)
 
 import { CHARACTER_TRAITS, METAPHORS, type StoryOptions } from "../../types.js";
+import { openHero } from "./hero.js";
 
 const OPENING_ARCHETYPES = [
   "midt i noe uventet som allerede skjer",
@@ -85,12 +86,24 @@ VIKTIGE INNHOLDSREGLER (alltid):
 // Extra lines about the hero and the moral, shared by every page prompt:
 // the hero's personality, and a guard around a moral the grown-up typed.
 export function heroAndMoralNotes(options: StoryOptions): string {
-  const traits = CHARACTER_TRAITS[options.character];
+  // A hero made from a photo carries its own personality (see hero.ts).
+  const hero = openHero(options.heroToken);
+  const traits = hero ?? CHARACTER_TRAITS[options.character];
   const lines: string[] = [];
   if (traits) {
     lines.push(
       `PERSONLIGHET (${options.character}): ${traits.personality}
 Vis personligheten gjennom det karakteren gjør og sier — ikke forklar den. Faste uttrykk brukes høyst én gang per side, og ikke på hver side.`
+    );
+  }
+  if (hero) {
+    // The writer can't guess what a toy from a photo looks like, and a wrong
+    // guess in the scene description pulls the illustration away from it.
+    lines.push(
+      `HELTEN ER BARNETS EGEN FIGUR: ${hero.name} er ${hero.kind}, tegnet etter et bilde familien har tatt. Barnet kjenner den godt.
+Slik ser ${hero.name} ut (fasit på engelsk — finn aldri på andre farger, klær eller detaljer i teksten):
+${hero.bible}
+I 'illustrationPrompt' omtales helten BARE med navnet "${hero.name}" — aldri art, farge, klær eller utseende. Tegneren har et referanseark.`
     );
   }
   if (!METAPHORS.includes(options.metaphor)) {

@@ -4,7 +4,8 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, DEFAULT_ART_STYLE, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
+import { loadOwnHero } from './services/hero';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
 import {
   AccountStatus,
@@ -32,7 +33,19 @@ import {
   SetupPreferences,
 } from './services/account';
 import { PendingStory, savePendingStory, takePendingStory } from './services/guestStory';
-import { insightLoggedIn, insightPage, insightResume, insightSaved, insightStarted, insightStop } from './services/insight';
+import {
+  insightBegin,
+  insightError,
+  insightLoggedIn,
+  insightPage,
+  insightResume,
+  insightSaved,
+  insightStarted,
+  insightStartFailed,
+  insightStop,
+  insightWall,
+  insightWho,
+} from './services/insight';
 import { logEvent, logStoryStarted } from './services/analytics';
 import { AlertCircle, CheckCircle2, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
 
@@ -176,6 +189,7 @@ const App: React.FC = () => {
     (async () => {
       let status = await fetchStatus();
       if (cancelled) return;
+      insightWho(!status.innlogget ? 'gjest' : status.plan === 'pro' ? 'prinsen' : 'askeladden');
       // A share link for Prinsen opened in this browser: use it now if
       // logged in, otherwise ask for a login.
       const link = pendingShareLink();
@@ -231,6 +245,7 @@ const App: React.FC = () => {
         } else if (result.status === 'cancelled') {
           setNotice(null);
           setError('Betalingen ble avbrutt. Ingenting er trukket.');
+          logEvent('Kjøp avbrutt', { type: back.kind === 'avtale' ? PLAN_NAMES.pro : 'Historie' });
         } else {
           keepPaymentReturn(back);
           setNotice(null);
@@ -354,7 +369,18 @@ const App: React.FC = () => {
   const getSheet = (opts: StoryOptions) => {
     if (!sheetRef.current) {
       const run = runRef.current;
-      sheetRef.current = generateCharacterSheet(opts.character, opts.artStyle).then(sheet => {
+      // A hero made from a photo already has its sheet, drawn from the photo
+      // (services/hero.ts). It is drawn again from the description if the
+      // story uses another drawing style, or is re-read on another device.
+      const own = opts.heroToken ? loadOwnHero() : null;
+      const ready =
+        own && own.token === opts.heroToken && own.artStyle === (opts.artStyle ?? DEFAULT_ART_STYLE)
+          ? own.sheet
+          : null;
+      sheetRef.current = (ready
+        ? Promise.resolve<string | undefined>(ready)
+        : generateCharacterSheet(opts.character, opts.artStyle, opts.heroToken)
+      ).then(sheet => {
         if (runRef.current === run) sheetValue.current = sheet;
         return sheet;
       });
@@ -409,6 +435,7 @@ const App: React.FC = () => {
     if (!account.innlogget) {
       setLoginGate(true);
       logEvent('Innlogging bedt om', { side: currentPageIndex + 1 });
+      insightWall('sett');
       return;
     }
     const run = runRef.current;
@@ -425,6 +452,7 @@ const App: React.FC = () => {
     if (leavingForLogin) return;
     setLeavingForLogin(true);
     logEvent('Vipps-innlogging klikket');
+    insightWall('klikket');
     if (options && storyMeta && segments.length > 0) {
       await savePendingStory({
         options,
@@ -475,6 +503,8 @@ const App: React.FC = () => {
       sideCharactersFor(segment, sideCharacters),
       sheet
     );
+    // A picture that never came counts as an error in the story.
+    if (!image && segment.illustrationPrompt && runRef.current === run) insightError();
     if (!image || runRef.current !== run) return;
     setSegments(prev => {
       if (prev[index]?.text !== segment.text) return prev;
@@ -543,6 +573,8 @@ const App: React.FC = () => {
     chosen[i] = choiceIdx;
     setWaitingFor(label);
     setError(null);
+    const tappedAt = Date.now();
+    const hadImage = Boolean(segments[i]?.imageBase64);
     try {
       const next = await requestBranch(segs, chosen, i, choiceIdx);
       if (runRef.current !== run) return;
@@ -555,12 +587,15 @@ const App: React.FC = () => {
         i + 2,
         Array.from({ length: i + 1 }, (_, j) => chosen[j] ?? 0),
         next.isEnding,
-        choiceIdx === -1
+        choiceIdx === -1,
+        Date.now() - tappedAt,
+        hadImage
       );
       void attachIllustrationAt(i + 1, next, options, sideCharactersAlong([...segs, next], i + 1));
     } catch (err) {
       if (runRef.current !== run) return;
       const msg = err instanceof Error ? err.message : '';
+      insightError();
       setError(msg || 'Klarte ikke å lage neste side. Prøv igjen.');
     } finally {
       if (runRef.current === run) setWaitingFor(null);
@@ -591,12 +626,12 @@ const App: React.FC = () => {
       // the ticket that comes with page 1, so its sheet waits for that.
       const usesTicket = personal && !pro;
       if (!usesTicket) void getSheet(selectedOptions);
+      insightBegin(selectedOptions, personal);
       const { segment: opener, premise, guest, ticket, bought } = await generateOpener(selectedOptions, seed, personal);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
       logEvent('Historietype', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
-      insightStarted(selectedOptions, {
-        personal,
+      insightStarted({
         who: guest ? 'gjest' : pro ? 'prinsen' : 'askeladden',
         bought: Boolean(bought),
       });
@@ -627,6 +662,7 @@ const App: React.FC = () => {
       const msg = err instanceof Error ? err.message : "";
       setError(msg || "Beklager, vi klarte ikke å starte historien. Prøv igjen om et minutt.");
       logEvent('Oppstart feilet');
+      insightStartFailed(msg);
       setIsLoading(false);
     }
   };
@@ -713,6 +749,10 @@ const App: React.FC = () => {
 
   // Gratis or Pro. Pro is given through a share link for now.
   const isPro = account.plan === 'pro';
+  // Who is reading, for the insight events.
+  useEffect(() => {
+    insightWho(!account.innlogget ? 'gjest' : account.plan === 'pro' ? 'prinsen' : 'askeladden');
+  }, [account.innlogget, account.plan]);
   const openPlan = () => {
     resetFlow();
     setView('plan');

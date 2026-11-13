@@ -13,6 +13,7 @@ import { isCustomMetaphor, mayPersonalize } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
+import { heroLabel } from "./_lib/hero.js";
 import { withModelFallback } from "./_lib/retry.js";
 import {
   SAFETY_RULES,
@@ -205,7 +206,7 @@ Ikke oppsummer valget med ord som "Kim valgte å …" — vis det skje.`;
   return `Du er en varm, lekende norsk barnebokforfatter.
 Du skriver side ${pageNumber} av ${TOTAL_PAGES} i en interaktiv bok der barnets valg virkelig betyr noe.
 
-Hovedkarakter: ${options.character}. Metafor: "${options.metaphor}". Aldersgruppe: ${options.ageGroup}.
+Hovedkarakter: ${heroLabel(options)}. Metafor: "${options.metaphor}". Aldersgruppe: ${options.ageGroup}.
 ${heroAndMoralNotes(options)}${premise ? `\nPREMISS (tråden som holder historien sammen, og som løses på siste side):\n${premise}\n` : ""}
 HISTORIEN SÅ LANGT:
 
@@ -288,8 +289,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(429).json({ error: budget.message });
     }
 
-    if (isCustomMetaphor(options.metaphor) && !(await mayPersonalize(session, body.billett))) {
-      return res.status(403).json({ error: "Egen lærepenge er med i magihistorier og Prinsen." });
+    if (
+      (isCustomMetaphor(options.metaphor) || options.heroToken) &&
+      !(await mayPersonalize(session, body.billett))
+    ) {
+      return res
+        .status(403)
+        .json({ error: "Egen lærepenge og egen helt er med i magihistorier og Prinsen." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";

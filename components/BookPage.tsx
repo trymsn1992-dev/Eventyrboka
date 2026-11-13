@@ -6,7 +6,7 @@ import { ArrowDown, ArrowRight, ChevronLeft, RefreshCw, CheckCircle, Sparkles, S
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
-import { insightRated, insightReadAloud } from '../services/insight';
+import { insightError, insightRated, insightReadAloud } from '../services/insight';
 import { ProBadge } from './SetupScreen';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
@@ -348,6 +348,7 @@ export const BookPage: React.FC<BookPageProps> = ({
 
     } catch (error) {
       console.error("Error playing audio:", error);
+      insightError();
     } finally {
       clearInterval(progressInterval);
       setIsLoadingAudio(false);

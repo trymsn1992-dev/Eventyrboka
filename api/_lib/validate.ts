@@ -9,6 +9,7 @@ import {
   normalizeAgeGroup,
   StoryOptions,
 } from "../../types.js";
+import { openHero } from "./hero.js";
 
 // Older client bundles may still ship these legacy duration labels.
 // Accept them so a stale browser cache keeps working after we rename.
@@ -36,8 +37,12 @@ export function validateOptions(options: unknown): StoryOptions | null {
   ) {
     return null;
   }
+  // The hero is one of ours, or one made from a photo: then the signed token
+  // says who it is, and the name comes from the token.
+  const hero = o.heroToken === undefined ? null : openHero(o.heroToken);
+  if (o.heroToken !== undefined && !hero) return null;
   if (
-    !ALLOWED.character.has(o.character) ||
+    (!hero && !ALLOWED.character.has(o.character)) ||
     !ALLOWED.ageGroup.has(o.ageGroup) ||
     !ALLOWED.duration.has(o.duration)
   ) {
@@ -49,7 +54,8 @@ export function validateOptions(options: unknown): StoryOptions | null {
     : cleanCustomMetaphor(o.metaphor);
   if (!metaphor) return null;
   return {
-    character: o.character,
+    character: hero ? hero.name : o.character,
+    ...(hero ? { heroToken: o.heroToken as string } : {}),
     metaphor,
     ageGroup: normalizeAgeGroup(o.ageGroup),
     duration: o.duration,
