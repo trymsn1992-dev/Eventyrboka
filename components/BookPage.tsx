@@ -2,7 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
-import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
+import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Printer, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
@@ -44,6 +44,8 @@ interface BookPageProps {
   onChoice: (choice: Choice) => void;
   onRestart: () => void;
   onSave: () => Promise<boolean>;
+  // Print the story as a little book (asked for on the last page).
+  onPrint?: () => void;
   onWrapUp?: () => void;
   // Label of the choice whose page is still being written. While set, the
   // choices are replaced by a "Neste side blir til…" indicator.
@@ -64,6 +66,7 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
   onChoice,
   onRestart,
   onSave,
+  onPrint,
   onWrapUp,
   waitingFor,
   arrivedVia,
@@ -685,11 +688,11 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
                   <h3 className="text-2xl lg:text-3xl font-bold text-green-800 mb-3 font-serif">Snipp, snapp, snute!</h3>
                   <p className="text-green-700 mb-8 text-lg">Eventyret er ute.</p>
                   
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 justify-center px-4">
                     <Button
                       onClick={handleSaveClick}
                       variant="secondary"
-                      className="text-lg px-6 py-3"
+                      className="text-lg px-6 py-3 whitespace-nowrap"
                       disabled={isSaved || isSaving}
                     >
                       {isSaved ? (
@@ -709,7 +712,13 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
                         </>
                       )}
                     </Button>
-                    <Button onClick={onRestart} variant="primary" className="text-lg px-6 py-3">
+                    {onPrint && (
+                      <Button onClick={onPrint} variant="secondary" className="text-lg px-6 py-3 whitespace-nowrap">
+                        <Printer className="inline-block w-5 h-5 mr-2" />
+                        Skriv ut
+                      </Button>
+                    )}
+                    <Button onClick={onRestart} variant="primary" className="text-lg px-6 py-3 whitespace-nowrap">
                       <Home className="inline-block w-5 h-5 mr-2" />
                       Hjem
                     </Button>

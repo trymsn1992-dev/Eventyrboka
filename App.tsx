@@ -4,6 +4,7 @@ import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { StoryMagic } from './components/StoryMagic';
+import { PrintDialog } from './components/PrintDialog';
 import { saveHeroToProfile, saveMoralToProfile } from './services/samling';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
 import { loadOwnHero } from './services/hero';
@@ -354,6 +355,7 @@ const App: React.FC = () => {
     sheetRef.current = null;
     sheetValue.current = undefined;
     setWaitingFor(null);
+    setPrinting(null);
     setLoginGate(false);
     applyTicket(null);
   };
@@ -795,6 +797,20 @@ const App: React.FC = () => {
     }
   };
 
+  // The story on screen, printed as a little book (components/PrintDialog.tsx).
+  // Needs neither a login nor a saved story.
+  const [printing, setPrinting] = useState<SavedStory | null>(null);
+  const handlePrintStory = () => {
+    if (!options || segments.length === 0) return;
+    logEvent('Utskrift åpnet', { fra: 'siste side' });
+    setPrinting({
+      id: loadedStory?.id ?? generateId(),
+      createdAt: loadedStory?.createdAt ?? Date.now(),
+      options,
+      segments,
+    });
+  };
+
   const handleSaveStory = async (): Promise<boolean> => {
     if (!options || segments.length === 0) return false;
     // Saving needs a login. (Where Vipps isn't set up, the story is kept in
@@ -1135,6 +1151,8 @@ const App: React.FC = () => {
           />
         ) : null}
 
+        {isReading && printing && <PrintDialog story={printing} onClose={() => setPrinting(null)} />}
+
         {isReading && (
           currentSegment && (
             <BookPage
@@ -1142,6 +1160,7 @@ const App: React.FC = () => {
               onChoice={handleChoice}
               onRestart={handleRestart}
               onSave={handleSaveStory}
+              onPrint={handlePrintStory}
               onWrapUp={handleWrapUp}
               waitingFor={waitingFor}
               arrivedVia={arrivedVia}
