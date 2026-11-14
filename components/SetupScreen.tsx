@@ -25,8 +25,7 @@ interface SetupScreenProps {
   // historie» needs all of them.
   freeLeft: number | null;
   onOpenPlan: () => void;
-  // A story can be started without a login; reading past the first pages
-  // (GUEST_PAGES) needs one.
+  // A story can be made without a login; saving it needs one.
   loggedIn: boolean;
   // Bought stories not yet made, whether more can be bought with Vipps, and
   // the way to buy the one picked here (the story starts when it is paid).
@@ -949,10 +948,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
               </p>
             )}
 
-            {/* Guests can start right away; the login comes on page 2. */}
+            {/* Guests can make a whole story; the login comes when they save it. */}
             {!loggedIn && (
               <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                Start uten å logge inn. For å lese hele eventyret logger du inn med Vipps underveis.
+                Du trenger ikke logge inn for å lage eventyr. Vil du lagre det, logger du inn med Vipps.
                 {canLogIn && (
                   <>
                     {' '}

@@ -1,5 +1,5 @@
-// Who may do what. The first pages of a story can be read without a login
-// (GUEST_PAGES); going on requires one. Pro adds unlimited stories,
+// Who may do what. A plain story can be made and read without a login;
+// saving it requires one. Pro adds unlimited stories,
 // read-aloud, the choice of drawing style and your own moral. Everything is
 // checked here on the server — the browser only hides the buttons.
 import { createHash, timingSafeEqual } from "node:crypto";

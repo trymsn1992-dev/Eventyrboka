@@ -23,7 +23,7 @@ import {
   storySeeds,
   type SideCharacterInput,
 } from "./_lib/story-seeds.js";
-import { DURATION_DENSITY, GUEST_PAGES, TOTAL_PAGES, type StoryOptions } from "../types.js";
+import { DURATION_DENSITY, TOTAL_PAGES, type StoryOptions } from "../types.js";
 
 // Full Flash first: lite's prose was noticeably flatter. Pages are written in
 // the background while the reader reads, so the extra seconds are hidden.
@@ -279,11 +279,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!options || !pages) {
       return res.status(400).json({ error: "Ugyldig forespørsel." });
     }
-    // Without a login only the first pages are written.
-    if (!session && pages.length + 1 > GUEST_PAGES) {
-      return res.status(401).json({ error: "Logg inn for å lese videre." });
-    }
-
     // Daily spending cap (see _lib/budget.ts).
     const budget = await spend(req, "text", !session);
     if (!budget.ok) {

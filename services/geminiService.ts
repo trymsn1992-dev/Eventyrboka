@@ -116,7 +116,7 @@ export const generateOpener = async (
       sideCharacters: data.sideCharacters ?? [],
     },
     premise: data.premise ?? "",
-    // The server saw no login: the story stops at GUEST_PAGES until there is one.
+    // The server saw no login: the story can be read, and saved after a login.
     guest: data.gjest === true,
     ticket: typeof data.billett === "string" ? data.billett : null,
     bought: data.kjopt === true,

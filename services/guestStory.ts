@@ -1,5 +1,5 @@
-// A story started without a login has to survive the trip to Vipps and back,
-// which reloads the page. It is put in localStorage (not sessionStorage:
+// A story made without a login is saved by logging in, so it has to survive
+// the trip to Vipps and back, which reloads the page. It is put in localStorage (not sessionStorage:
 // on mobile Vipps may return in a new tab) right before the reader leaves,
 // and taken out again on the next load.
 import { StoryOptions, StorySegment } from "../types";
@@ -19,10 +19,13 @@ export interface PendingStory {
 const KEY = "magiboka_gjestehistorie";
 const MAX_AGE_MS = 2 * 60 * 60 * 1000;
 // How long the login may be held back while the pictures are made smaller.
-const SHRINK_WAIT_MS = 2500;
+const SHRINK_WAIT_MS = 4000;
+// A whole story's pictures have to fit in localStorage (about 2.5 million
+// characters in Safari), so they are kept a little smaller than usual.
+const PENDING_IMAGE_PX = 1024;
 
 const shrink = async (image: string | undefined): Promise<string | undefined> =>
-  image && image.startsWith("data:") ? compressImage(image) : undefined;
+  image && image.startsWith("data:") ? compressImage(image, PENDING_IMAGE_PX) : undefined;
 
 export async function savePendingStory(story: PendingStory): Promise<void> {
   const write = (s: PendingStory) =>

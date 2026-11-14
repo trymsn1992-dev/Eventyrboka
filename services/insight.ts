@@ -250,12 +250,12 @@ export function insightError(): void {
   send({ feil: current.errors });
 }
 
-// The login wall of a guest story: shown, and the Vipps button pressed.
+// The login wall when a guest saves a story: shown, and the Vipps button pressed.
 export function insightWall(step: "sett" | "klikket"): void {
   send(step === "sett" ? { vegg_sett: true } : { vegg_sett: true, vegg_klikket: true });
 }
 
-// The guest who started the story logged in to read on.
+// The guest who made the story logged in to save it.
 export function insightLoggedIn(): void {
   send({ logget_inn: true });
 }

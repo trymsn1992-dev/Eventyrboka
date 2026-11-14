@@ -5,7 +5,7 @@ import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { PageTurnAnimation } from './components/PageTurnAnimation';
 import { saveHeroToProfile, saveMoralToProfile } from './services/samling';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, FREE_STORIES_PER_WEEK, GUEST_PAGES, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
 import { loadOwnHero } from './services/hero';
 import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
 import {
@@ -18,7 +18,6 @@ import {
   subscribe,
   takePaymentReturn,
   takeStoryOrder,
-  claimGuestStory,
   deleteStory as deleteStoryAccount,
   fetchStatus,
   forgetShareLink,
@@ -83,9 +82,6 @@ const App: React.FC = () => {
   // Set while re-reading a saved story, so saving again updates that story
   // (same id, same stored illustrations) instead of making a copy.
   const [loadedStory, setLoadedStory] = useState<{ id: string; createdAt: number } | null>(null);
-  // The story on screen was started without a login and is not yet counted
-  // as anyone's: only the first GUEST_PAGES pages can be read.
-  const [guestStory, setGuestStory] = useState(false);
   // The ticket of a «Magihistorie» made on the free plan: it gives this
   // story read-aloud and its drawing style, and is saved with it.
   const [storyTicket, setTicketState] = useState<string | null>(null);
@@ -93,7 +89,7 @@ const App: React.FC = () => {
     setStoryTicket(ticket);
     setTicketState(ticket);
   };
-  // "Log in to read on", shown when a guest picks a choice past those pages.
+  // "Log in to save the story", shown when a guest presses save.
   const [loginGate, setLoginGate] = useState(false);
   const [leavingForLogin, setLeavingForLogin] = useState(false);
   // A good-news message (the red one is `error`).
@@ -337,10 +333,9 @@ const App: React.FC = () => {
   // "Neste side blir til…" shows until it is. Only the page the reader
   // actually lands on gets an illustration.
   //
-  // A story can be started without a login. Such a story stops at
-  // GUEST_PAGES: the choice on that page asks for a login, the story waits
-  // in the browser meanwhile (services/guestStory.ts), and reading on counts
-  // it as the account's story (unlockGuestStory).
+  // A story can be made and read to the end without a login. Saving it asks
+  // for one: the story waits in the browser meanwhile
+  // (services/guestStory.ts) and is saved when the reader is back.
 
   // Bumped for every new story, load and restart; async results that belong
   // to an older run are dropped.
@@ -352,17 +347,13 @@ const App: React.FC = () => {
   const sheetValue = useRef<string | undefined>(undefined);
   // Next-page requests, keyed by run + branch point + choice.
   const branchCache = useRef(new Map<string, Promise<StorySegment>>());
-  // The running attempt to count a guest story on the account.
-  const unlocking = useRef<Promise<boolean> | null>(null);
 
   const resetFlow = () => {
     runRef.current += 1;
     branchCache.current.clear();
     sheetRef.current = null;
     sheetValue.current = undefined;
-    unlocking.current = null;
     setWaitingFor(null);
-    setGuestStory(false);
     setLoginGate(false);
     applyTicket(null);
   };
@@ -387,65 +378,6 @@ const App: React.FC = () => {
       });
     }
     return sheetRef.current;
-  };
-
-  // Count the guest story on screen as the logged-in user's, so it can be
-  // read to the end. Asked once however many times it is called.
-  const unlockGuestStory = (): Promise<boolean> => {
-    if (!unlocking.current) {
-      const run = runRef.current;
-      unlocking.current = claimGuestStory().then(result => {
-        if (runRef.current !== run) return false;
-        if (result === 'ok' || result === 'bought') {
-          setGuestStory(false);
-          insightLoggedIn();
-          // On the free plan this was one of the week's free stories, or
-          // else a bought one.
-          setAccount(prev =>
-            result === 'bought'
-              ? { ...prev, credits: { ...prev.credits, plain: Math.max(0, prev.credits.plain - 1) } }
-              : prev.plan === 'pro' || prev.freeLeft === null
-                ? prev
-                : { ...prev, freeLeft: Math.max(0, prev.freeLeft - 1) }
-          );
-          return true;
-        }
-        unlocking.current = null;
-        if (result === 'login') {
-          setAccount(prev => ({ ...prev, innlogget: false }));
-          setLoginGate(true);
-        } else {
-          setError(
-            result === 'used'
-              ? 'Du har brukt ukas gratis historier, så dette eventyret kan ikke fortsette nå. Nye kommer på mandag.'
-              : 'Noe gikk galt. Prøv igjen om litt.'
-          );
-        }
-        return false;
-      });
-    }
-    return unlocking.current;
-  };
-
-  // Page `i` is the last one a guest story may show.
-  const needsUnlock = (i: number) => guestStory && i >= GUEST_PAGES - 1;
-
-  // A choice on a page that needs the story unlocked: ask for a login, or
-  // unlock and go on.
-  const continueGuestStory = async (label: string, go: () => void) => {
-    if (!account.innlogget) {
-      setLoginGate(true);
-      logEvent('Innlogging bedt om', { side: currentPageIndex + 1 });
-      insightWall('sett');
-      return;
-    }
-    const run = runRef.current;
-    setWaitingFor(label);
-    setError(null);
-    const ok = await unlockGuestStory();
-    if (runRef.current !== run) return;
-    if (ok) go();
-    else setWaitingFor(null);
   };
 
   // Keep the story in the browser, then go to Vipps.
@@ -553,14 +485,12 @@ const App: React.FC = () => {
     const i = currentPageIndex;
     const seg = segments[i];
     if (!seg || seg.isEnding || i !== segments.length - 1) return;
-    // The next pages of a guest story are written once it is unlocked.
-    if (needsUnlock(i)) return;
     seg.choices.forEach((_, k) => {
       requestBranch(segments, chosenByPage, i, k).catch(() => undefined);
     });
     // requestBranch is recreated every render; the cache makes repeats free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, currentPageIndex, segments, chosenByPage, storyMeta, options, guestStory]);
+  }, [view, currentPageIndex, segments, chosenByPage, storyMeta, options]);
 
   // Turn to the page behind `choiceIdx` on page `i`, waiting for it if needed.
   const goToBranch = async (i: number, choiceIdx: number, label: string) => {
@@ -637,7 +567,6 @@ const App: React.FC = () => {
         bought: Boolean(bought),
       });
       applyTicket(ticket);
-      setGuestStory(guest);
       // A hero or moral made for this magic story is now kept on the account,
       // and can be picked again later — also in a plain story.
       if (personal && !guest) {
@@ -690,10 +619,6 @@ const App: React.FC = () => {
       setCurrentPageIndex(i + 1);
       return;
     }
-    if (needsUnlock(i)) {
-      void continueGuestStory(choice.text, () => void goToBranch(i, k, choice.text));
-      return;
-    }
     void goToBranch(i, k, choice.text);
   };
 
@@ -703,10 +628,6 @@ const App: React.FC = () => {
     if (!segments[i] || waitingFor) return;
     if (segments[i + 1]?.isEnding && chosenByPage[i] === -1) {
       setCurrentPageIndex(i + 1);
-      return;
-    }
-    if (needsUnlock(i)) {
-      void continueGuestStory('Avslutt historien', () => void goToBranch(i, -1, 'Avslutt historien'));
       return;
     }
     void goToBranch(i, -1, 'Avslutt historien');
@@ -726,10 +647,29 @@ const App: React.FC = () => {
     setChosenByPage(pending.chosenByPage);
     setCurrentPageIndex(pending.pageIndex);
     setLoadedStory(null);
-    setGuestStory(true);
     setView('reading');
     insightResume();
-    if (innlogget) void unlockGuestStory();
+    // Logged in to save it: save it now. Saving again later (when a picture
+    // has landed) updates the same story.
+    if (innlogget) {
+      insightLoggedIn();
+      const saved = { id: generateId(), createdAt: Date.now() };
+      setLoadedStory(saved);
+      void storeStory(
+        {
+          ...saved,
+          options: pending.options,
+          segments: pending.segments.map((s, i) =>
+            pending.chosenByPage[i] !== undefined ? { ...s, chosenIndex: pending.chosenByPage[i] } : s
+          ),
+          premise: pending.premise,
+          seed: pending.seed,
+        },
+        true
+      ).then(ok => {
+        if (ok) setNotice('Eventyret er lagret. Du finner det på Min side.');
+      });
+    }
     // A picture that hadn't arrived when the reader left is drawn now.
     const page = pending.segments[pending.pageIndex];
     if (page && !page.imageBase64) {
@@ -834,8 +774,37 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0 });
   };
 
+  const storeStory = async (newStory: SavedStory, innlogget: boolean): Promise<boolean> => {
+    try {
+      const ok = await saveStoryAccount(newStory, innlogget);
+      if (!ok) throw new Error('save-failed');
+      logEvent('Eventyr lagret', { innlogget });
+      insightSaved();
+      setSavedStories(prev =>
+        prev.some(s => s.id === newStory.id)
+          ? prev.map(s => (s.id === newStory.id ? newStory : s))
+          : [newStory, ...prev]
+      );
+      return true;
+    } catch (e) {
+      console.error("Save error:", e);
+      setError(innlogget
+        ? "Kunne ikke lagre eventyret til kontoen din. Prøv igjen om litt."
+        : "Kunne ikke lagre eventyret. Det kan hende disken er full.");
+      return false;
+    }
+  };
+
   const handleSaveStory = async (): Promise<boolean> => {
     if (!options || segments.length === 0) return false;
+    // Saving needs a login. (Where Vipps isn't set up, the story is kept in
+    // this browser instead.)
+    if (!account.innlogget && account.vippsReady) {
+      setLoginGate(true);
+      logEvent('Innlogging bedt om', { side: currentPageIndex + 1 });
+      insightWall('sett');
+      return false;
+    }
 
     const newStory: SavedStory = {
       id: loadedStory?.id ?? generateId(),
@@ -847,28 +816,10 @@ const App: React.FC = () => {
       plan: plan ?? undefined,
       premise: storyMeta?.premise,
       seed: storyMeta?.seed,
-      ...(guestStory ? { guestStarted: true } : {}),
       ...(storyTicket ? { personalTicket: storyTicket } : {}),
     };
 
-    try {
-      const ok = await saveStoryAccount(newStory, account.innlogget);
-      if (!ok) throw new Error('save-failed');
-      logEvent('Eventyr lagret', { innlogget: account.innlogget });
-      insightSaved();
-      setSavedStories(prev =>
-        prev.some(s => s.id === newStory.id)
-          ? prev.map(s => (s.id === newStory.id ? newStory : s))
-          : [newStory, ...prev]
-      );
-      return true;
-    } catch (e) {
-      console.error("Save error:", e);
-      setError(account.innlogget
-        ? "Kunne ikke lagre eventyret til kontoen din. Prøv igjen om litt."
-        : "Kunne ikke lagre eventyret. Det kan hende disken er full.");
-      return false;
-    }
+    return storeStory(newStory, account.innlogget);
   };
 
   const handleLoadStory = (story: SavedStory) => {
@@ -898,7 +849,6 @@ const App: React.FC = () => {
     setCurrentPageIndex(0);
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
-    setGuestStory(story.guestStarted === true);
     applyTicket(typeof story.personalTicket === 'string' ? story.personalTicket : null);
     setView('reading');
     logEvent('Lagret eventyr åpnet');
@@ -1075,7 +1025,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* A guest has read the free pages: log in to read on. */}
+        {/* A guest pressed save: log in to save the story. */}
         {isReading && loginGate && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -1085,14 +1035,14 @@ const App: React.FC = () => {
           >
             <div className="w-full max-w-md rounded-3xl bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 shadow-2xl p-6 sm:p-8 text-center">
               <h2 id="logg-inn-tittel" className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
-                Logg inn for å lese videre
+                Logg inn for å lagre eventyret
               </h2>
               <p className="mt-4 rounded-2xl bg-emerald-50 dark:bg-emerald-400/10 border border-emerald-200 dark:border-emerald-400/30 px-4 py-3 text-emerald-900 dark:text-emerald-100">
-                <span className="block text-xl font-extrabold">{FREE_STORIES_PER_WEEK} historier gratis hver uke</span>
+                <span className="block text-xl font-extrabold">Ta vare på eventyrene deres</span>
                 <span className="block mt-0.5 text-sm font-semibold">Det koster ingenting å logge inn.</span>
               </p>
               <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
-                Eventyret venter her mens du logger inn.
+                Eventyret venter her mens du logger inn, og lagres med en gang du er tilbake.
               </p>
               {account.vippsReady || !account.checked ? (
                 <button

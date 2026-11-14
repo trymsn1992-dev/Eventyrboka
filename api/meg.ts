@@ -18,14 +18,13 @@ import {
   setPlan,
   supabaseReady,
 } from "./_lib/supabase.js";
-import { freeStoriesLeft, isPro, takeFreeStory, validProLink } from "./_lib/access.js";
+import { freeStoriesLeft, isPro, validProLink } from "./_lib/access.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import {
   boughtStories,
   purchasesReady,
   subscriptionOf,
   subscriptionReady,
-  useBoughtStory,
   type Subscription,
 } from "./_lib/betaling.js";
 import { AGE_GROUPS, ART_STYLES, DURATIONS } from "../types.js";
@@ -73,7 +72,6 @@ export default async function handler(
       valg?: unknown;
       plan?: unknown;
       lenke?: unknown;
-      gjestehistorie?: unknown;
     };
 
     // A share link that gives Pro. The key is checked before the login, so
@@ -105,22 +103,6 @@ export default async function handler(
     if (!session) {
       res.statusCode = 401;
       res.end();
-      return;
-    }
-
-    // A story started before logging in is read on: on the free plan it
-    // is one of this week's free stories, or else a bought one. 429 when
-    // there is neither.
-    if (body.gjestehistorie !== undefined) {
-      if ((await isPro(session.sub)) || (await takeFreeStory(session.sub))) {
-        res.statusCode = 204;
-        res.end();
-        return;
-      }
-      const bought = await useBoughtStory(session.sub, "historie");
-      res.statusCode = bought ? 200 : 429;
-      if (bought) res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.end(bought ? JSON.stringify({ kjopt: true }) : undefined);
       return;
     }
 

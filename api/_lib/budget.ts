@@ -41,12 +41,13 @@ const PER_STORY: Record<BudgetKind, number> = {
   hero: 1,
 };
 
-// What the pages before the login may use: 1 character sheet + 2
-// illustrations, and page 2 written for both choices plus an early ending.
+// What one story may use without a login: 1 character sheet + 5
+// illustrations, and both choices written for each page plus an early ending.
+// No room for re-reading along other branches — that needs a saved story.
 const PER_GUEST_STORY: Record<BudgetKind, number> = {
   story: 1,
-  image: 3,
-  text: 3,
+  image: 6,
+  text: 10,
   speech: 0,
   hero: 0,
 };

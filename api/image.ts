@@ -65,7 +65,7 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Guests get pictures for the pages they may read (see GUEST_PAGES).
+  // Guests get pictures too, within their own allowance (see _lib/budget.ts).
   const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));

@@ -93,9 +93,6 @@ export interface SavedStory {
   // with — needed to write a new branch when re-reading picks the other option.
   premise?: string;
   seed?: number;
-  // Started without a login and not yet counted as anyone's story: only
-  // the first GUEST_PAGES pages can be read until it is.
-  guestStarted?: boolean;
   // A «Magihistorie» made on the free plan carries the server's ticket for
   // it, so read-aloud and its drawing style keep working when it is re-read.
   personalTicket?: string;
@@ -280,9 +277,6 @@ export const DURATIONS = [
 // Duration no longer controls page count — it controls density on each page.
 export const CHOICE_PAGES = 4;
 export const TOTAL_PAGES = CHOICE_PAGES + 1; // 4 choice beats + 1 resolution
-// Pages that can be read without logging in: page 1 and the page behind its
-// choice. The choice on page 2 needs a login.
-export const GUEST_PAGES = 2;
 
 export interface DurationDensity {
   // Approximate sentences per page (string so model reads it as a range)

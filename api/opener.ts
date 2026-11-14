@@ -174,8 +174,8 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // No login needed to start a story: the first pages are free to read
-  // (GUEST_PAGES). Guests get the standard story, like the free plan.
+  // No login needed to make a story — only to save it. Guests get the
+  // standard story, like the free plan.
   const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
@@ -203,8 +203,9 @@ export default async function handler(
 
     // Guests and the free plan get a plain story: no own moral and the
     // standard drawing style. The free plan may instead spend the whole
-    // week on one personal story. A guest's story is counted when they log
-    // in to read on (see /api/meg). When the week's free ones are used, a
+    // week on one personal story. A guest's story is not counted on any
+    // account: guests have their own daily allowance (see _lib/budget.ts).
+    // When the week's free ones are used, a
     // bought story is spent instead (see _lib/betaling.ts).
     const pro = session ? await isPro(session.sub) : false;
     // Your own moral or a hero made from a photo makes it a personal story.
@@ -304,7 +305,7 @@ export default async function handler(
       illustrationPrompt: parsed.illustrationPrompt,
       premise: typeof parsed.premise === "string" ? parsed.premise : "",
       sideCharacters: parseSideCharacters(parsed.sideCharacters).slice(0, 2),
-      // Started without a login: the client asks for one after GUEST_PAGES.
+      // Made without a login: the client asks for one when the story is saved.
       gjest: !session,
       // A personal story on the free plan: sent back with its later requests.
       billett: ticket,

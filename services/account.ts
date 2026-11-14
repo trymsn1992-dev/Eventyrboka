@@ -301,26 +301,6 @@ export async function redeemShareLink(
   }
 }
 
-// Read on in a story that was started before logging in. On the free plan
-// it becomes this week's free story: "used" when that one is already gone.
-// "bought": it was paid for with a bought story instead.
-export async function claimGuestStory(): Promise<"ok" | "bought" | "used" | "login" | "error"> {
-  try {
-    const r = await fetch("/api/meg", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gjestehistorie: true }),
-    });
-    if (r.status === 200) return "bought";
-    if (r.ok) return "ok";
-    if (r.status === 429) return "used";
-    return r.status === 401 ? "login" : "error";
-  } catch {
-    return "error";
-  }
-}
-
 // ---- Payment with Vipps (api/betaling.ts) ----------------------------------
 
 async function postPayment<T>(body: unknown): Promise<T> {
