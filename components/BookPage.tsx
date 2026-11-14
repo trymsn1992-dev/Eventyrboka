@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
 import { Button } from './Button';
 import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
@@ -114,6 +114,12 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
   const allChunksShown = isDesktop || furthestChunk >= textChunks.length;
   const textContainerRef = useRef<HTMLDivElement>(null);
   const choicesRef = useRef<HTMLDivElement>(null);
+  // How tall the choices are. "Neste side blir til…" takes their place and
+  // keeps their height, so the text above does not jump when one is tapped.
+  const choicesHeight = useRef(0);
+  useLayoutEffect(() => {
+    if (choicesRef.current) choicesHeight.current = choicesRef.current.offsetHeight;
+  });
   // A page is its number and text. The segment object itself is replaced when
   // the illustration lands, and that must not reset the page the reader is on.
   const pageKey = `${pageNumber}|${segment.text}`;
@@ -754,7 +760,12 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
               ) : !allChunksShown ? null : (
                 waitingFor ? (
                   // A choice was tapped and its page is still being written.
-                  <div className="space-y-3" role="status" aria-live="polite">
+                  <div
+                    className="space-y-3"
+                    role="status"
+                    aria-live="polite"
+                    style={{ minHeight: choicesHeight.current || undefined }}
+                  >
                     <p className="text-[11px] lg:text-xs uppercase tracking-widest text-indigo-400 font-bold text-center">
                       Du valgte: {waitingFor}
                     </p>
@@ -902,7 +913,17 @@ const copyOf = (el: HTMLElement): HTMLElement => {
 
 const settle = (root: HTMLElement): void => {
   root.querySelectorAll<HTMLElement>('[data-turn-scroll]').forEach(el => {
-    el.scrollTop = Number(el.dataset.turnScroll);
+    const wanted = Number(el.dataset.turnScroll);
+    el.scrollTop = wanted;
+    // Should the copy be too short to scroll that far, it is made longer:
+    // the text must lie exactly where it lay on the page.
+    const short = wanted - el.scrollTop;
+    if (short > 0.5) {
+      const more = document.createElement('div');
+      more.style.cssText = `height:${short}px;flex:none`;
+      el.append(more);
+      el.scrollTop = wanted;
+    }
   });
 };
 
