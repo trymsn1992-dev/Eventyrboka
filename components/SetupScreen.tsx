@@ -63,7 +63,7 @@ export const HERO_ART: Record<string, string> = {
   "Super-sneglen Sivert": "/velger/sivert.webp",
 };
 
-const MORAL_ART: Record<string, string> = {
+export const MORAL_ART: Record<string, string> = {
   "Det lønner seg å dele": "/velger/dele.webp",
   "Fokuser på det du kan påvirke": "/velger/pavirke.webp",
   "Vær snill mot andre": "/velger/snill.webp",

@@ -55,222 +55,125 @@
         background: linear-gradient(to right, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 5%, rgba(0,0,0,0) 95%, rgba(0,0,0,0.05) 100%);
       }
       
-      /* 3D Page Turn Animation Styles */
-      .perspective-1000 {
-        perspective: 1000px;
-      }
-      .transform-style-3d {
-        transform-style: preserve-3d;
-      }
-      .backface-hidden {
-        backface-visibility: hidden;
-      }
-      .rotate-y-180 {
-        transform: rotateY(-180deg);
-      }
-      .origin-left {
-        transform-origin: left center;
-      }
-      
-      @keyframes pageFlip {
-        0% { transform: rotateY(0deg); }
-        15% { transform: rotateY(-5deg); } /* Slow start */
-        100% { transform: rotateY(-180deg); }
-      }
-      
-      .animate-page-flip {
-        animation: pageFlip 3s infinite cubic-bezier(0.645, 0.045, 0.355, 1); /* Smooth Ease-in-out */
-      }
+      /* Turning to the next page (components/BookPage.tsx).
 
-      @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-15px); }
-      }
-      
-      .animate-float {
-        animation: float 6s ease-in-out infinite; /* Slower, calmer float */
-      }
-      
-      /* Turning to the next page (components/BookPage.tsx): a sheet of paper
-         lies over the new page and is lifted calmly over to the left, around
-         the spine. On a phone it covers the whole book and turns out of view;
-         on a wide screen it is the right-hand page landing on the left. */
-      .page-turn-sheet {
-        position: absolute;
-        inset: 0;
-        z-index: 40;
-        pointer-events: none;
-        transform-origin: left center;
-        backface-visibility: visible;
-        background:
-          linear-gradient(to right, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,0.06) 100%),
-          #fdfbf7;
-        box-shadow: 8px 0 24px rgba(0,0,0,0.12);
-        --turn-end: -100deg;
-        animation: pageTurn 1.1s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
-        will-change: transform, opacity;
-      }
-      html.dark .page-turn-sheet {
-        background:
-          linear-gradient(to right, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,0.2) 100%),
-          #1f2937;
-        box-shadow: 8px 0 24px rgba(0,0,0,0.4);
-      }
-      /* On a wide screen the book lies open and the turn is a real one,
-         built in components/BookPage.tsx: the old right-hand page is lifted
-         around the spine and lands as the new left-hand page. */
-      @media (min-width: 1024px) {
-        .page-turn-sheet { display: none; }
-      }
-      .book-turn-layer {
-        display: none;
+         Wide screens: the book lies open, and the old right-hand page is
+         lifted calmly around the spine and lands as the new left-hand page,
+         with a soft glow along its edge and a little stardust.
+         Phones: the page slides away to the left and the next one comes in
+         from the right (done with element.animate in BookPage.tsx). */
+      .turn-layer {
         position: absolute;
         inset: 0;
         z-index: 40;
         pointer-events: none;
       }
-      @media (min-width: 1024px) {
-        .book-turn-layer { display: block; }
-      }
-      /* One turn. Nothing moves until .book-turn-go is set, two frames after
-         the copies are on screen. */
-      .book-turn {
+      .turn {
         position: absolute;
         inset: 0;
-        --turn: 1.9s;
-        --turn-ease: cubic-bezier(0.45, 0.05, 0.25, 1);
+        --turn: 1.7s;
+        --turn-ease: cubic-bezier(0.42, 0, 0.3, 1);
+        transition: opacity 0.25s ease-out;
       }
-      .book-turn-stage {
+      .turn-done { opacity: 0; }
+      .turn-stage {
         position: absolute;
         inset: 0;
-        perspective: 3200px;
+        perspective: 3000px;
       }
-      .book-turn-under,
-      .book-turn-blank,
-      .book-turn-sheet {
+      .turn-under,
+      .turn-shadow,
+      .turn-sheet {
         position: absolute;
       }
-      .book-turn-under,
-      .book-turn-face {
+      .turn-under,
+      .turn-face {
         display: flex;
         overflow: hidden;
         background: #fdfbf7;
       }
-      html.dark .book-turn-under,
-      html.dark .book-turn-face {
+      html.dark .turn-under,
+      html.dark .turn-face {
         background: #1f2937;
       }
-      /* Blank paper over the new text until the turning page has passed. */
-      .book-turn-blank {
-        background: #fdfbf7;
+      /* The shadow the lifted page casts on the new page beneath it. */
+      .turn-shadow {
         border-radius: 0 1.25rem 1.25rem 0;
+        background: linear-gradient(to right, rgba(0,0,0,0.28), rgba(0,0,0,0.06) 70%, rgba(0,0,0,0));
+        animation: turnShadow var(--turn) var(--turn-ease) forwards;
       }
-      html.dark .book-turn-blank {
-        background: #1f2937;
+      @keyframes turnShadow {
+        0%   { opacity: 1; }
+        55%, 100% { opacity: 0; }
       }
-      .book-turn-go .book-turn-blank {
-        animation: bookTurnBlank var(--turn) ease-out forwards;
-      }
-      @keyframes bookTurnBlank {
-        0%, 45% { opacity: 1; }
-        90%, 100% { opacity: 0; }
-      }
-      /* Stardust falling from the edge of the turning page. */
-      .book-turn-stars {
-        position: absolute;
-        inset: 0;
-      }
-      .book-turn-star {
-        position: absolute;
-        margin: -8px 0 0 -8px;
-        opacity: 0;
-        background: #fbbf24;
-        clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
-      }
-      .book-turn-star:nth-child(3n)   { background: #fef3c7; }
-      .book-turn-star:nth-child(4n+1) { background: #c4b5fd; }
-      .book-turn-go .book-turn-star {
-        animation: bookTurnStar 1.1s ease-out both;
-      }
-      @keyframes bookTurnStar {
-        0%   { opacity: 0; transform: translate(0, 0) scale(0) rotate(0deg); }
-        18%  { opacity: 1; transform: translate(0, 0) scale(1.15) rotate(30deg); }
-        100% { opacity: 0; transform: translate(var(--drift), var(--fall)) scale(0.25) rotate(140deg); }
-      }
-      .book-turn-sheet {
+      .turn-sheet {
         transform-origin: left center;
         transform-style: preserve-3d;
         will-change: transform;
+        animation: turnSheet var(--turn) var(--turn-ease) forwards;
       }
-      .book-turn-go .book-turn-sheet {
-        animation: bookTurn var(--turn) var(--turn-ease) forwards;
+      @keyframes turnSheet {
+        from { transform: rotateY(0deg); }
+        to   { transform: rotateY(-180deg); }
       }
-      .book-turn-face {
+      .turn-face {
         position: absolute;
         inset: 0;
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
       }
-      .book-turn-front { border-radius: 0 1.25rem 1.25rem 0; }
-      .book-turn-back { transform: rotateY(180deg); }
-      /* The free edge of the turning page glows while it is in the air. */
-      .book-turn-edge {
-        position: absolute;
-        top: 1%;
-        bottom: 1%;
-        right: -2px;
-        width: 4px;
-        border-radius: 4px;
-        background: #fde68a;
-        box-shadow: 0 0 10px 3px rgba(251,191,36,0.9), 0 0 34px 12px rgba(251,191,36,0.45), 0 0 60px 20px rgba(196,181,253,0.25);
-        opacity: 0;
-      }
-      .book-turn-go .book-turn-edge {
-        animation: bookTurnEdge var(--turn) var(--turn-ease) forwards;
-      }
-      @keyframes bookTurnEdge {
-        0%   { opacity: 0; }
-        12%  { opacity: 1; }
-        85%  { opacity: 1; }
-        100% { opacity: 0; }
-      }
+      .turn-front { border-radius: 0 1.25rem 1.25rem 0; }
+      .turn-back { transform: rotateY(180deg); }
       /* The page darkens a little as it stands up, and lightens as it lands. */
-      .book-turn-face::after {
+      .turn-face::after {
         content: '';
         position: absolute;
         inset: 0;
         pointer-events: none;
-        background: linear-gradient(to right, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
+        background: linear-gradient(to right, rgba(0,0,0,0.04), rgba(0,0,0,0.2));
       }
-      .book-turn-front::after { opacity: 0; }
-      .book-turn-back::after  { opacity: 1; }
-      .book-turn-go .book-turn-front::after {
-        animation: bookTurnShadeFront var(--turn) var(--turn-ease) forwards;
-      }
-      .book-turn-go .book-turn-back::after {
-        animation: bookTurnShadeBack var(--turn) var(--turn-ease) forwards;
-      }
-      @keyframes bookTurn {
-        0%   { transform: rotateY(0deg); }
-        100% { transform: rotateY(-180deg); }
-      }
-      @keyframes bookTurnShadeFront {
+      .turn-front::after { animation: turnShadeFront var(--turn) var(--turn-ease) forwards; }
+      .turn-back::after  { animation: turnShadeBack var(--turn) var(--turn-ease) forwards; }
+      @keyframes turnShadeFront {
         0%   { opacity: 0; }
-        50%  { opacity: 1; }
-        100% { opacity: 1; }
+        50%, 100% { opacity: 1; }
       }
-      @keyframes bookTurnShadeBack {
-        0%   { opacity: 1; }
-        50%  { opacity: 1; }
+      @keyframes turnShadeBack {
+        0%, 50% { opacity: 1; }
         100% { opacity: 0; }
       }
-      @media (prefers-reduced-motion: reduce) {
-        .page-turn-sheet { display: none; }
+      /* A soft golden glow along the free edge while the page is in the air. */
+      .turn-edge {
+        position: absolute;
+        top: 2%;
+        bottom: 2%;
+        right: -1px;
+        width: 3px;
+        border-radius: 3px;
+        background: #fde68a;
+        box-shadow: 0 0 8px 2px rgba(251,191,36,0.75), 0 0 26px 8px rgba(251,191,36,0.3);
+        opacity: 0;
+        animation: turnEdge var(--turn) var(--turn-ease) forwards;
       }
-
-      @keyframes progress-stripe {
-        0% { background-position: 1rem 0; }
-        100% { background-position: 0 0; }
+      @keyframes turnEdge {
+        0%, 100% { opacity: 0; }
+        20%, 80% { opacity: 1; }
+      }
+      /* A little stardust drifting down from the edge. */
+      .turn-star {
+        position: absolute;
+        margin: -6px 0 0 -6px;
+        opacity: 0;
+        background: #fbbf24;
+        clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+        animation: turnStar 1.2s ease-out both;
+      }
+      .turn-star:nth-child(3n)   { background: #fef3c7; }
+      .turn-star:nth-child(4n+1) { background: #c4b5fd; }
+      @keyframes turnStar {
+        0%   { opacity: 0; transform: translate(0, 0) scale(0) rotate(0deg); }
+        20%  { opacity: 0.95; transform: translate(0, 0) scale(1) rotate(30deg); }
+        100% { opacity: 0; transform: translate(var(--drift), var(--fall)) scale(0.3) rotate(140deg); }
       }
     </style>
   </head>

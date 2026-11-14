@@ -3,7 +3,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { BookPage } from './components/BookPage';
 import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
-import { PageTurnAnimation } from './components/PageTurnAnimation';
+import { StoryMagic } from './components/StoryMagic';
 import { saveHeroToProfile, saveMoralToProfile } from './services/samling';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
 import { loadOwnHero } from './services/hero';
@@ -1071,14 +1071,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Loading Overlay when starting story */}
-        {view === 'setup' && isLoading && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                 <div className="w-full max-w-lg h-96 relative bg-[#fdfbf7] rounded-3xl shadow-2xl overflow-hidden transform scale-90 md:scale-100">
-                    <PageTurnAnimation />
-                 </div>
-            </div>
-        )}
+        {/* While a new story is made: the picked hero and moral become a fairy tale. */}
+        {view === 'setup' && isLoading && options && <StoryMagic options={options} />}
 
         {isReading ? null : account.innlogget && !account.plan ? (
           // First time after login: choose Gratis or Pro.
