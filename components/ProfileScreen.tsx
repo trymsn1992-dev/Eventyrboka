@@ -3,7 +3,8 @@ import { SetupPreferences } from '../services/account';
 import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
-import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Lightbulb, Palette, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Lightbulb, Palette, PlayCircle, Printer, Sparkles, Trash2 } from 'lucide-react';
+import { PrintDialog } from './PrintDialog';
 import { Collection, cachedCollection, loadCollection, removeHero, removeMoral } from '../services/samling';
 
 // Where the last change to the choices ended up.
@@ -65,8 +66,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     };
   }, [innlogget]);
   const hasOwnThings = collection.heroes.length > 0 || collection.morals.length > 0;
+  // The story being printed (components/PrintDialog.tsx).
+  const [printing, setPrinting] = useState<SavedStory | null>(null);
   return (
-    <div className="min-h-screen w-full flex flex-col items-center pt-3 pb-8 sm:pt-4 sm:pb-12 px-3 sm:px-6 lg:px-8">
+    // On phones the page is one white sheet from edge to edge (the negative
+    // margins cancel the padding on <main>), like the setup card.
+    <div className="min-h-screen -mx-4 -mt-4 -mb-4 w-[calc(100%+2rem)] sm:mx-0 sm:mt-0 sm:mb-0 sm:w-full bg-white dark:bg-gray-800 sm:bg-transparent sm:dark:bg-transparent flex flex-col items-center pt-5 pb-8 sm:pt-4 sm:pb-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full space-y-8 sm:space-y-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">
@@ -148,14 +153,27 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                       <PlayCircle className="w-4 h-4 mr-2" />
                       Les på nytt
                     </div>
-                    <button
-                      onClick={(e) => onDeleteStory(e, story.id)}
-                      className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
-                      title="Slett eventyret"
-                      aria-label="Slett eventyret"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPrinting(story);
+                        }}
+                        className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-full transition-colors"
+                        title="Skriv ut eventyret"
+                        aria-label="Skriv ut eventyret"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => onDeleteStory(e, story.id)}
+                        className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                        title="Slett eventyret"
+                        aria-label="Slett eventyret"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -244,7 +262,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         )}
 
         {/* Remembered choices */}
-        <section className="space-y-6 sm:space-y-8 bg-white dark:bg-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl border-2 border-indigo-100 dark:border-indigo-900">
+        <section className="space-y-6 sm:space-y-8 pt-6 border-t-2 sm:bg-white sm:dark:bg-gray-800 sm:p-8 sm:rounded-3xl sm:shadow-xl sm:border-2 border-indigo-100 dark:border-indigo-900">
           <div>
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <h3 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">Mine valg</h3>
@@ -313,6 +331,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </div>
         </section>
       </div>
+
+      {printing && <PrintDialog story={printing} onClose={() => setPrinting(null)} />}
     </div>
   );
 };
