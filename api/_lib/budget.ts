@@ -24,7 +24,7 @@ const intEnv = (name: string, fallback: number): number => {
 // with the environment variables DAILY_STORY_LIMIT and
 // DAILY_STORY_LIMIT_PER_IP in Vercel — no code change needed.
 const storiesTotal = () => intEnv("DAILY_STORY_LIMIT", 100);
-const storiesPerVisitor = () => intEnv("DAILY_STORY_LIMIT_PER_IP", 10);
+const storiesPerVisitor = () => intEnv("DAILY_STORY_LIMIT_PER_IP", 30);
 // Stories a visitor may start per day without logging in
 // (DAILY_GUEST_STORY_LIMIT_PER_IP). They count towards the total above too.
 const guestStoriesPerVisitor = () => intEnv("DAILY_GUEST_STORY_LIMIT_PER_IP", 3);
