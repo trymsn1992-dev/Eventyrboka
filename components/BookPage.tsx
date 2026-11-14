@@ -549,28 +549,39 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
                       goToChunk(currentChunk + (dx < 0 ? 1 : -1));
                     }}
                   >
-                    <div
-                      key={`${pageNumber}-${currentChunk}`}
-                      style={{ animation: 'chunkSwap 0.4s ease-out' }}
-                      className="w-full min-h-[190px] px-5 pt-6 pb-12 flex flex-col items-center justify-center"
-                    >
-                      {arrivedVia && currentChunk === 1 && (
-                        <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
-                          Du valgte: {arrivedVia}
-                        </p>
-                      )}
-                      <p
-                        aria-live="polite"
-                        className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
-                          // The text is centred, so the big first letter stays
-                          // in the line: floated left it lands far from its word.
-                          currentChunk === 1
-                            ? 'first-letter:text-4xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300'
-                            : ''
-                        }`}
-                      >
-                        {textChunks[currentChunk - 1]}
-                      </p>
+                    {/* Every sentence of the page lies in the same cell, and
+                        only the current one is shown. The card is therefore as
+                        tall as the longest sentence all the time, and nothing
+                        below it moves when the sentence changes. */}
+                    <div className="grid w-full min-h-[190px]" aria-live="polite">
+                      {textChunks.map((chunk, idx) => {
+                        const shown = idx === currentChunk - 1;
+                        return (
+                          <div
+                            key={`${pageNumber}-${idx}`}
+                            aria-hidden={!shown}
+                            style={shown ? { animation: 'chunkSwap 0.4s ease-out' } : { visibility: 'hidden' }}
+                            className="col-start-1 row-start-1 w-full px-5 pt-6 pb-12 flex flex-col items-center justify-center"
+                          >
+                            {arrivedVia && idx === 0 && (
+                              <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold mb-3 text-center">
+                                Du valgte: {arrivedVia}
+                              </p>
+                            )}
+                            <p
+                              className={`font-serif text-gray-800 dark:text-gray-100 leading-relaxed text-xl text-center ${
+                                // The text is centred, so the big first letter stays
+                                // in the line: floated left it lands far from its word.
+                                idx === 0
+                                  ? 'first-letter:text-4xl first-letter:font-bold first-letter:text-indigo-600 dark:first-letter:text-indigo-300'
+                                  : ''
+                              }`}
+                            >
+                              {chunk}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {textChunks.length > 1 && (
