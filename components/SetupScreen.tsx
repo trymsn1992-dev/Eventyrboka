@@ -146,15 +146,17 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       // Private mode — the picks just won't survive the login.
     }
   }, [picked]);
-  // The kind of story. Prinsen always gets «Magihistorie». Askeladden picks:
-  // it is free while none of the week's free stories are used, and can
-  // otherwise be bought. Guests get the plain kind.
-  const [wantsPersonal, setWantsPersonal] = useState(false);
-  const [personalNote, setPersonalNote] = useState(false);
+  // The kind of story follows from what is picked — there is no choice of
+  // its own. Prinsen always gets «Magihistorie». For Askeladden a story is
+  // one when it has something new and magic in it: a moral typed just now,
+  // or a hero not yet kept on the account. It is free while none of the
+  // week's free stories are used, and can otherwise be bought. Guests get
+  // the plain kind.
+  // Set when something magic was tapped but can't be had: where to say why.
+  const [personalNote, setPersonalNote] = useState<'hero' | 'moral' | null>(null);
   const freePersonal = freeLeft === null || freeLeft >= FREE_STORIES_PER_WEEK;
   const canPickPersonal =
     loggedIn && !isPro && (freePersonal || credits.personal > 0 || canBuy);
-  const personal = isPro || (wantsPersonal && canPickPersonal);
   // A hero made from a photo of a toy or a drawing (services/hero.ts). The
   // last one made is kept in this browser and can be picked again.
   const [ownHero, setOwnHero] = useState<OwnHero | null>(loadOwnHero);
@@ -196,6 +198,13 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [heroError, setHeroError] = useState<string | null>(null);
   const heroNameRef = useRef<HTMLInputElement>(null);
   const heroFileRef = useRef<HTMLInputElement>(null);
+  // A grown-up can type their own moral instead of picking one of ours.
+  const [useCustomMoral, setUseCustomMoral] = useState(false);
+  const [customMoral, setCustomMoral] = useState('');
+  const customMoralRef = useRef<HTMLInputElement>(null);
+  const magicPicked =
+    (useCustomMoral && !moralFromSaved) || (useOwnHero && ownHero !== null && !ownHero.id);
+  const personal = isPro || (magicPicked && canPickPersonal);
   // Making a hero of your own is magic («Magihistorie»), like typing your own
   // moral. One already kept on the account (it has an id) can be picked in
   // any story.
@@ -279,36 +288,20 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     }
   };
 
-  // A grown-up can type their own moral instead of picking one of ours.
-  const [useCustomMoral, setUseCustomMoral] = useState(false);
-  const [customMoral, setCustomMoral] = useState('');
-  const customMoralRef = useRef<HTMLInputElement>(null);
-  const pickPlain = () => {
-    setWantsPersonal(false);
-    setPersonalNote(false);
-    // What is already kept on the account stays picked; what is new is magic.
-    if (!moralFromSaved) setUseCustomMoral(false);
-    if (!ownHero?.id) setUseOwnHero(false);
-    setHeroFormOpen(false);
-  };
-  // True when the story is (now) a «Magihistorie»; otherwise says why not.
-  const pickPersonal = (): boolean => {
-    if (personal) return true;
-    if (canPickPersonal) {
-      setWantsPersonal(true);
-      setPersonalNote(false);
+  // True when the story may be a «Magihistorie»; otherwise says why not,
+  // next to what was tapped.
+  const allowMagic = (where: 'hero' | 'moral'): boolean => {
+    if (isPro || canPickPersonal) {
+      setPersonalNote(null);
       return true;
     }
-    setPersonalNote(true);
+    setPersonalNote(where);
     logEvent('Lås truffet', { funksjon: PERSONAL_STORY_NAME });
     return false;
   };
   const pickCustomMoral = () => {
     // Your own moral makes it a «Magihistorie».
-    if (!pickPersonal()) {
-      showStoryKind();
-      return;
-    }
+    if (!allowMagic('moral')) return;
     setUseCustomMoral(true);
     if (moralFromSaved) setCustomMoral('');
     setMoralFromSaved(false);
@@ -317,12 +310,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     window.setTimeout(() => customMoralRef.current?.focus(), 0);
   };
 
-  const showStoryKind = () => {
-    window.clearTimeout(advanceTimer.current);
-    formRef.current
-      ?.querySelector('[data-story-kind]')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
   // A moral the family typed before, picked again. No magic needed.
   const pickSavedMoral = (moral: SavedMoral) => {
     setUseCustomMoral(true);
@@ -333,10 +320,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   // A hero the family made before, picked again. No magic needed once it is
   // kept on the account; one that only lives in this browser still is.
   const pickSavedHero = (hero: OwnHero) => {
-    if (!hero.id && !pickPersonal()) {
-      showStoryKind();
-      return;
-    }
+    if (!hero.id && !allowMagic('hero')) return;
     selectOwnHero(hero);
     setOwnHero(hero);
     setUseOwnHero(true);
@@ -344,10 +328,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     advanceFrom('character');
   };
   const openHeroForm = () => {
-    if (!pickPersonal()) {
-      showStoryKind();
-      return;
-    }
+    if (!allowMagic('hero')) return;
     setHeroFormOpen(true);
     setHeroDraft(null);
     setHeroError(null);
@@ -441,6 +422,31 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     start({ ...options, metaphor }, personal);
   };
 
+  // Why the magic that was tapped can't be had right now.
+  const magicNote = (
+    <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+      {loggedIn ? (
+        `En egen helt eller lærepenge gjør historien til en ${PERSONAL_STORY_NAME.toLowerCase()}. Den bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
+      ) : (
+        <>
+          Logg inn for å lage en egen helt eller lærepenge.
+          {canLogIn && (
+            <>
+              {' '}
+              <a
+                href="/api/vipps/start"
+                onClick={() => logEvent('Vipps-innlogging klikket')}
+                className="underline underline-offset-4"
+              >
+                Logg inn med Vipps
+              </a>
+            </>
+          )}
+        </>
+      )}
+    </p>
+  );
+
   return (
     // On a phone the card fills the screen edge to edge: a frame around it
     // only takes room from the pictures. From tablet width it is a framed card.
@@ -452,74 +458,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
         </div>
 
         <form ref={formRef} className="mt-6 sm:mt-10 space-y-8 sm:space-y-12" onSubmit={handleSubmit}>
-
-          {/* Which kind of story (Prinsen always gets «Magihistorie») */}
-          {!isPro && (
-            <div className="space-y-3 sm:space-y-4" data-story-kind>
-              <div className="flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
-                <BookOpen className="w-6 h-6 text-emerald-500" />
-                <h3 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">Hvilken historie?</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  aria-pressed={!personal}
-                  onClick={pickPlain}
-                  className={`relative p-4 pr-10 rounded-2xl border-2 text-left transition-all duration-200 ${cardClass(!personal)}`}
-                >
-                  {!personal && <SelectedBadge />}
-                  <span className="block text-base sm:text-lg font-bold">{STORY_NAME}</span>
-                  <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
-                    Velg blant heltene og lærepengene våre, eller dem dere har laget før.
-                  </span>
-                  <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    {FREE_STORIES_PER_WEEK} gratis hver uke{canBuy && ` · ellers ${PRICE_SIMPLE_STORY_KR} kr`}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={personal}
-                  onClick={() => pickPersonal()}
-                  className={`relative p-4 pr-10 rounded-2xl border-2 text-left transition-all duration-200 ${cardClass(personal)} ${canPickPersonal ? '' : 'opacity-70'}`}
-                >
-                  {personal && <SelectedBadge />}
-                  <span className="block text-base sm:text-lg font-bold">{PERSONAL_STORY_NAME}</span>
-                  <span className="block mt-1 text-xs sm:text-sm font-medium opacity-75">
-                    Lag en ny helt fra et bilde, skriv en ny lærepenge og få opplesning.
-                  </span>
-                  <span className="block mt-2 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    1 gratis hver uke{canBuy && ` · ellers ${PRICE_PERSONAL_STORY_KR} kr`}
-                  </span>
-                </button>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Hver uke får dere {storyCount(FREE_STORIES_PER_WEEK)} eller {storyCount(1, true)} gratis.
-              </p>
-              {personalNote && !canPickPersonal && (
-                <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                  {loggedIn ? (
-                    `En magihistorie bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
-                  ) : (
-                    <>
-                      Logg inn for å lage en magihistorie.
-                      {canLogIn && (
-                        <>
-                          {' '}
-                          <a
-                            href="/api/vipps/start"
-                            onClick={() => logEvent('Vipps-innlogging klikket')}
-                            className="underline underline-offset-4"
-                          >
-                            Logg inn med Vipps
-                          </a>
-                        </>
-                      )}
-                    </>
-                  )}
-                </p>
-              )}
-            </div>
-          )}
 
           {/* 1. Character Selection Grid */}
           <div className="space-y-4 scroll-mt-4" data-step={0}>
@@ -796,6 +734,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </div>
               )}
             </div>
+            {personalNote === 'hero' && !canPickPersonal && magicNote}
           </div>
 
           {/* 2. Metaphor Selection (Hva skal vi lære?) */}
@@ -896,6 +835,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </div>
               )}
             </div>
+            {personalNote === 'moral' && !canPickPersonal && magicNote}
           </div>
 
           {/* 3. Length — and age, until one has been saved (then it lives on Min side) */}
@@ -964,6 +904,14 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     </a>
                   </>
                 )}
+              </p>
+            )}
+
+            {/* The picks made it a «Magihistorie»: say so, and what it uses. */}
+            {personal && !isPro && (
+              <p role="status" className="mt-4 text-center text-sm font-semibold text-amber-700 dark:text-amber-300">
+                Dette blir en {PERSONAL_STORY_NAME.toLowerCase()}, siden dere har valgt en ny egen helt eller lærepenge.
+                {freePersonal ? ' Den bruker begge ukas gratis historier.' : ''}
               </p>
             )}
 
