@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<!--
+  Prices and terms of sale, as a plain page anyone can read without logging
+  in (Vipps asks for a link to it). The prices here are written out by hand:
+  when they change in types.ts (WISHES_PER_WEEK, WISH_PRICE_KR,
+  PRICE_PRINSEN_PER_WEEK_KR), change them here too.
+-->
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/magiboka-ikon.png?v=2" />
+    <title>Priser og salgsvilkår – Magiboka</title>
+    <meta name="description" content="Priser og salgsvilkår for Magiboka: ønsker, Prinsen-abonnementet, betaling med Vipps, angrerett og klage." />
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root { color-scheme: light dark; --bg: #f3f4f6; --card: #ffffff; --text: #1f2937; --muted: #6b7280; --line: #e5e7eb; --link: #4f46e5; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #15161a; --card: #1f2937; --text: #f3f4f6; --muted: #9ca3af; --line: #374151; --link: #a5b4fc; }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Quicksand', system-ui, sans-serif; font-size: 17px; line-height: 1.6; }
+      main { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+      .card { background: var(--card); border-radius: 1.25rem; padding: 1.5rem; margin-top: 1.25rem; border: 1px solid var(--line); }
+      h1 { font-size: 1.9rem; line-height: 1.2; margin: 1rem 0 0.25rem; }
+      h2 { font-size: 1.3rem; margin: 0 0 0.5rem; }
+      p { margin: 0.5rem 0; }
+      ul { margin: 0.5rem 0; padding-left: 1.25rem; }
+      li { margin: 0.25rem 0; }
+      a { color: var(--link); }
+      .muted { color: var(--muted); }
+      table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+      th, td { text-align: left; padding: 0.6rem 0; border-top: 1px solid var(--line); vertical-align: top; }
+      th { font-weight: 700; }
+      td.price, th.price { text-align: right; white-space: nowrap; font-weight: 700; }
+      .back { display: inline-block; margin-top: 0.5rem; font-weight: 700; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="/">← Til Magiboka</a>
+      <h1>Priser og salgsvilkår</h1>
+      <p class="muted">Sist oppdatert 25. november 2026</p>
+
+      <section class="card">
+        <h2>Hvem du handler med</h2>
+        <p>
+          Magiboka drives av <strong>Nordgård</strong>, org.nr. 937 095 082.<br />
+          E-post: <a href="mailto:trymnord@gmail.com">trymnord@gmail.com</a><br />
+          Nettsted: <a href="https://www.magiboka.no">www.magiboka.no</a>
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Hva vi selger</h2>
+        <p>
+          Magiboka lager illustrerte, interaktive barnehistorier på nett. Barnet velger helt og hva historien
+          skal lære bort, og velger selv veien videre på hver side. Alt leveres digitalt på magiboka.no.
+        </p>
+        <p>Det som koster noe i Magiboka, betales med <strong>ønsker</strong>. Ett ønske gir én av disse:</p>
+        <ul>
+          <li>en ny historie</li>
+          <li>en ny helt tegnet etter et bilde av kosedyret (gratis å bruke igjen)</li>
+          <li>en ny, egen lærepenge (gratis å bruke igjen)</li>
+          <li>opplesning av en hel historie</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Priser</h2>
+        <table>
+          <tr>
+            <th>Uten innlogging</th>
+            <td>Én historie</td>
+            <td class="price">Gratis</td>
+          </tr>
+          <tr>
+            <th>Askeladden</th>
+            <td>2 ønsker hver uke</td>
+            <td class="price">Gratis</td>
+          </tr>
+          <tr>
+            <th></th>
+            <td>Ekstra ønske</td>
+            <td class="price">10 kr</td>
+          </tr>
+          <tr>
+            <th>Prinsen</th>
+            <td>8 ønsker hver uke. Ingen bindingstid.</td>
+            <td class="price">20 kr per uke</td>
+          </tr>
+          <tr>
+            <th></th>
+            <td>Ekstra ønske</td>
+            <td class="price">5 kr</td>
+          </tr>
+        </table>
+        <p class="muted">
+          Alle priser er totalpriser i norske kroner. Ukas ønsker fornyes hver mandag og kan ikke spares til
+          neste uke. Ønsker du kjøper, varer til de er brukt.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Betaling</h2>
+        <p>Du betaler med Vipps. Du må være logget inn med Vipps for å handle.</p>
+        <ul>
+          <li><strong>Ekstra ønsker</strong> betales når du godkjenner kjøpet i Vipps.</li>
+          <li>
+            <strong>Prinsen</strong> er et abonnement. Første uke trekkes når du godkjenner avtalen i Vipps,
+            og deretter trekkes 20 kr hver uke til du sier opp.
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Levering</h2>
+        <p>
+          Alt leveres digitalt og med en gang. Kjøpte ønsker ligger på kontoen din straks betalingen er
+          godkjent, og du ser hvor mange du har under «Min profil». En historie lages mens du venter, vanligvis
+          på under ett minutt.
+        </p>
+        <p>
+          Skulle en historie eller en helt ikke bli laget på grunn av en teknisk feil, får du ønsket tilbake
+          automatisk.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Angrerett</h2>
+        <p>
+          Du har 14 dagers angrerett etter angrerettloven. Angrer du på et kjøp av ønsker, får du pengene
+          tilbake for de ønskene du ikke har brukt. Send en e-post til
+          <a href="mailto:trymnord@gmail.com">trymnord@gmail.com</a> fra, eller med navnet på, kontoen du
+          handlet med, så betaler vi tilbake til Vipps innen 14 dager.
+        </p>
+        <p>
+          Når du bruker et ønske, starter leveringen av digitalt innhold med en gang. Ved å bruke ønsket
+          samtykker du til det, og du er kjent med at angreretten for det ønsket da faller bort.
+        </p>
+        <p>
+          Angrer du på Prinsen innen 14 dager, sier du opp som beskrevet under og sender oss en e-post. Du får
+          da tilbake det du har betalt, med fradrag for ønsker du har brukt utover de to du ville hatt gratis.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Oppsigelse av Prinsen</h2>
+        <p>
+          Prinsen har ingen bindingstid. Du sier opp når du vil på plansiden i Magiboka eller i Vipps-appen.
+          Du beholder Prinsen ut uka du har betalt for, og blir ikke trukket mer.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Retur</h2>
+        <p>
+          Magiboka selger bare digitale tjenester, så det er ingenting å sende i retur. Det som gjelder i
+          stedet, står under «Angrerett» og «Klage».
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Klage</h2>
+        <p>
+          Er noe galt med det du har fått, for eksempel en historie som ikke lot seg lese eller ønsker som
+          forsvant, ber vi deg ta kontakt på
+          <a href="mailto:trymnord@gmail.com">trymnord@gmail.com</a> så snart som mulig. Vi svarer innen
+          rimelig tid, og retter feilen, gir deg ønsket tilbake eller betaler tilbake det du har betalt.
+        </p>
+        <p>
+          Blir vi ikke enige, kan du kontakte Forbrukerrådet for veiledning og mekling:
+          <a href="https://www.forbrukerradet.no">forbrukerradet.no</a>.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Endringer</h2>
+        <p>
+          Vi kan endre priser og vilkår. Endringer gjelder ikke for ønsker du allerede har kjøpt, og blir du
+          Prinsen, får du beskjed før en prisendring trer i kraft, slik at du kan si opp først.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

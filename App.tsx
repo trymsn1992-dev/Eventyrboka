@@ -1277,6 +1277,8 @@ const App: React.FC = () => {
           <span>Org.nr. 937 095 082</span>
           <span className="hidden sm:inline">·</span>
           <a href="mailto:trymnord@gmail.com" className="hover:text-gray-700 dark:hover:text-gray-200 underline">trymnord@gmail.com</a>
+          <span className="hidden sm:inline">·</span>
+          <a href="/vilkar.html" className="hover:text-gray-700 dark:hover:text-gray-200 underline">Priser og salgsvilkår</a>
         </div>
         <p className="mt-1 text-center text-[11px] text-gray-500 dark:text-gray-400">Versjon {__APP_VERSION__}</p>
       </footer>
