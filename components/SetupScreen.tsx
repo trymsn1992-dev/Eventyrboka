@@ -6,7 +6,7 @@ import { Button } from './Button';
 import { logEvent } from '../services/analytics';
 import { Sparkles, User, Lightbulb, Calendar, Clock, Check, Camera, Loader2, Pencil, Star } from 'lucide-react';
 import { HeroRetry, loadOwnHero, makeHero, preparePhoto, saveOwnHero, selectOwnHero } from '../services/hero';
-import { SavedMoral, cachedCollection, loadCollection, removeHero, saveHeroToProfile } from '../services/samling';
+import { SavedMoral, cachedCollection, loadCollection, makeMoral, removeHero, saveHeroToProfile } from '../services/samling';
 import { LoginBenefits } from './Wishes';
 
 interface SetupScreenProps {
@@ -22,10 +22,10 @@ interface SetupScreenProps {
   // Prinsen pays less for an extra wish.
   isPro: boolean;
   // The wishes the account has (null when logged out or unknown). A story
-  // costs one; a new hero and a new moral cost one each.
+  // costs one. A new hero and a new moral cost one each, when they are made.
   wishes: Wishes | null;
   onOpenWishes: () => void;
-  // A wish was spent here (a hero was drawn).
+  // A wish was spent here (a hero was drawn or a moral was made).
   onWishesSpent: (count: number) => void;
   onOpenPlan: () => void;
   // One story can be made without a login; the rest needs one.
@@ -211,14 +211,12 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     // Everyone picks their own drawing style (on Min side).
     artStyle: preferences.artStyle ?? DEFAULT_ART_STYLE,
   };
-  // What the story costs: one wish, and one more for a moral typed just now
-  // (one that is already kept on the account is free to use again).
-  const typedMoral = useCustomMoral ? cleanCustomMetaphor(customMoral) : null;
-  const newMoral =
-    useCustomMoral &&
-    !moralFromSaved &&
-    !savedMorals.some(m => m.text.toLowerCase() === (typedMoral ?? '').toLowerCase());
-  const cost = 1 + (newMoral ? 1 : 0);
+  // A story costs one wish. A moral typed here is made first, with its own
+  // button and its own wish, and is then one of the saved ones.
+  const [moralBusy, setMoralBusy] = useState(false);
+  const [moralError, setMoralError] = useState<string | null>(null);
+  const moralUnmade = useCustomMoral && !moralFromSaved;
+  const cost = 1;
   // The account is short of wishes for the story picked.
   const missing = wishesKnown ? Math.max(0, cost - wishesLeft) : 0;
   const mustBuy = missing > 0;
@@ -305,9 +303,47 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setUseCustomMoral(true);
     if (moralFromSaved) setCustomMoral('');
     setMoralFromSaved(false);
+    setMoralError(null);
     // Stay here and put the cursor in the field — there is something to type.
     window.clearTimeout(advanceTimer.current);
     window.setTimeout(() => customMoralRef.current?.focus(), 0);
+  };
+
+  // Make the moral that is typed: kept on the account for one wish, and
+  // picked for this story.
+  const handleMakeMoral = async () => {
+    const text = cleanCustomMetaphor(customMoral);
+    if (!text) {
+      setMoralError('Skriv lærepengen først.');
+      customMoralRef.current?.focus();
+      return;
+    }
+    // Already one of theirs: just pick it.
+    const known = savedMorals.find(m => m.text.toLowerCase() === text.toLowerCase());
+    if (known) {
+      pickSavedMoral(known);
+      return;
+    }
+    if (wishesKnown && wishesLeft < 1) {
+      setMoralError('En ny lærepenge koster et ønske, og du har ingen igjen.');
+      onOpenWishes();
+      return;
+    }
+    setMoralBusy(true);
+    setMoralError(null);
+    try {
+      const { moral, spent } = await makeMoral(text);
+      if (spent > 0) onWishesSpent(spent);
+      setSavedMorals(prev =>
+        prev.some(m => m.text.toLowerCase() === moral.text.toLowerCase()) ? prev : [moral, ...prev]
+      );
+      logEvent('Egen lærepenge laget');
+      pickSavedMoral(moral);
+    } catch (err) {
+      setMoralError(err instanceof Error ? err.message : 'Kunne ikke lage lærepengen. Prøv igjen.');
+    } finally {
+      setMoralBusy(false);
+    }
   };
 
   // A moral the family typed before, picked again. Costs nothing.
@@ -315,6 +351,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setUseCustomMoral(true);
     setMoralFromSaved(true);
     setCustomMoral(moral.text);
+    setMoralError(null);
     advanceFrom('metaphor');
   };
   // A hero the family made before, picked again. Costs nothing.
@@ -425,8 +462,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     let chosen = options;
     if (useCustomMoral) {
       const metaphor = cleanCustomMetaphor(customMoral);
-      if (!metaphor) {
+      // Typed but not made yet: it has to be made first (its own button).
+      if (!metaphor || moralUnmade) {
         setMoralFromSaved(false);
+        setMoralError('Lag lærepengen først, eller velg en av de andre.');
+        customMoralRef.current?.scrollIntoView({ block: 'center' });
         customMoralRef.current?.focus();
         return;
       }
@@ -829,19 +869,58 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </span>
               </button>
               {useCustomMoral && !moralFromSaved && (
-                <div className="px-3 pb-3">
+                <div className="px-3 pb-3 space-y-3">
                   <input
                     ref={customMoralRef}
                     type="text"
                     value={customMoral}
-                    onChange={(e) => setCustomMoral(e.target.value)}
-                    required
-                    minLength={3}
+                    onChange={(e) => {
+                      setCustomMoral(e.target.value);
+                      setMoralError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      // Enter makes the moral; it must not start the story.
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleMakeMoral();
+                      }
+                    }}
                     maxLength={CUSTOM_METAPHOR_MAX}
+                    disabled={moralBusy}
                     placeholder="F.eks. Det er lov å gjøre feil"
-                    aria-label="Din egen moral"
+                    aria-label="Din egen lærepenge"
                     className="w-full rounded-xl border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900 px-4 py-3 text-base font-semibold text-gray-900 dark:text-gray-100 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-indigo-500"
                   />
+                  <button
+                    type="button"
+                    disabled={moralBusy || !cleanCustomMetaphor(customMoral)}
+                    onClick={handleMakeMoral}
+                    className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base font-bold transition-colors ${
+                      cleanCustomMetaphor(customMoral)
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {moralBusy ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Lager lærepengen …
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5" />
+                        Lag lærepengen · 1 ønske
+                      </>
+                    )}
+                  </button>
+                  {moralError && (
+                    <p role="alert" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {moralError}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Lærepengen lagres på kontoen, og er gratis å bruke i alle historier etterpå.
+                  </p>
                 </div>
               )}
             </div>
@@ -914,9 +993,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
             {/* Logged in: what the story costs, and how many wishes there are. */}
             {wishesKnown && (
               <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
-                {newMoral
-                  ? 'Historien koster 1 ønske, og den nye lærepengen 1.'
-                  : 'Historien koster 1 ønske.'}{' '}
+                Historien koster 1 ønske.{' '}
                 {outOfWishes
                   ? `Du har ${wishCount(wishesLeft)}. Nye kommer på mandag, og kjøp av flere kommer snart.`
                   : `Du har ${wishCount(wishesLeft)}.`}{' '}

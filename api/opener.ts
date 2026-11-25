@@ -9,7 +9,7 @@ import {
   spendWishes,
   type WishReceipts,
 } from "./_lib/access.js";
-import { MAX_ITEMS, countItems, hasItem, moralItemId, saveItem } from "./_lib/samling.js";
+import { hasItem, moralItemId } from "./_lib/samling.js";
 import { guestUsed, guestUsedCookie, readSession } from "./_lib/session.js";
 import { getAccount } from "./_lib/supabase.js";
 import { spend } from "./_lib/budget.js";
@@ -179,7 +179,7 @@ export default async function handler(
   }
 
   // A visitor without a login gets one plain story, once. With a login a
-  // story costs a wish, and a new moral of your own costs one more.
+  // story costs one wish.
   const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
@@ -215,19 +215,17 @@ export default async function handler(
         });
       }
     }
-    // A moral typed just now is kept on the account and costs a wish; one
-    // already kept there is free to use again.
-    const moralId = session && customMoral ? moralItemId(session.sub, options.metaphor) : null;
-    const newMoral = session && moralId ? !(await hasItem(session.sub, moralId)) : false;
-    if (session && newMoral) {
-      const kept = await countItems(session.sub, "laerepenge");
-      if (kept !== null && kept >= MAX_ITEMS.laerepenge) {
-        return res.status(409).json({
-          error: `Dere har ${MAX_ITEMS.laerepenge} egne lærepenger. Slett en på Min side for å skrive en ny.`,
-        });
-      }
+    // A moral of your own is made — and paid for — before the story
+    // (/api/samling), so here it has to be one the account keeps.
+    if (
+      session &&
+      customMoral &&
+      !(await hasItem(session.sub, moralItemId(session.sub, options.metaphor)))
+    ) {
+      return res.status(403).json({ error: "Lag lærepengen først, så kan den brukes i historien." });
     }
-    const cost = 1 + (newMoral ? 1 : 0);
+    // A story costs one wish.
+    const cost = 1;
 
     // Daily spending cap (see _lib/budget.ts).
     const budget = await spend(req, "story", session);
@@ -293,11 +291,6 @@ export default async function handler(
       `prep;dur=${prepMs}, gemini;dur=${geminiMs}, total;dur=${totalMs}`
     );
 
-    // The new moral is the family's now: kept on the account, free next time.
-    let moralSaved = false;
-    if (session && moralId && newMoral) {
-      moralSaved = (await saveItem(session.sub, "laerepenge", moralId, { tekst: options.metaphor })) === "ok";
-    }
     // The one story without a login has been made in this browser.
     if (!guestUsed(req)) res.setHeader("Set-Cookie", guestUsedCookie());
 
@@ -316,8 +309,6 @@ export default async function handler(
       // What it cost, and whether any of it was a bought wish.
       onsker: session ? cost : 0,
       kjopt: Boolean(receipts?.some((r) => r !== "uke")),
-      // The id of the moral that was just kept on the account, if any.
-      laerepengeId: moralSaved ? moralId : undefined,
     });
   } catch (error) {
     console.error("Opener error:", error);

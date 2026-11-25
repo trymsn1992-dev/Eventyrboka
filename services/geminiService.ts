@@ -99,8 +99,6 @@ export const generateOpener = async (
   // How many wishes it cost, and whether any of them was a bought one.
   wishes: number;
   bought: boolean;
-  // Set when a moral typed for this story was kept on the account.
-  moralId: string | null;
 }> => {
   const data = await postJson<
     PageResponse & {
@@ -109,7 +107,6 @@ export const generateOpener = async (
       gjest?: boolean;
       onsker?: number;
       kjopt?: boolean;
-      laerepengeId?: string;
     }
   >("/api/opener", { options, seed });
   return {
@@ -125,7 +122,6 @@ export const generateOpener = async (
     guest: data.gjest === true,
     wishes: typeof data.onsker === "number" ? data.onsker : 0,
     bought: data.kjopt === true,
-    moralId: typeof data.laerepengeId === "string" ? data.laerepengeId : null,
   };
 };
 

@@ -5,7 +5,6 @@ import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { StoryMagic } from './components/StoryMagic';
 import { PrintDialog } from './components/PrintDialog';
-import { noteSavedMoral } from './services/samling';
 import { LoginBenefits, WishPanel, niceDate } from './components/Wishes';
 import { ProfileMenu } from './components/ProfileMenu';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PLAN_NAMES, TOTAL_PAGES, WISHES_PER_WEEK, wishCount, wishTotal } from './types';
@@ -598,7 +597,7 @@ const App: React.FC = () => {
       // Start the character sheet now so it's ready for page 1's picture.
       void getSheet(selectedOptions);
       insightBegin(selectedOptions, ownThings);
-      const { segment: opener, premise, guest, wishes: spent, bought, moralId } =
+      const { segment: opener, premise, guest, wishes: spent, bought } =
         await generateOpener(selectedOptions, seed);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
@@ -607,9 +606,6 @@ const App: React.FC = () => {
         who: guest ? 'gjest' : pro ? 'prinsen' : 'askeladden',
         bought: Boolean(bought),
       });
-      // A moral typed for this story is kept on the account now, and can be
-      // picked again for free.
-      if (moralId) noteSavedMoral(selectedOptions.metaphor, moralId);
       if (guest) {
         // The one story without a login is made.
         setAccount(prev => {

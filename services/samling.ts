@@ -117,12 +117,39 @@ export async function saveHeroToProfile(hero: OwnHero): Promise<void> {
   };
 }
 
-// A moral typed for a story was kept on the account by the server when the
-// story started (/api/opener): show it among the saved ones from now on.
-export function noteSavedMoral(text: string, id: string): void {
-  if (cache?.morals.some((m) => m.text.toLowerCase() === text.toLowerCase())) return;
+// Makes a moral of your own: kept on the account, free to use in every story
+// from now on. Costs one wish (`spent` is 0 when the account already kept
+// it). Throws with a message for the reader when it can't be made.
+export async function makeMoral(text: string): Promise<{ moral: SavedMoral; spent: number }> {
+  let r: Response;
+  try {
+    r = await fetch("/api/samling", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ laerepenge: text }),
+    });
+  } catch {
+    throw new Error("Fikk ikke kontakt. Prøv igjen.");
+  }
+  const data = (await r.json().catch(() => ({}))) as {
+    id?: unknown;
+    tekst?: unknown;
+    onsker?: unknown;
+    error?: unknown;
+  };
+  if (!r.ok || typeof data.id !== "string") {
+    throw new Error(typeof data.error === "string" ? data.error : "Kunne ikke lage lærepengen. Prøv igjen.");
+  }
+  const moral: SavedMoral = {
+    id: data.id,
+    text: cleanCustomMetaphor(data.tekst) ?? text,
+  };
   const current = cache ?? empty();
-  cache = { ...current, morals: [{ id, text }, ...current.morals] };
+  if (!current.morals.some((m) => m.text.toLowerCase() === moral.text.toLowerCase())) {
+    cache = { ...current, morals: [moral, ...current.morals] };
+  }
+  return { moral, spent: data.onsker === 1 ? 1 : 0 };
 }
 
 async function remove(id: string | undefined): Promise<void> {

@@ -5,18 +5,23 @@
 // The session cookie decides whose they are — never anything the client sends.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { readSession } from "./_lib/session.js";
-import { supabaseReady } from "./_lib/supabase.js";
+import { getAccount, supabaseReady } from "./_lib/supabase.js";
+import { outOfWishes, refundWishes, spendWishes } from "./_lib/access.js";
 import { openHero } from "./_lib/hero.js";
 import { parseDataUrl } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import {
+  MAX_ITEMS,
+  countItems,
   deleteItem,
+  hasItem,
   heroItemId,
   listItems,
+  moralItemId,
   saveItem,
   validItemId,
 } from "./_lib/samling.js";
-import { ART_STYLES, DEFAULT_ART_STYLE } from "../types.js";
+import { ART_STYLES, DEFAULT_ART_STYLE, cleanCustomMetaphor } from "../types.js";
 
 export const config = { maxDuration: 30 };
 
@@ -112,12 +117,48 @@ export default async function handler(
     return;
   }
 
-  const body = (req.body ?? {}) as { helt?: unknown };
+  const body = (req.body ?? {}) as { helt?: unknown; laerepenge?: unknown };
+
+  // A new moral of your own costs one wish. It is kept on the account and is
+  // free to use in every story after that. One the account already keeps is
+  // just answered with its id.
+  if (body.laerepenge !== undefined) {
+    const tekst = cleanCustomMetaphor(body.laerepenge);
+    if (!tekst) {
+      json(res, 400, { error: "Skriv en lærepenge på 3–80 tegn." });
+      return;
+    }
+    const id = moralItemId(session.sub, tekst);
+    if (await hasItem(session.sub, id)) {
+      json(res, 200, { id, tekst });
+      return;
+    }
+    const kept = await countItems(session.sub, "laerepenge");
+    if (kept !== null && kept >= MAX_ITEMS.laerepenge) {
+      json(res, 409, {
+        error: `Dere har ${MAX_ITEMS.laerepenge} egne lærepenger. Slett en på Min side for å lage en ny.`,
+      });
+      return;
+    }
+    const { plan } = await getAccount(session.sub);
+    const receipts = await spendWishes(session.sub, 1, plan);
+    if (!receipts) {
+      json(res, 429, outOfWishes(1));
+      return;
+    }
+    const saved = await saveItem(session.sub, "laerepenge", id, { tekst });
+    if (saved !== "ok") {
+      // Not kept: the wish goes back.
+      await refundWishes(session.sub, receipts);
+      json(res, saved === "full" ? 409 : 503, { error: "Kunne ikke lagre lærepengen. Prøv igjen." });
+      return;
+    }
+    json(res, 200, { id, tekst, onsker: 1 });
+    return;
+  }
 
   // A hero is paid for with a wish where it is drawn (/api/figur), and its
-  // token is signed there — so keeping it here costs nothing more. A moral
-  // of your own is paid for and kept by /api/opener, not here.
-
+  // token is signed there — so keeping it here costs nothing more.
   if (body.helt && typeof body.helt === "object") {
     const h = body.helt as Record<string, unknown>;
     // Only heroes the server drew itself: the token is signed (see _lib/hero.ts).
