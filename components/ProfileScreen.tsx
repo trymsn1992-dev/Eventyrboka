@@ -170,10 +170,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                       )}
                       <div className="min-w-0">
                         <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
-                          {story.options.character}
+                          {story.title || story.options.character}
                         </h4>
                         <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                          {story.options.metaphor}
+                          {story.title ? `${story.options.character} · ${story.options.metaphor}` : story.options.metaphor}
                         </p>
                       </div>
                     </div>

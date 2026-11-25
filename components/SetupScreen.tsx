@@ -4,13 +4,16 @@ import { SetupPreferences } from '../services/account';
 import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, cleanHeroTraits, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, PLAN_NAMES, WISH_PRICE_KR, Wishes, wishCount, wishTotal, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Lightbulb, Calendar, Clock, Check, Camera, Loader2, Pencil, Star } from 'lucide-react';
+import { Sparkles, User, Lightbulb, Calendar, Clock, Check, Camera, Loader2, Pencil, Printer, Star } from 'lucide-react';
 import { HeroRetry, loadOwnHero, makeHero, preparePhoto, saveOwnHero, selectOwnHero } from '../services/hero';
 import { SavedMoral, cachedCollection, loadCollection, makeMoral, removeHero, saveHeroToProfile } from '../services/samling';
 import { LoginBenefits } from './Wishes';
 
 interface SetupScreenProps {
   onStart: (options: StoryOptions) => void;
+  // «Lag til print»: the whole book at once, without choices, made to be
+  // printed. Only offered to someone who is logged in; costs one wish.
+  onStartPrint: (options: StoryOptions) => void;
   isLoading: boolean;
   // The remembered choices (age, length, drawing style). Age and drawing
   // style are set on Min side; length is picked here.
@@ -125,6 +128,7 @@ export const cardClass = (isSelected: boolean) =>
 
 export const SetupScreen: React.FC<SetupScreenProps> = ({
   onStart,
+  onStartPrint,
   isLoading,
   preferences,
   onPreferenceChange,
@@ -456,9 +460,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     setHeroFormOpen(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (guestDone) return;
+  // The story as picked — or null (and a note where it is wrong) when a
+  // moral is typed but not made yet.
+  const pickedStory = (): StoryOptions | null => {
     let chosen = options;
     if (useCustomMoral) {
       const metaphor = cleanCustomMetaphor(customMoral);
@@ -468,12 +472,29 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
         setMoralError('Lag lærepengen først, eller velg en av de andre.');
         customMoralRef.current?.scrollIntoView({ block: 'center' });
         customMoralRef.current?.focus();
-        return;
+        return null;
       }
       chosen = { ...options, metaphor };
     }
+    return chosen;
+  };
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (guestDone) return;
+    const chosen = pickedStory();
+    if (!chosen) return;
     if (mustBuy) onBuy(chosen, missing);
     else onStart(chosen);
+  };
+  // The whole book at once, for printing. Needs a wish like any story.
+  const handlePrintBook = () => {
+    const chosen = pickedStory();
+    if (!chosen) return;
+    if (mustBuy) {
+      onOpenWishes();
+      return;
+    }
+    onStartPrint(chosen);
   };
 
   // Said next to a hero or moral of your own that a guest tapped.
@@ -986,6 +1007,29 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   <p className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
                     Du betaler {price} kr i Vipps, og historien lages med en gang du er tilbake.
                   </p>
+                )}
+                {/* The whole book at once, without choices, ready to print. */}
+                {loggedIn && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePrintBook}
+                      disabled={isLoading || heroBusy}
+                      className="mt-3 w-full inline-flex justify-center items-center gap-3 rounded-full border-2 border-indigo-300 dark:border-indigo-500 bg-white dark:bg-gray-800 px-6 py-4 text-lg font-bold text-indigo-700 dark:text-indigo-100 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:opacity-60 transition-colors"
+                    >
+                      <Printer className="h-5 w-5" />
+                      Lag til print
+                      {wishesKnown && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/20 px-3 py-0.5 text-sm font-bold text-amber-900 dark:text-amber-100">
+                          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" aria-hidden="true" />
+                          {wishCount(cost)}
+                        </span>
+                      )}
+                    </button>
+                    <p className="mt-2 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                      Hele boka lages ferdig med en gang, uten valg. Du ser over historien før den tegnes og skrives ut.
+                    </p>
+                  </>
                 )}
               </>
             )}

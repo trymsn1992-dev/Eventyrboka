@@ -256,6 +256,11 @@ const PrintPages: React.FC<PrintPagesProps> = ({ story, format }) => {
   const sheets = useMemo(() => buildSheets(format, story.segments.length), [format, story.segments.length]);
   const hero = story.options.character;
   const moral = story.options.metaphor;
+  // A book made with «Lag til print» has a title of its own, and may say
+  // who it is for.
+  const title = story.title || hero;
+  const kicker = story.title ? `Et eventyr om ${hero}` : 'Eventyret om';
+  const owner = story.dedication;
   const cover = story.segments.find((s) => s.imageBase64)?.imageBase64;
   const date = new Date(story.createdAt).toLocaleDateString('nb-NO', {
     day: 'numeric',
@@ -285,11 +290,11 @@ const PrintPages: React.FC<PrintPagesProps> = ({ story, format }) => {
       case 'cover':
         return (
           <>
-            <div className="kicker" style={{ textAlign: 'center' }}>Eventyret om</div>
-            <div className="title" style={{ textAlign: 'center' }}>{hero}</div>
+            <div className="kicker" style={{ textAlign: 'center' }}>{kicker}</div>
+            <div className="title" style={{ textAlign: 'center' }}>{title}</div>
             <div className="imgbox">{cover && <img src={cover} alt="" />}</div>
             <div className="small" style={{ textAlign: 'center', paddingTop: '0.8em' }}>
-              Et eventyr fra Magiboka
+              {owner ? `Til ${owner} · et eventyr fra Magiboka` : 'Et eventyr fra Magiboka'}
             </div>
           </>
         );
@@ -297,14 +302,14 @@ const PrintPages: React.FC<PrintPagesProps> = ({ story, format }) => {
         return (
           <>
             <div className="kicker">Denne boka tilhører</div>
-            <div className="line" />
+            {owner ? <div className="title">{owner}</div> : <div className="line" />}
           </>
         );
       case 'title':
         return (
           <>
-            <div className="kicker">Eventyret om</div>
-            <div className="title">{hero}</div>
+            <div className="kicker">{kicker}</div>
+            <div className="title">{title}</div>
             <div className="small">{date}</div>
           </>
         );

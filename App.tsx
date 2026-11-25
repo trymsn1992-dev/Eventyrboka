@@ -5,6 +5,7 @@ import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { StoryMagic } from './components/StoryMagic';
 import { PrintDialog } from './components/PrintDialog';
+import { PrintBook } from './components/PrintBook';
 import { LoginBenefits, WishPanel, niceDate } from './components/Wishes';
 import { ProfileMenu } from './components/ProfileMenu';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PLAN_NAMES, TOTAL_PAGES, WISHES_PER_WEEK, wishCount, wishTotal } from './types';
@@ -64,7 +65,9 @@ const generateId = () => {
 declare const __APP_VERSION__: string;
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'setup' | 'reading' | 'profile' | 'plan'>('setup');
+  const [view, setView] = useState<'setup' | 'reading' | 'profile' | 'plan' | 'bok'>('setup');
+  // The picks for the book being made with «Lag til print».
+  const [printOptions, setPrintOptions] = useState<StoryOptions | null>(null);
   const [options, setOptions] = useState<StoryOptions | null>(null);
   const [plan, setPlan] = useState<StoryPlan | null>(null);
   const [segments, setSegments] = useState<StorySegment[]>([]);
@@ -94,6 +97,11 @@ const App: React.FC = () => {
     setReadAloudAccess(seed !== null && has ? { storyKey: String(seed), ...has } : null);
     setReadAccess(has);
   };
+  // What a book made with «Lag til print» carries besides its pages: that it
+  // has no choices, its title and who it is for. Kept while it is on screen,
+  // so saving it again doesn't lose them.
+  type BookExtras = Pick<SavedStory, 'linear' | 'title' | 'dedication'>;
+  const [bookExtras, setBookExtras] = useState<BookExtras | null>(null);
   // The panel about the wishes (how many, what they cost, buy more).
   const [wishPanel, setWishPanel] = useState(false);
   const openWishes = () => {
@@ -371,6 +379,7 @@ const App: React.FC = () => {
     setPrinting(null);
     setLoginGate(false);
     applyReadAccess(null, null);
+    setBookExtras(null);
   };
 
   const getSheet = (opts: StoryOptions) => {
@@ -633,6 +642,16 @@ const App: React.FC = () => {
     }
   };
 
+  // «Lag til print»: the whole book at once (components/PrintBook.tsx).
+  const handleStartPrintBook = (selectedOptions: StoryOptions) => {
+    resetFlow();
+    insightStop();
+    setPrintOptions(selectedOptions);
+    setError(null);
+    setView('bok');
+    window.scrollTo({ top: 0 });
+  };
+
   const handleChoice = (choice: Choice) => {
     const i = currentPageIndex;
     const seg = segments[i];
@@ -865,6 +884,7 @@ const App: React.FC = () => {
       createdAt: loadedStory?.createdAt ?? Date.now(),
       options,
       segments,
+      ...(bookExtras ?? {}),
     });
   };
 
@@ -885,6 +905,7 @@ const App: React.FC = () => {
           seed: storyMeta?.seed,
           ...(readAccess?.legacyTicket ? { personalTicket: readAccess.legacyTicket } : {}),
           ...(pass ? { readAloudPass: pass } : {}),
+          ...(bookExtras ?? {}),
         };
 
   const handleSaveStory = async (): Promise<boolean> => {
@@ -950,6 +971,15 @@ const App: React.FC = () => {
     setCurrentPageIndex(0);
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
+    setBookExtras(
+      story.linear
+        ? {
+            linear: true,
+            ...(story.title ? { title: story.title } : {}),
+            ...(story.dedication ? { dedication: story.dedication } : {}),
+          }
+        : null
+    );
     applyReadAccess(seed, {
       pass: typeof story.readAloudPass === 'string' ? story.readAloudPass : undefined,
       legacyTicket: typeof story.personalTicket === 'string' ? story.personalTicket : undefined,
@@ -1201,7 +1231,8 @@ const App: React.FC = () => {
           />
         ) : view === 'setup' ? (
           <SetupScreen 
-            onStart={handleStartStory} 
+            onStart={(selected) => void handleStartStory(selected)}
+            onStartPrint={handleStartPrintBook}
             isLoading={isLoading || leavingToPay} 
             wishes={account.innlogget ? account.wishes : null}
             onOpenWishes={openWishes}
@@ -1217,6 +1248,15 @@ const App: React.FC = () => {
             onOpenPlan={openPlan}
             loggedIn={account.innlogget}
             canLogIn={account.vippsReady}
+          />
+        ) : view === 'bok' && printOptions ? (
+          <PrintBook
+            options={printOptions}
+            onWishesSpent={spendLocal}
+            onRefreshWishes={() => void refreshWishes()}
+            onSave={(story) => storeStory(story, true)}
+            onRead={handleLoadStory}
+            onBack={handleRestart}
           />
         ) : view === 'profile' ? (
           <ProfileScreen
@@ -1247,7 +1287,7 @@ const App: React.FC = () => {
               onRestart={handleRestart}
               onSave={handleSaveStory}
               onPrint={handlePrintStory}
-              onWrapUp={handleWrapUp}
+              onWrapUp={bookExtras?.linear ? undefined : handleWrapUp}
               waitingFor={waitingFor}
               arrivedVia={arrivedVia}
               isGenerating={isLoading}

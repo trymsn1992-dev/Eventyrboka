@@ -99,6 +99,12 @@ export interface SavedStory {
   // Read-aloud has been paid for with a wish: the server's pass for it, so
   // the story can be listened to again for free.
   readAloudPass?: string;
+  // A book made with «Lag til print» (api/bok.ts): written in one go, with
+  // no real choices. It has a title, and may say who it is for (printed on
+  // the cover).
+  linear?: boolean;
+  title?: string;
+  dedication?: string;
 }
 
 export interface StoryState {

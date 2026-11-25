@@ -190,3 +190,53 @@ export const buyReadAloud = async (storyKey: string): Promise<string> => {
   });
   return lesepass;
 };
+
+// A whole book without choices, as written by /api/bok — text only. The
+// pictures are drawn afterwards, once the grown-up has seen the summary.
+export interface BookDraft {
+  title: string;
+  summary: string;
+  pages: Array<{ text: string; illustrationPrompt: string }>;
+  sideCharacters: SideCharacter[];
+}
+
+// Writes the book. Costs one wish — except with the `rewritePass` that came
+// with the book before. Throws with a message for the reader when it fails.
+export const generateBook = async (
+  options: StoryOptions,
+  seed: number,
+  rewritePass?: string
+): Promise<{
+  draft: BookDraft;
+  // How many wishes it cost (0 for a rewrite).
+  wishes: number;
+  // The rewrite that costs nothing, while there is one left.
+  rewrite: { pass: string; left: number } | null;
+}> => {
+  const data = await postJson<{
+    tittel?: string;
+    oppsummering?: string;
+    sider?: Array<{ text?: string; illustrationPrompt?: string }>;
+    sideCharacters?: SideCharacter[];
+    onsker?: number;
+    omskriving?: string;
+    omskrivingerIgjen?: number;
+  }>("/api/bok", { options, seed, omskriving: rewritePass });
+  const pages = (data.sider ?? [])
+    .filter((p) => typeof p?.text === "string" && p.text.trim())
+    .map((p) => ({ text: p.text as string, illustrationPrompt: p.illustrationPrompt ?? "" }));
+  if (pages.length === 0) throw new Error("Kunne ikke lage historien. Prøv igjen.");
+  return {
+    draft: {
+      title: data.tittel ?? "",
+      summary: data.oppsummering ?? "",
+      pages,
+      sideCharacters: data.sideCharacters ?? [],
+    },
+    wishes: typeof data.onsker === "number" ? data.onsker : 0,
+    rewrite:
+      typeof data.omskriving === "string" && typeof data.omskrivingerIgjen === "number"
+        ? { pass: data.omskriving, left: data.omskrivingerIgjen }
+        : null,
+  };
+};
