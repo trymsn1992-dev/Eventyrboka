@@ -6,7 +6,8 @@ import { PlanScreen } from './components/PlanScreen';
 import { StoryMagic } from './components/StoryMagic';
 import { PrintDialog } from './components/PrintDialog';
 import { noteSavedMoral } from './services/samling';
-import { LoginBenefits, WishPanel, WishPill, niceDate } from './components/Wishes';
+import { LoginBenefits, WishPanel, niceDate } from './components/Wishes';
+import { ProfileMenu } from './components/ProfileMenu';
 import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PLAN_NAMES, TOTAL_PAGES, WISHES_PER_WEEK, wishCount, wishTotal } from './types';
 import { loadOwnHero } from './services/hero';
 import { buyReadAloud, generateCharacterSheet, generateIllustration, generateOpener, generatePage, setReadAloudAccess } from './services/geminiService';
@@ -49,7 +50,7 @@ import {
   insightWho,
 } from './services/insight';
 import { logEvent, logStoryStarted } from './services/analytics';
-import { AlertCircle, CheckCircle2, Library, Loader2, LogOut, MessageSquare, Sun, Moon } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, MessageSquare, Sun, Moon } from 'lucide-react';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -1021,49 +1022,30 @@ const App: React.FC = () => {
                 <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-9 sm:h-10 md:h-12 w-auto" />
               </button>
               <div className="flex items-center gap-1 sm:gap-3">
-                {account.innlogget && account.plan && account.wishes && (
-                  <WishPill wishes={account.wishes} onClick={openWishes} />
-                )}
-                {account.innlogget && account.plan && (
-                <button
-                  onClick={openProfile}
-                  aria-current={view === 'profile' ? 'page' : undefined}
-                  className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                    view === 'profile'
-                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-100'
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <Library className="w-4 h-4 shrink-0" />
-                  {/* On the very narrowest phones the icon and the count say it. */}
-                  <span className="max-[339px]:sr-only">Min side</span>
-                  {savedStories.length > 0 && (
-                    <span className="ml-0.5 min-w-[1.25rem] px-1 rounded-full bg-indigo-600 text-white text-xs leading-5 text-center">
-                      {savedStories.length}
-                    </span>
-                  )}
-                </button>
-                )}
-                <button
-                  onClick={toggleTheme}
-                  aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
                 {account.innlogget ? (
-                  <div className="flex items-center gap-1 sm:gap-2 text-sm text-gray-700 dark:text-gray-200">
-                    <span className="hidden sm:inline font-semibold truncate max-w-[10rem]">Hei{account.fornavn ? `, ${account.fornavn}` : ''}</span>
-                    <button
-                      onClick={handleLogout}
-                      className="inline-flex items-center justify-center gap-1 w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-1 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      aria-label="Logg ut"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span className="hidden sm:inline">Logg ut</span>
-                    </button>
-                  </div>
-                ) : account.vippsReady ? (
+                  /* Logged in: everything sits behind one button, «Min profil». */
+                  <ProfileMenu
+                    fornavn={account.fornavn}
+                    wishes={account.plan ? account.wishes : null}
+                    showProfile={Boolean(account.plan)}
+                    savedCount={savedStories.length}
+                    profileActive={view === 'profile'}
+                    theme={theme}
+                    onOpenWishes={openWishes}
+                    onOpenProfile={openProfile}
+                    onToggleTheme={toggleTheme}
+                    onLogout={handleLogout}
+                  />
+                ) : (
+                  <button
+                    onClick={toggleTheme}
+                    aria-label={theme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-full text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  </button>
+                )}
+                {account.innlogget ? null : account.vippsReady ? (
                   <a
                     href="/api/vipps/start"
                     onClick={() => logEvent('Vipps-innlogging klikket')}

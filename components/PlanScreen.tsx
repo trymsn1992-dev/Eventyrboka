@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import {
   PLAN_NAMES,
   PRICE_PRINSEN_PER_WEEK_KR,
-  PRINSEN_FREE_WISHES,
-  PRINSEN_PAID_WISHES,
   Plan,
   WISHES_PER_WEEK,
   WISH_PRICE_KR,
@@ -31,22 +29,19 @@ interface PlanScreenProps {
   onCancel: () => Promise<string | null>;
 }
 
-// What each plan gives: label on the left, price on the right.
-type PriceRow = { label: string; note?: string; price: string };
+// What each plan gives: label on the left; on the right a price, or the
+// week's wishes drawn as stars.
+type PriceRow = { label: string; price?: string; stars?: number };
 
 const FREE_PRICES: PriceRow[] = [
-  { label: 'Hver uke', note: wishCount(WISHES_PER_WEEK.gratis), price: 'Gratis' },
-  { label: 'Ekstra ønske', note: 'når ukas er brukt', price: `${WISH_PRICE_KR.gratis} kr` },
+  { label: `${wishCount(WISHES_PER_WEEK.gratis)} hver uke`, stars: WISHES_PER_WEEK.gratis },
+  { label: 'Ekstra ønske', price: `${WISH_PRICE_KR.gratis} kr` },
 ];
 
 const PRO_PRICES: PriceRow[] = [
-  {
-    label: 'Hver uke',
-    note: `${wishCount(WISHES_PER_WEEK.pro)} (${PRINSEN_FREE_WISHES} + ${PRINSEN_PAID_WISHES})`,
-    price: 'Inkludert',
-  },
-  { label: 'Ekstra ønske', note: 'halv pris', price: `${WISH_PRICE_KR.pro} kr` },
-  { label: 'Binding', note: 'si opp når du vil', price: 'Ingen' },
+  { label: `${wishCount(WISHES_PER_WEEK.pro)} hver uke`, stars: WISHES_PER_WEEK.pro },
+  { label: 'Ekstra ønske', price: `${WISH_PRICE_KR.pro} kr` },
+  { label: 'Binding', price: 'Ingen' },
 ];
 
 // What is in every story, whatever the plan.
@@ -67,12 +62,21 @@ const PRIMARY_BUTTON =
 const Prices: React.FC<{ rows: PriceRow[] }> = ({ rows }) => (
   <dl className="mb-8 flex-grow divide-y divide-gray-200 dark:divide-gray-700 border-y border-gray-200 dark:border-gray-700">
     {rows.map((row) => (
-      <div key={row.label} className="flex items-baseline justify-between gap-4 py-3">
-        <dt className="text-sm sm:text-base leading-snug">
-          <span className="font-semibold text-gray-900 dark:text-gray-100">{row.label}</span>
-          {row.note && <span className="block text-sm text-gray-500 dark:text-gray-400">{row.note}</span>}
+      <div key={row.label} className="flex items-center justify-between gap-4 py-3">
+        <dt className="text-base sm:text-lg font-semibold leading-snug text-gray-900 dark:text-gray-100">
+          {row.label}
         </dt>
-        <dd className="shrink-0 text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{row.price}</dd>
+        <dd className="shrink-0 text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+          {row.stars ? (
+            <span className="flex gap-0.5" aria-hidden="true">
+              {Array.from({ length: row.stars }, (_, i) => (
+                <Star key={i} className="w-4 h-4 sm:w-5 sm:h-5 fill-amber-400 text-amber-500" />
+              ))}
+            </span>
+          ) : (
+            row.price
+          )}
+        </dd>
       </div>
     ))}
   </dl>
@@ -205,11 +209,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 Kunne ikke lagre valget. Prøv igjen om litt.
               </p>
             )}
-            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-              {canBuy
-                ? 'Ekstra ønsker betales med Vipps når dere trenger dem.'
-                : 'Kjøp av ekstra ønsker kommer snart. Til da gjelder ukas ønsker.'}
-            </p>
           </section>
 
           {/* Prinsen */}

@@ -39,6 +39,10 @@ const SAVE_TEXT: Record<SaveState, string> = {
   'account-failed': 'Lagret i denne nettleseren, men ikke på kontoen',
 };
 
+// The picture shown on a saved story's card: its first illustration.
+const storyThumb = (story: SavedStory): string | undefined =>
+  story.segments.find(seg => seg.imageBase64)?.imageBase64;
+
 // Min side: the saved stories, and the choices that are remembered between
 // visits (age and drawing style). A change is saved the moment it is made.
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -154,12 +158,25 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         {new Date(story.createdAt).toLocaleDateString('no-NO')}
                       </span>
                     </div>
-                    <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
-                      {story.options.character}
-                    </h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                      {story.options.metaphor}
-                    </p>
+                    {/* A small picture from the story (its first illustration), then who and what. */}
+                    <div className="mt-3 flex items-center gap-4">
+                      {storyThumb(story) && (
+                        <img
+                          src={storyThumb(story)}
+                          alt=""
+                          loading="lazy"
+                          className="shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover bg-indigo-50 dark:bg-gray-700 border border-indigo-100 dark:border-indigo-900"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                          {story.options.character}
+                        </h4>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                          {story.options.metaphor}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">

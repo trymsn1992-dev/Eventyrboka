@@ -15,7 +15,7 @@ import {
   wishTotal,
 } from '../types';
 import { logEvent } from '../services/analytics';
-import { BookOpen, Camera, Check, Loader2, Minus, Pencil, Plus, Star, Volume2, X } from 'lucide-react';
+import { BookOpen, Check, Loader2, Minus, Panda, Pencil, Plus, Star, Volume2, X } from 'lucide-react';
 
 // "2026-12-31" -> "31. desember"
 export const niceDate = (date: string): string => {
@@ -27,8 +27,8 @@ export const niceDate = (date: string): string => {
 
 // What a wish can be used on. Each costs one.
 export const WISH_USES: { icon: React.ReactNode; label: string; note?: string }[] = [
-  { icon: <BookOpen className="w-5 h-5" />, label: 'En historie' },
-  { icon: <Camera className="w-5 h-5" />, label: 'En ny helt fra et bilde', note: 'Gratis å bruke igjen' },
+  { icon: <BookOpen className="w-5 h-5" />, label: 'En ny historie' },
+  { icon: <Panda className="w-5 h-5" />, label: 'En ny helt fra et bilde', note: 'Gratis å bruke igjen' },
   { icon: <Pencil className="w-5 h-5" />, label: 'En ny egen lærepenge', note: 'Gratis å bruke igjen' },
   { icon: <Volume2 className="w-5 h-5" />, label: 'Opplesning av en historie', note: 'Gjelder hele historien' },
 ];
