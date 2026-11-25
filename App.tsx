@@ -1013,7 +1013,7 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${isReading ? 'lg:h-screen lg:overflow-hidden' : ''} bg-[#e8e6e1] dark:bg-[#15161a] text-gray-900 dark:text-gray-100 transition-colors flex flex-col`}>
-      {/* Chrome (feedback banner + header) only on the setup view.
+      {/* Chrome (the header) only outside the story.
           Reading gets the full viewport for the book, with a small
           floating Hjem button in the corner as the only control. */}
       {!isReading && (
@@ -1022,20 +1022,6 @@ const App: React.FC = () => {
             chromeVisible ? 'translate-y-0' : '-translate-y-full'
           }`}
         >
-          <a
-            href={FEEDBACK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-1.5 sm:py-2 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
-          >
-            <MessageSquare className="w-4 h-4 shrink-0" />
-            {/* One line on a phone: the short version of the sentence. */}
-            <span className="text-center whitespace-nowrap">
-              <span className="sm:hidden">Hjelp oss – </span>
-              <span className="hidden sm:inline">Hjelp oss å gjøre Magiboka bedre — </span>
-              <span className="underline font-semibold">gi tilbakemelding</span>
-            </span>
-          </a>
           {/* In dark mode the header has the night blue of the logo, so the logo
               sits in it without a box around it. */}
           <header className="bg-white dark:bg-[#000c31] shadow-sm dark:shadow-none dark:border-b dark:border-indigo-950 py-2.5 px-4 sm:py-4 sm:px-6">
@@ -1305,6 +1291,21 @@ const App: React.FC = () => {
           )
         )}
       </main>
+
+      {/* The way to give feedback, at the bottom of the page. */}
+      {!isReading && (
+        <a
+          href={FEEDBACK_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm md:text-base py-2.5 px-4 flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-colors"
+        >
+          <MessageSquare className="w-4 h-4 shrink-0" />
+          <span className="text-center">
+            Hjelp oss å gjøre Magiboka bedre — <span className="underline font-semibold">gi tilbakemelding</span>
+          </span>
+        </a>
+      )}
 
       {/* Company details belong on the front page, not inside the story. */}
       {!isReading && (

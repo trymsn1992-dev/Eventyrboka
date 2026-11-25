@@ -1015,32 +1015,31 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                       type="button"
                       onClick={handlePrintBook}
                       disabled={isLoading || heroBusy}
-                      className="mt-3 w-full inline-flex justify-center items-center gap-3 rounded-full border-2 border-indigo-300 dark:border-indigo-500 bg-white dark:bg-gray-800 px-6 py-4 text-lg font-bold text-indigo-700 dark:text-indigo-100 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:opacity-60 transition-colors"
+                      className="mt-3 w-full flex flex-col items-center gap-1.5 rounded-3xl border-2 border-indigo-300 dark:border-indigo-500 bg-white dark:bg-gray-800 px-6 py-4 text-indigo-700 dark:text-indigo-100 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:opacity-60 transition-colors"
                     >
-                      <Printer className="h-5 w-5" />
-                      Lag til print
-                      {wishesKnown && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/20 px-3 py-0.5 text-sm font-bold text-amber-900 dark:text-amber-100">
-                          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" aria-hidden="true" />
-                          {wishCount(cost)}
-                        </span>
-                      )}
+                      <span className="inline-flex justify-center items-center gap-3 text-lg font-bold">
+                        <Printer className="h-5 w-5" />
+                        Lag til print
+                        {wishesKnown && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/20 px-3 py-0.5 text-sm font-bold text-amber-900 dark:text-amber-100">
+                            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" aria-hidden="true" />
+                            {wishCount(cost)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs sm:text-sm font-medium leading-snug text-gray-600 dark:text-gray-300">
+                        Hele boka lages ferdig med en gang, uten valg. Du ser over historien før den tegnes og skrives ut.
+                      </span>
                     </button>
-                    <p className="mt-2 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                      Hele boka lages ferdig med en gang, uten valg. Du ser over historien før den tegnes og skrives ut.
-                    </p>
                   </>
                 )}
               </>
             )}
 
-            {/* Logged in: what the story costs, and how many wishes there are. */}
-            {wishesKnown && (
+            {/* Not enough wishes, and none to buy yet: say why the button is off. */}
+            {outOfWishes && (
               <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
-                Historien koster 1 ønske.{' '}
-                {outOfWishes
-                  ? `Du har ${wishCount(wishesLeft)}. Nye kommer på mandag, og kjøp av flere kommer snart.`
-                  : `Du har ${wishCount(wishesLeft)}.`}{' '}
+                Du har {wishCount(wishesLeft)}. Nye kommer på mandag, og kjøp av flere kommer snart.{' '}
                 <button
                   type="button"
                   onClick={onOpenWishes}
@@ -1048,18 +1047,6 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 >
                   Se ønskene
                 </button>
-                {!isPro && (
-                  <>
-                    {' · '}
-                    <button
-                      type="button"
-                      onClick={onOpenPlan}
-                      className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
-                    >
-                      Se {PLAN_NAMES.pro}
-                    </button>
-                  </>
-                )}
               </p>
             )}
             {outOfWishes && (
