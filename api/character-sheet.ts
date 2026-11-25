@@ -7,8 +7,6 @@ import {
 import { heroBible, openHero } from "./_lib/hero.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import { allowedArtStyle } from "./_lib/access.js";
-import { mayUseOwn } from "./_lib/samling.js";
-import { METAPHORS } from "../types.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
@@ -23,7 +21,6 @@ interface CharacterSheetRequestBody {
   // sheet is drawn from the photo by /api/figur; this endpoint draws it
   // again from the written description when a saved story is re-read.
   heroToken?: unknown;
-  billett?: unknown;
 }
 
 // Generates a single canonical "character sheet" image for the main character.
@@ -53,7 +50,7 @@ export default async function handler(
   }
 
   // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "image", !session);
+  const budget = await spend(req, "image", session);
   if (!budget.ok) {
     return res.status(429).json({ error: budget.message });
   }
@@ -63,14 +60,10 @@ export default async function handler(
     const character =
       typeof body.character === "string" ? body.character : null;
 
-    // A hero made from a photo belongs to «Magihistorie» and Prinsen.
-    // …or is one the family has made before and keeps on the account.
-    if (
-      typeof body.heroToken === "string" &&
-      openHero(body.heroToken) &&
-      !(await mayUseOwn(session, body.billett, { metaphor: METAPHORS[0], heroToken: body.heroToken }))
-    ) {
-      return res.status(403).json({ error: "Egen helt er med i magihistorier og Prinsen." });
+    // A hero made from a photo needs a login (it is paid for with a wish
+    // where it is made, see /api/figur).
+    if (!session && typeof body.heroToken === "string" && openHero(body.heroToken)) {
+      return res.status(403).json({ error: "Logg inn for å bruke en egen helt." });
     }
     const bible = heroBible(character, body.heroToken);
     if (!bible) {

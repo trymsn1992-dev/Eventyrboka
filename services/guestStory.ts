@@ -1,5 +1,6 @@
 // A story made without a login is saved by logging in, so it has to survive
-// the trip to Vipps and back, which reloads the page. It is put in localStorage (not sessionStorage:
+// the trip to Vipps and back, which reloads the page. The same goes for a
+// story on screen when the reader leaves to buy wishes (`purchase`). It is put in localStorage (not sessionStorage:
 // on mobile Vipps may return in a new tab) right before the reader leaves,
 // and taken out again on the next load.
 import { StoryOptions, StorySegment } from "../types";
@@ -14,6 +15,13 @@ export interface PendingStory {
   pageIndex: number;
   // The character sheet, so later pictures match the first ones.
   sheet?: string;
+  // Left to buy wishes, not to log in: the story is opened again as it was,
+  // and is not saved on the way.
+  purchase?: boolean;
+  // The saved story this is, if it is one, and what gives it read-aloud.
+  saved?: { id: string; createdAt: number };
+  readAloudPass?: string;
+  personalTicket?: string;
 }
 
 const KEY = "magiboka_gjestehistorie";
@@ -102,6 +110,13 @@ export function takePendingStory(): PendingStory | null {
         premise: typeof raw.premise === "string" ? raw.premise : "",
         pageIndex: Math.min(Math.max(0, pageIndex), raw.segments.length - 1),
         sheet: typeof raw.sheet === "string" ? raw.sheet : undefined,
+        purchase: raw.purchase === true,
+        saved:
+          raw.saved && typeof raw.saved.id === "string" && typeof raw.saved.createdAt === "number"
+            ? { id: raw.saved.id, createdAt: raw.saved.createdAt }
+            : undefined,
+        readAloudPass: typeof raw.readAloudPass === "string" ? raw.readAloudPass : undefined,
+        personalTicket: typeof raw.personalTicket === "string" ? raw.personalTicket : undefined,
       };
     }
   } catch {

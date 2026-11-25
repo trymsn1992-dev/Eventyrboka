@@ -2,10 +2,16 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { isPro, personalTicket, takeFreeStory } from "./_lib/access.js";
-import { needsMagic } from "./_lib/samling.js";
-import { readSession } from "./_lib/session.js";
-import { giveBackBoughtStory, useBoughtStory } from "./_lib/betaling.js";
+import {
+  isCustomMetaphor,
+  outOfWishes,
+  refundWishes,
+  spendWishes,
+  type WishReceipts,
+} from "./_lib/access.js";
+import { MAX_ITEMS, countItems, hasItem, moralItemId, saveItem } from "./_lib/samling.js";
+import { guestUsed, guestUsedCookie, readSession } from "./_lib/session.js";
+import { getAccount } from "./_lib/supabase.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
 import { heroLabel } from "./_lib/hero.js";
@@ -156,8 +162,6 @@ interface OpenerRequestBody {
   options: unknown;
   // Shared with every /api/side call of the same story (see story-seeds.ts).
   seed?: unknown;
-  // The reader asked for a personal story («Magihistorie»).
-  personlig?: unknown;
 }
 
 export default async function handler(
@@ -174,8 +178,8 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // No login needed to make a story — only to save it. Guests get the
-  // standard story, like the free plan.
+  // A visitor without a login gets one plain story, once. With a login a
+  // story costs a wish, and a new moral of your own costs one more.
   const session = readSession(req);
 
   const limit = rateLimit(getClientIp(req));
@@ -186,14 +190,8 @@ export default async function handler(
       .json({ error: "Du må vente litt før du fortsetter." });
   }
 
-  // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "story", !session);
-  if (!budget.ok) {
-    return res.status(429).json({ error: budget.message });
-  }
-
-  // A bought story spent on this request; given back if the story fails.
-  let bought: string | null = null;
+  // The wishes spent on this request; given back if the story fails.
+  let receipts: WishReceipts | null = null;
   try {
     const body = (req.body ?? {}) as OpenerRequestBody;
     const options = validateOptions(body.options);
@@ -201,46 +199,46 @@ export default async function handler(
       return res.status(400).json({ error: "Ugyldige historievalg." });
     }
 
-    // Guests and the free plan get a plain story: no own moral and the
-    // standard drawing style. The free plan may instead spend the whole
-    // week on one personal story. A guest's story is not counted on any
-    // account: guests have their own daily allowance (see _lib/budget.ts).
-    // When the week's free ones are used, a
-    // bought story is spent instead (see _lib/betaling.ts).
-    const pro = session ? await isPro(session.sub) : false;
-    // Your own moral or a hero made from a photo makes it a personal story.
-    // One already kept on the account is free to use again (see _lib/samling.ts).
-    const wantsPersonal =
-      body.personlig === true || (await needsMagic(session, options));
-    let ticket: string | undefined;
-    if (!pro) {
-      if (!session) {
-        if (wantsPersonal) {
-          return res.status(403).json({ error: "Logg inn for å lage en magihistorie." });
-        }
-      } else if (wantsPersonal) {
-        if (
-          !(await takeFreeStory(session.sub, true)) &&
-          !(bought = await useBoughtStory(session.sub, "din-historie"))
-        ) {
-          return res.status(429).json({
-            error:
-              "En magihistorie bruker begge ukas gratis historier, og du har allerede brukt av dem. Nye kommer på mandag.",
-            grense: "uke",
-          });
-        }
-        ticket = personalTicket(session.sub);
-      } else {
-        if (
-          !(await takeFreeStory(session.sub)) &&
-          !(bought = await useBoughtStory(session.sub, "historie"))
-        ) {
-          return res.status(429).json({
-            error: "Du har brukt ukas gratis historier. Nye kommer på mandag.",
-            grense: "uke",
-          });
-        }
+    // Everything that can say no without costing anything comes first, so a
+    // refused request never takes a slot of the day's budget.
+    const customMoral = isCustomMetaphor(options.metaphor);
+    if (!session) {
+      if (customMoral || options.heroToken) {
+        return res
+          .status(403)
+          .json({ error: "Logg inn for å lage en egen helt eller lærepenge." });
       }
+      if (guestUsed(req)) {
+        return res.status(403).json({
+          error: "Logg inn med Vipps for å lage flere eventyr. Det er gratis.",
+          grense: "gjest",
+        });
+      }
+    }
+    // A moral typed just now is kept on the account and costs a wish; one
+    // already kept there is free to use again.
+    const moralId = session && customMoral ? moralItemId(session.sub, options.metaphor) : null;
+    const newMoral = session && moralId ? !(await hasItem(session.sub, moralId)) : false;
+    if (session && newMoral) {
+      const kept = await countItems(session.sub, "laerepenge");
+      if (kept !== null && kept >= MAX_ITEMS.laerepenge) {
+        return res.status(409).json({
+          error: `Dere har ${MAX_ITEMS.laerepenge} egne lærepenger. Slett en på Min side for å skrive en ny.`,
+        });
+      }
+    }
+    const cost = 1 + (newMoral ? 1 : 0);
+
+    // Daily spending cap (see _lib/budget.ts).
+    const budget = await spend(req, "story", session);
+    if (!budget.ok) {
+      return res.status(429).json({ error: budget.message });
+    }
+
+    if (session) {
+      const { plan } = await getAccount(session.sub);
+      receipts = await spendWishes(session.sub, cost, plan);
+      if (!receipts) return res.status(429).json(outOfWishes(cost));
     }
 
     const seed = parseSeed(body.seed);
@@ -295,6 +293,14 @@ export default async function handler(
       `prep;dur=${prepMs}, gemini;dur=${geminiMs}, total;dur=${totalMs}`
     );
 
+    // The new moral is the family's now: kept on the account, free next time.
+    let moralSaved = false;
+    if (session && moralId && newMoral) {
+      moralSaved = (await saveItem(session.sub, "laerepenge", moralId, { tekst: options.metaphor })) === "ok";
+    }
+    // The one story without a login has been made in this browser.
+    if (!guestUsed(req)) res.setHeader("Set-Cookie", guestUsedCookie());
+
     return res.status(200).json({
       text: parsed.text,
       choices: parsed.choices.map((c: { text?: string; nextPlotPoint?: string }) => ({
@@ -307,14 +313,15 @@ export default async function handler(
       sideCharacters: parseSideCharacters(parsed.sideCharacters).slice(0, 2),
       // Made without a login: the client asks for one when the story is saved.
       gjest: !session,
-      // A personal story on the free plan: sent back with its later requests.
-      billett: ticket,
-      // Paid for with a bought story, not one of the week's free ones.
-      kjopt: Boolean(bought),
+      // What it cost, and whether any of it was a bought wish.
+      onsker: session ? cost : 0,
+      kjopt: Boolean(receipts?.some((r) => r !== "uke")),
+      // The id of the moral that was just kept on the account, if any.
+      laerepengeId: moralSaved ? moralId : undefined,
     });
   } catch (error) {
     console.error("Opener error:", error);
-    if (bought) await giveBackBoughtStory(bought);
+    if (session) await refundWishes(session.sub, receipts);
     const msg = error instanceof Error ? error.message : String(error);
     if (/UNAVAILABLE|high demand|503|timed out|timeout/i.test(msg)) {
       return res.status(503).json({

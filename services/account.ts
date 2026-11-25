@@ -1,7 +1,7 @@
 // Account state and story sync for the logged-in user. When no one is signed in
 // — the common path while Vipps is still being set up — every call falls back
 // to the local IndexedDB store, so the app keeps working as it did before.
-import { AGE_GROUPS, ART_STYLES, DURATIONS, Plan, SavedStory, StoryOptions } from "../types";
+import { AGE_GROUPS, ART_STYLES, DURATIONS, Plan, SavedStory, StoryOptions, Wishes } from "../types";
 import {
   deleteStoryFromDB,
   getAllStoriesFromDB,
@@ -21,21 +21,17 @@ export interface AccountStatus {
   valg: SetupPreferences;
   // Gratis or Pro; null until the user has chosen (the plan page is shown).
   plan: Plan | null;
-  // Free stories left this week (a «Magihistorie» needs them all). null on
-  // Pro (no limit) or when unknown.
-  freeLeft: number | null;
-  // Single stories / Prinsen can be bought with Vipps.
+  // The wishes the account has (see types.ts). null when logged out or unknown.
+  wishes: Wishes | null;
+  // Extra wishes / Prinsen can be bought with Vipps.
   canBuy: boolean;
   canSubscribe: boolean;
-  // Bought stories not yet made.
-  credits: StoryCredits;
   // The Prinsen subscription paid with Vipps, if there is one.
   subscription: Subscription | null;
-}
-
-export interface StoryCredits {
-  plain: number;
-  personal: number;
+  // Prinsen as a gift (share link) lasts through this day (YYYY-MM-DD).
+  giftUntil: string | null;
+  // The one story a visitor gets without a login has been made in this browser.
+  guestUsed: boolean;
 }
 
 export interface Subscription {
@@ -48,10 +44,19 @@ export interface Subscription {
 const count = (v: unknown): number =>
   typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
 
-function cleanCredits(raw: unknown): StoryCredits {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return { plain: count(r.plain ?? r.historie), personal: count(r.personal ?? r.dinHistorie) };
+// From the server ({ uke, ukeTotalt, kjopt }) or from this browser's copy.
+function cleanWishes(raw: unknown): Wishes | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    week: count(r.week ?? r.uke),
+    weekTotal: count(r.weekTotal ?? r.ukeTotalt),
+    bought: count(r.bought ?? r.kjopt),
+  };
 }
+
+const cleanDate = (raw: unknown): string | null =>
+  typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 
 function cleanSubscription(raw: unknown): Subscription | null {
   if (!raw || typeof raw !== "object") return null;
@@ -127,11 +132,12 @@ function cachedStatus(): AccountStatus | null {
       fornavn: typeof raw.fornavn === "string" ? raw.fornavn : "",
       valg: cleanPreferences(raw.valg),
       plan: cleanPlan(raw.plan),
-      freeLeft: typeof raw.freeLeft === "number" ? raw.freeLeft : null,
+      wishes: cleanWishes(raw.wishes),
       canBuy: Boolean(raw.canBuy),
       canSubscribe: Boolean(raw.canSubscribe),
-      credits: cleanCredits(raw.credits),
       subscription: cleanSubscription(raw.subscription),
+      giftUntil: cleanDate(raw.giftUntil),
+      guestUsed: Boolean(raw.guestUsed),
     };
   } catch {
     return null;
@@ -161,11 +167,12 @@ export const emptyStatus = (): AccountStatus => ({
   fornavn: "",
   valg: {},
   plan: null,
-  freeLeft: null,
+  wishes: null,
   canBuy: false,
   canSubscribe: false,
-  credits: { plain: 0, personal: 0 },
   subscription: null,
+  giftUntil: null,
+  guestUsed: false,
 });
 
 // /api/meg is slow (cold start) or down when env vars are missing, so we
@@ -191,10 +198,11 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       fornavn?: string;
       valg?: unknown;
       plan?: unknown;
-      gratisIgjen?: unknown;
+      onsker?: unknown;
+      prinsenTil?: unknown;
+      gjestBrukt?: boolean;
       kjopKlar?: boolean;
       abonnementKlar?: boolean;
-      tilGode?: unknown;
       abonnement?: unknown;
     };
     const status: AccountStatus = {
@@ -205,11 +213,12 @@ export async function fetchStatus(timeoutMs = 6000): Promise<AccountStatus> {
       fornavn: data.fornavn || "",
       valg: cleanPreferences(data.valg),
       plan: cleanPlan(data.plan),
-      freeLeft: typeof data.gratisIgjen === "number" ? data.gratisIgjen : null,
+      wishes: data.innlogget ? cleanWishes(data.onsker) : null,
       canBuy: Boolean(data.kjopKlar),
       canSubscribe: Boolean(data.abonnementKlar),
-      credits: cleanCredits(data.tilGode),
       subscription: cleanSubscription(data.abonnement),
+      giftUntil: cleanDate(data.prinsenTil),
+      guestUsed: Boolean(data.gjestBrukt),
     };
     cacheStatus(status);
     return status;
@@ -315,24 +324,23 @@ async function postPayment<T>(body: unknown): Promise<T> {
   return data;
 }
 
-// The story to make once it is paid for. Kept in this browser while the
-// buyer is at Vipps.
+// The story to make once the wishes it needs are paid for. Kept in this
+// browser while the buyer is at Vipps.
 export interface StoryOrder {
   options: StoryOptions;
-  personal: boolean;
 }
 const ORDER_KEY = "magiboka_bestilling";
 const ORDER_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
-// Go to Vipps to pay for one story. Only returns if that failed (throws).
-export async function buyStory(order: StoryOrder): Promise<void> {
-  const { url } = await postPayment<{ url: string }>({
-    kjop: order.personal ? "din-historie" : "historie",
-  });
+// Go to Vipps to pay for `count` extra wishes. With an `order`, that story
+// is made when the buyer is back. Only returns if it failed (throws).
+export async function buyWishes(count: number, order?: StoryOrder): Promise<void> {
+  const { url } = await postPayment<{ url: string }>({ kjop: count });
   try {
-    localStorage.setItem(ORDER_KEY, JSON.stringify({ ...order, savedAt: Date.now() }));
+    if (order) localStorage.setItem(ORDER_KEY, JSON.stringify({ ...order, savedAt: Date.now() }));
+    else localStorage.removeItem(ORDER_KEY);
   } catch {
-    // Private mode — the story is still paid for, it just has to be picked again.
+    // Private mode — the wishes are still paid for, the story just has to be picked again.
   }
   window.location.href = url;
 }
@@ -350,7 +358,7 @@ export function takeStoryOrder(): StoryOrder | null {
       typeof raw.savedAt === "number" &&
       Date.now() - raw.savedAt < ORDER_MAX_AGE_MS
     ) {
-      return { options: raw.options as StoryOptions, personal: raw.personal === true };
+      return { options: raw.options as StoryOptions };
     }
   } catch {
     // Nothing usable stored.
@@ -369,7 +377,7 @@ export async function cancelSubscription(): Promise<string> {
   return (await postPayment<{ betaltTil: string }>({ stopp: true })).betaltTil;
 }
 
-// Vipps sends the buyer back to /?betalt=<reference> (one story) or
+// Vipps sends the buyer back to /?betalt=<reference> (extra wishes) or
 // /?avtale=<reference> (Prinsen). The reference is taken out of the address
 // at once, before the page view is measured.
 export interface PaymentReturn {
@@ -444,22 +452,23 @@ export interface PaymentResult {
   status: "paid" | "cancelled" | "pending" | "error";
   // It belongs to the account logged in here.
   mine: boolean;
-  personal: boolean;
+  // How many wishes were bought (0 for the Prinsen agreement).
+  count: number;
 }
 
 // Ask the server how the payment went. Vipps can take a few seconds to
 // settle, so "not yet" is asked again for a while.
 export async function confirmPayment(back: PaymentReturn): Promise<PaymentResult> {
-  const result: PaymentResult = { status: "pending", mine: false, personal: false };
+  const result: PaymentResult = { status: "pending", mine: false, count: 0 };
   for (let attempt = 0; attempt < 10; attempt++) {
     if (attempt > 0) await new Promise((resolve) => window.setTimeout(resolve, 1500));
     try {
-      const data = await postPayment<{ status?: string; type?: string; min?: boolean }>({
+      const data = await postPayment<{ status?: string; antall?: number; min?: boolean }>({
         bekreft: back.reference,
         slag: back.kind,
       });
       result.mine = Boolean(data.min);
-      result.personal = data.type === "din-historie";
+      result.count = count(data.antall);
       if (data.status === "betalt" || data.status === "aktiv") return { ...result, status: "paid" };
       if (data.status === "avbrutt" || data.status === "ukjent") {
         return { ...result, status: "cancelled" };

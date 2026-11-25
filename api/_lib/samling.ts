@@ -1,13 +1,12 @@
 // What a family has made themselves and wants to use again: heroes drawn
 // from a photo, and morals they typed. Kept on the account in the table
-// `samling` (see supabase/schema.sql), one row per thing.
+// `samling` (see supabase/schema.sql), one row per thing. Making one costs a
+// wish (see access.ts); using it again is free.
 //
 // If the table has not been created yet, every call fails quietly: the
 // browser's own copy of the last hero still works, like before.
 import { createHash } from "node:crypto";
 import { supabaseKey, supabaseReady, supabaseUrl } from "./supabase.js";
-import { isCustomMetaphor, mayPersonalize } from "./access.js";
-import type { Session } from "./session.js";
 
 export type ItemType = "helt" | "laerepenge";
 
@@ -119,7 +118,8 @@ export async function deleteItem(vippsSub: string, id: string): Promise<boolean>
   }
 }
 
-async function hasItem(vippsSub: string, id: string): Promise<boolean> {
+// Is this already kept on the account?
+export async function hasItem(vippsSub: string, id: string): Promise<boolean> {
   if (!supabaseReady() || !vippsSub) return false;
   try {
     const r = await fetch(`${table()}?id=eq.${id}&${owner(vippsSub)}&select=id`, {
@@ -131,31 +131,15 @@ async function hasItem(vippsSub: string, id: string): Promise<boolean> {
   }
 }
 
-// Does this story need magic («Magihistorie»)? Making a new hero or typing a
-// new moral does. One that is already kept on the account does not: it was
-// made in a magic story once, and is free to use again.
-export async function needsMagic(
-  session: Session | null,
-  options: { metaphor: string; heroToken?: string }
-): Promise<boolean> {
-  const custom = isCustomMetaphor(options.metaphor);
-  if (!custom && !options.heroToken) return false;
-  if (!session) return true;
-  const [heroSaved, moralSaved] = await Promise.all([
-    options.heroToken ? hasItem(session.sub, heroItemId(session.sub, options.heroToken)) : true,
-    custom ? hasItem(session.sub, moralItemId(session.sub, options.metaphor)) : true,
-  ]);
-  return !(heroSaved && moralSaved);
-}
-
-// May this request use the hero and moral it names? Yes in a magic story or
-// on Prinsen, and yes when they are already kept on the account.
-export async function mayUseOwn(
-  session: Session | null,
-  ticket: unknown,
-  options: { metaphor: string; heroToken?: string }
-): Promise<boolean> {
-  if (!isCustomMetaphor(options.metaphor) && !options.heroToken) return true;
-  if (await mayPersonalize(session, ticket)) return true;
-  return !(await needsMagic(session, options));
+// How many of the kind the account keeps. null when it can't be read.
+export async function countItems(vippsSub: string, type: ItemType): Promise<number | null> {
+  if (!supabaseReady() || !vippsSub) return null;
+  try {
+    const r = await fetch(`${table()}?${owner(vippsSub)}&type=eq.${type}&select=id`, {
+      headers: headers("return=representation"),
+    });
+    return r.ok ? ((await r.json()) as unknown[]).length : null;
+  } catch {
+    return null;
+  }
 }

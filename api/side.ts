@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { ThinkingLevel, Type } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { mayUseOwn } from "./_lib/samling.js";
+import { isCustomMetaphor } from "./_lib/access.js";
 import { readSession } from "./_lib/session.js";
 import { spend } from "./_lib/budget.js";
 import { validateOptions } from "./_lib/validate.js";
@@ -279,17 +279,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!options || !pages) {
       return res.status(400).json({ error: "Ugyldig forespørsel." });
     }
+    // A hero or moral of your own needs a login. What they cost is paid
+    // where they are made (/api/figur and /api/opener).
+    if (!session && (isCustomMetaphor(options.metaphor) || options.heroToken)) {
+      return res.status(403).json({ error: "Logg inn for å bruke en egen helt eller lærepenge." });
+    }
     // Daily spending cap (see _lib/budget.ts).
-    const budget = await spend(req, "text", !session);
+    const budget = await spend(req, "text", session);
     if (!budget.ok) {
       return res.status(429).json({ error: budget.message });
-    }
-
-    // …or ones the family has made before and keeps on the account.
-    if (!(await mayUseOwn(session, body.billett, options))) {
-      return res
-        .status(403)
-        .json({ error: "Egen lærepenge og egen helt er med i magihistorier og Prinsen." });
     }
     const seed = parseSeed(body.seed);
     const premise = typeof body.premise === "string" ? body.premise.slice(0, 600) : "";

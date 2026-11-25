@@ -294,7 +294,7 @@ export default async function handler(
   }
 
   // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "text");
+  const budget = await spend(req, "text", session);
   if (!budget.ok) {
     return res.status(429).json({ error: budget.message });
   }

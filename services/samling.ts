@@ -61,9 +61,8 @@ async function fetchCollection(): Promise<Collection> {
 // The collection as last seen, without asking the server.
 export const cachedCollection = (): Collection => cache ?? empty();
 
-// Everything saved on the account. On Prinsen a hero that so far only lives
-// in this browser is moved up on the way, so it is there on the next device
-// too (for others it is kept the first time it is used in a magic story).
+// Everything saved on the account. A hero that so far only lives in this
+// browser is moved up on the way, so it is there on the next device too.
 export function loadCollection(loggedIn: boolean): Promise<Collection> {
   if (!loggedIn) {
     cache = null;
@@ -101,16 +100,14 @@ async function post(body: unknown): Promise<string | null> {
   }
 }
 
-// Keeps a hero on the account, so it can be picked again — also in a plain
-// story. Making one is magic: the server only takes it from inside a
-// «Magihistorie» (`ticket` is that story's) or on Prinsen.
-export async function saveHeroToProfile(hero: OwnHero, ticket?: string | null): Promise<void> {
+// Keeps a hero on the account, so it can be picked again on every device.
+// (The wish it cost was paid when it was drawn.)
+export async function saveHeroToProfile(hero: OwnHero): Promise<void> {
   if (cache?.heroes.some((h) => h.token === hero.token && h.id)) return;
   // A smaller drawing is plenty for the picker and as the illustrator's reference.
   const sheet = await compressImage(hero.sheet, 768);
   const id = await post({
     helt: { token: hero.token, sheet, tagline: hero.tagline, artStyle: hero.artStyle },
-    ...(ticket ? { billett: ticket } : {}),
   });
   if (!id) return;
   const current = cache ?? empty();
@@ -120,11 +117,10 @@ export async function saveHeroToProfile(hero: OwnHero, ticket?: string | null): 
   };
 }
 
-// Keeps a typed moral on the account, on the same terms as a hero.
-export async function saveMoralToProfile(text: string, ticket?: string | null): Promise<void> {
+// A moral typed for a story was kept on the account by the server when the
+// story started (/api/opener): show it among the saved ones from now on.
+export function noteSavedMoral(text: string, id: string): void {
   if (cache?.morals.some((m) => m.text.toLowerCase() === text.toLowerCase())) return;
-  const id = await post({ laerepenge: text, ...(ticket ? { billett: ticket } : {}) });
-  if (!id) return;
   const current = cache ?? empty();
   cache = { ...current, morals: [{ id, text }, ...current.morals] };
 }

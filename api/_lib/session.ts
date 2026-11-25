@@ -102,6 +102,23 @@ export function readSession(req: VercelRequest): Session | null {
   return s;
 }
 
+// A visitor without a login gets one story, once. This cookie says it has
+// been made in this browser. It is a nudge towards logging in, not a lock:
+// the daily allowance per IP (see budget.ts) is what stops misuse.
+const GUEST_COOKIE = "magiboka_gjest";
+const GUEST_LIFETIME_SEC = 365 * 24 * 60 * 60;
+
+export const guestUsedCookie = (): string =>
+  buildCookie(GUEST_COOKIE, sealCookie("gjest", { brukt: true }, GUEST_LIFETIME_SEC), GUEST_LIFETIME_SEC);
+
+export function guestUsed(req: VercelRequest): boolean {
+  try {
+    return openCookie("gjest", readCookie(req, GUEST_COOKIE)) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function redirect(res: VercelResponse, path: string): void {
   res.statusCode = 302;
   res.setHeader("Location", path);

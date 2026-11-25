@@ -2,7 +2,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Modality } from "@google/genai";
 import { ai } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { mayPersonalize, requireLogin } from "./_lib/access.js";
+import {
+  mayReadAloud,
+  outOfWishes,
+  readAloudPass,
+  requireLogin,
+  spendWishes,
+  validStoryKey,
+} from "./_lib/access.js";
+import { getAccount } from "./_lib/supabase.js";
 import { spend } from "./_lib/budget.js";
 import { withRetry } from "./_lib/retry.js";
 
@@ -10,8 +18,17 @@ export const maxDuration = 60;
 
 const MAX_TEXT_LENGTH = 2000;
 
+// POST with one of:
+//   { kjop: true, historie: <key> }         pay a wish for read-aloud of this
+//                                           story                -> { lesepass }
+//   { text, historie, lesepass }            one page read aloud  -> { base64 }
+// `historie` is the story's seed. Stories from before wishes send `billett`.
 interface SpeechRequestBody {
   text?: unknown;
+  kjop?: unknown;
+  historie?: unknown;
+  lesepass?: unknown;
+  billett?: unknown;
 }
 
 export default async function handler(
@@ -25,22 +42,32 @@ export default async function handler(
 
   const session = requireLogin(req, res);
   if (!session) return;
-  // Read-aloud is for personal stories and Prinsen (the "pro" plan).
-  const ticket = (req.body as { billett?: unknown } | undefined)?.billett;
-  if (!(await mayPersonalize(session, ticket))) {
-    return res
-      .status(403)
-      .json({ error: "Opplesning er med i magihistorier og Prinsen." });
-  }
-
   const limit = rateLimit(getClientIp(req));
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter ?? 60));
     return res.status(429).json({ error: "Du må vente litt." });
   }
+  const request = (req.body ?? {}) as SpeechRequestBody;
+
+  // Read-aloud of a story costs one wish, once. Nothing is made here, so
+  // there is nothing that can fail after the wish is taken.
+  if (request.kjop === true) {
+    if (!validStoryKey(request.historie)) {
+      return res.status(400).json({ error: "Mangler historie." });
+    }
+    const { plan } = await getAccount(session.sub);
+    if (!(await spendWishes(session.sub, 1, plan))) {
+      return res.status(429).json(outOfWishes(1));
+    }
+    return res.status(200).json({ lesepass: readAloudPass(session.sub, request.historie) });
+  }
+
+  if (!mayReadAloud(session, request)) {
+    return res.status(403).json({ error: "Opplesning av en historie koster et ønske." });
+  }
 
   // Daily spending cap (see _lib/budget.ts).
-  const budget = await spend(req, "speech");
+  const budget = await spend(req, "speech", session);
   if (!budget.ok) {
     return res.status(429).json({ error: budget.message });
   }

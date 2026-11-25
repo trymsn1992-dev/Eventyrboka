@@ -3,6 +3,10 @@
 // and one per visitor (so a single person can't use up the whole day). The
 // counters reset at midnight Norwegian time.
 //
+// This is a brake on cost, not the product's rules: how much each person may
+// make is decided by wishes (see access.ts). A logged-in visitor is counted
+// per account; only guests, whom we can't tell apart, are counted per IP.
+//
 // The counting happens in one Postgres function (tell_forbruk in
 // supabase/schema.sql), so it is correct even when many serverless instances
 // run at once — unlike rate-limit.ts, which only sees its own instance.
@@ -11,6 +15,7 @@
 // cap is NOT enforced: the app keeps working and an error is logged.
 import { createHash } from "node:crypto";
 import { getClientIp } from "./rate-limit.js";
+import type { Session } from "./session.js";
 import { supabaseKey, supabaseReady, supabaseUrl } from "./supabase.js";
 
 export type BudgetKind = "story" | "image" | "text" | "speech" | "hero";
@@ -25,9 +30,11 @@ const intEnv = (name: string, fallback: number): number => {
 // DAILY_STORY_LIMIT_PER_IP in Vercel — no code change needed.
 const storiesTotal = () => intEnv("DAILY_STORY_LIMIT", 100);
 const storiesPerVisitor = () => intEnv("DAILY_STORY_LIMIT_PER_IP", 30);
-// Stories a visitor may start per day without logging in
-// (DAILY_GUEST_STORY_LIMIT_PER_IP). They count towards the total above too.
-const guestStoriesPerVisitor = () => intEnv("DAILY_GUEST_STORY_LIMIT_PER_IP", 3);
+// Stories that may be started per day without a login from one IP address
+// (DAILY_GUEST_STORY_LIMIT_PER_IP). Each browser only gets one (see
+// guestUsed in session.ts); this is for the many who share an address — a
+// mobile network, a kindergarten. They count towards the total above too.
+const guestStoriesPerVisitor = () => intEnv("DAILY_GUEST_STORY_LIMIT_PER_IP", 10);
 
 // What one story may use at most. A story is 1 character sheet + up to 5
 // illustrations, and up to 8 page texts (both choices are written for each
@@ -58,13 +65,11 @@ const MESSAGES: Record<"alle" | "ip", string> = {
 };
 const GUEST_MESSAGE = "Logg inn med Vipps for å lage flere eventyr i dag.";
 
-// The visitor's IP is never stored — only a short, salted hash of it.
-function visitorKey(req: Parameters<typeof getClientIp>[0]): string {
+// Neither the visitor's IP nor the account id is stored in the counter —
+// only a short, salted hash of it.
+function hashed(value: string): string {
   const salt = (process.env.SESSION_SECRET || "magiboka").trim();
-  return createHash("sha256")
-    .update(`${salt}|${getClientIp(req)}`)
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256").update(`${salt}|${value}`).digest("hex").slice(0, 16);
 }
 
 let warned = false;
@@ -83,12 +88,14 @@ export interface BudgetResult {
 const ALLOWED: BudgetResult = { ok: true, message: "" };
 
 // Take one slot of `kind` for this visitor. Call before the Gemini request.
-// Visitors who are not logged in (`guest`) have a smaller allowance of their own.
+// Visitors who are not logged in (no `session`) have a smaller allowance of
+// their own, counted per IP.
 export async function spend(
   req: Parameters<typeof getClientIp>[0],
   kind: BudgetKind,
-  guest = false
+  session: Session | null
 ): Promise<BudgetResult> {
+  const guest = !session;
   if (!supabaseReady()) {
     warnOnce("Supabase er ikke satt opp (SUPABASE_URL / SUPABASE_SERVICE_KEY).");
     return ALLOWED;
@@ -103,7 +110,9 @@ export async function spend(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        p_ip_nokkel: `ip:${visitorKey(req)}:${guest ? "gjest-" : ""}${kind}`,
+        p_ip_nokkel: session
+          ? `konto:${hashed(session.sub)}:${kind}`
+          : `ip:${hashed(getClientIp(req))}:gjest-${kind}`,
         p_ip_grense: guest
           ? guestStoriesPerVisitor() * PER_GUEST_STORY[kind]
           : storiesPerVisitor() * PER_STORY[kind],

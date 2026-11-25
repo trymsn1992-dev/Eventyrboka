@@ -203,30 +203,54 @@ export async function savePreferences(
   }
 }
 
+// Today in Norway, as YYYY-MM-DD.
+export const today = (): string =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(new Date());
+
 // The account row: the plan the user is on and their saved setup choices.
 // If the plan column hasn't been added yet (see supabase/schema.sql) the
 // plan reads as "not chosen".
 export interface Account {
   plan: "gratis" | "pro" | null;
   innstillinger: Preferences;
+  // Prinsen given through a share link lasts through this day (YYYY-MM-DD);
+  // null when Prinsen is not a gift.
+  prinsenTil: string | null;
 }
 
 export async function getAccount(vippsSub: string): Promise<Account> {
-  const empty: Account = { plan: null, innstillinger: {} };
+  const empty: Account = { plan: null, innstillinger: {}, prinsenTil: null };
   if (!supabaseReady() || !vippsSub) return empty;
   try {
     const r = await fetch(
       `${supabaseUrl()}/rest/v1/brukere?vipps_sub=eq.${encodeURIComponent(
         vippsSub
-      )}&select=innstillinger,plan`,
+      )}&select=innstillinger,plan,prinsen_til`,
       { headers: headers() }
     );
-    if (!r.ok) return { plan: null, innstillinger: await getPreferences(vippsSub) };
-    const rows = (await r.json()) as Array<{ innstillinger?: unknown; plan?: unknown }>;
+    if (!r.ok) {
+      console.error(
+        `Supabase-henting av kontoen feilet (HTTP ${r.status}). Er supabase/schema.sql kjørt? ${(
+          await r.text()
+        ).slice(0, 200)}`
+      );
+      return { ...empty, innstillinger: await getPreferences(vippsSub) };
+    }
+    const rows = (await r.json()) as Array<{
+      innstillinger?: unknown;
+      plan?: unknown;
+      prinsen_til?: unknown;
+    }>;
     const row = rows[0];
     if (!row) return empty;
+    const gift = typeof row.prinsen_til === "string" ? row.prinsen_til.slice(0, 10) : null;
+    // A gift that has run out is the free plan again, also before the daily
+    // job (endExpiredGifts) has tidied the row.
+    const giftOver = gift !== null && gift < today();
     return {
-      plan: row.plan === "pro" || row.plan === "gratis" ? row.plan : null,
+      plan:
+        row.plan === "pro" ? (giftOver ? "gratis" : "pro") : row.plan === "gratis" ? "gratis" : null,
+      prinsenTil: row.plan === "pro" && gift && !giftOver ? gift : null,
       innstillinger:
         row.innstillinger && typeof row.innstillinger === "object"
           ? (row.innstillinger as Preferences)
@@ -237,9 +261,12 @@ export async function getAccount(vippsSub: string): Promise<Account> {
   }
 }
 
+// `giftUntil`: Prinsen as a gift that lasts through that day. Without it the
+// plan is not a gift (the free plan, or Prinsen from the subscription).
 export async function setPlan(
   vippsSub: string,
-  plan: "gratis" | "pro"
+  plan: "gratis" | "pro",
+  giftUntil: string | null = null
 ): Promise<boolean> {
   if (!supabaseReady() || !vippsSub) return false;
   try {
@@ -248,7 +275,7 @@ export async function setPlan(
       {
         method: "PATCH",
         headers: { ...headers(), Prefer: "return=representation" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, prinsen_til: plan === "pro" ? giftUntil : null }),
       }
     );
     if (!r.ok) {
@@ -265,10 +292,71 @@ export async function setPlan(
   }
 }
 
+// Gifts of Prinsen that ran out before today: back to the free plan. Run by
+// the daily job. Returns how many, or null when it could not be done.
+export async function endExpiredGifts(): Promise<number | null> {
+  if (!supabaseReady()) return null;
+  try {
+    const r = await fetch(
+      `${supabaseUrl()}/rest/v1/brukere?plan=eq.pro&prinsen_til=lt.${today()}`,
+      {
+        method: "PATCH",
+        headers: { ...headers(), Prefer: "return=representation" },
+        body: JSON.stringify({ plan: "gratis", prinsen_til: null }),
+      }
+    );
+    if (!r.ok) {
+      console.error(
+        `Supabase-rydding av Prinsen-gaver feilet (HTTP ${r.status}): ${(await r.text()).slice(0, 200)}`
+      );
+      return null;
+    }
+    return ((await r.json()) as unknown[]).length;
+  } catch (err) {
+    console.error("Supabase-rydding av Prinsen-gaver feilet:", (err as Error).message);
+    return null;
+  }
+}
+
+type SqlFunction =
+  | "bruk_onsker"
+  | "gi_tilbake_onsker"
+  | "les_ukeskvote"
+  | "logg_innsikt"
+  | "logg_hendelse";
+
+// Calls one of the functions in supabase/schema.sql and tells a failed call
+// (`ok: false`) apart from an answer of NULL (`ok: true, value: null`).
+export async function callRpc<T>(
+  fn: SqlFunction,
+  args: Record<string, unknown>
+): Promise<{ ok: true; value: T | null } | { ok: false }> {
+  if (!supabaseReady()) return { ok: false };
+  try {
+    const r = await fetch(`${supabaseUrl()}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) {
+      console.error(
+        `Supabase-funksjonen ${fn} svarte HTTP ${r.status}. Er supabase/schema.sql kjørt? ${(
+          await r.text()
+        ).slice(0, 200)}`
+      );
+      return { ok: false };
+    }
+    return { ok: true, value: (await r.json()) as T | null };
+  } catch (err) {
+    console.error(`Supabase-funksjonen ${fn} feilet:`, (err as Error).message);
+    return { ok: false };
+  }
+}
+
 // Calls one of the functions in supabase/schema.sql. Returns null when it
 // can't be reached, so the caller decides what that means.
 export async function quotaRpc<T>(
-  fn: "bruk_ukeskvote" | "les_ukeskvote" | "bruk_kjop" | "logg_innsikt" | "logg_hendelse",
+  fn: SqlFunction,
   args: Record<string, unknown>
 ): Promise<T | null> {
   if (!supabaseReady()) return null;

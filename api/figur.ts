@@ -17,7 +17,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Type } from "@google/genai";
 import { ai, artStyleFor, FRAMING_RULE, parseDataUrl } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { requireLogin } from "./_lib/access.js";
+import {
+  outOfWishes,
+  refundWishes,
+  requireLogin,
+  spendWishes,
+  type WishReceipts,
+} from "./_lib/access.js";
+import { openCookie, sealCookie } from "./_lib/session.js";
+import { getAccount } from "./_lib/supabase.js";
 import { spend } from "./_lib/budget.js";
 import { sealHero } from "./_lib/hero.js";
 import { withModelFallback, withRetry } from "./_lib/retry.js";
@@ -114,6 +122,25 @@ interface Look {
 const line = (input: unknown, max: number): string =>
   typeof input === "string" ? input.replace(/\s+/g, " ").trim().slice(0, max) : "";
 
+// A new hero costs one wish. If the drawing didn't turn out well, the family
+// may have it drawn again without paying once more: the answer carries a
+// signed pass for a couple of new tries within the hour.
+const FREE_RETRIES = 2;
+const RETRY_LIFETIME_SEC = 60 * 60;
+
+const retryPass = (vippsSub: string, left: number): string | undefined =>
+  left > 0 ? sealCookie("omtegning", { sub: vippsSub, igjen: left }, RETRY_LIFETIME_SEC) : undefined;
+
+function retriesLeft(vippsSub: string, pass: unknown): number {
+  if (typeof pass !== "string" || pass.length > 600) return 0;
+  try {
+    const p = openCookie<{ sub: string; igjen: number }>("omtegning", pass);
+    return p && p.sub === vippsSub && Number.isInteger(p.igjen) && p.igjen > 0 ? p.igjen : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") {
     res.setHeader("Allow", "POST");
@@ -150,7 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Daily cap on heroes, and the usual cap on images (see _lib/budget.ts).
   for (const kind of ["hero", "image"] as const) {
-    const budget = await spend(req, kind);
+    const budget = await spend(req, kind, session);
     if (!budget.ok) {
       return res.status(429).json({
         error:
@@ -160,6 +187,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
   }
+
+  // One wish — unless this is a new try at a hero that is already paid for.
+  // Given back if no hero comes out of it.
+  const retries = retriesLeft(session.sub, body.omtegning);
+  let receipts: WishReceipts | null = null;
+  if (retries === 0) {
+    const { plan } = await getAccount(session.sub);
+    receipts = await spendWishes(session.sub, 1, plan);
+    if (!receipts) return res.status(429).json(outOfWishes(1));
+  }
+  const refund = () => refundWishes(session.sub, receipts);
 
   try {
     // 1. What is in the photo, and what does it look like?
@@ -195,6 +233,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? REFUSALS[look.subject]
           : REFUSALS.unclear;
     if (refusal) {
+      await refund();
       return res.status(422).json({ error: refusal });
     }
 
@@ -202,12 +241,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       typeof look.bible === "string" ? look.bible.trim().slice(0, 1800) : "";
     const kind = line(look.kind, 80);
     if (bible.length < 40 || !kind) {
+      await refund();
       return res.status(422).json({ error: REFUSALS.unclear });
     }
 
     // 2. Redraw it as the book's character sheet.
-    // Any of our styles: an own hero can only be used in a personal story
-    // or on Prinsen, and those may pick the style.
+    // Any of our styles.
     const artStyle =
       typeof body.artStyle === "string" && ART_STYLES.includes(body.artStyle)
         ? body.artStyle
@@ -252,6 +291,7 @@ no props the character does not carry, no other characters, no text. Just the ch
       }
     }
     if (!sheet) {
+      await refund();
       return res
         .status(502)
         .json({ error: "Vi klarte ikke å tegne helten denne gangen. Prøv igjen." });
@@ -269,9 +309,13 @@ no props the character does not carry, no other characters, no text. Just the ch
       ark: sheet,
       // The style the sheet was drawn in.
       artStyle,
+      // For "Prøv på nytt": new tries that cost nothing, and how many.
+      omtegning: retryPass(session.sub, retries > 0 ? retries - 1 : FREE_RETRIES),
+      omtegningerIgjen: retries > 0 ? retries - 1 : FREE_RETRIES,
     });
   } catch (error) {
     console.error("Figur error:", error);
+    await refund();
     const msg = error instanceof Error ? error.message : String(error);
     if (/UNAVAILABLE|high demand|503|timed out|timeout/i.test(msg)) {
       return res.status(503).json({

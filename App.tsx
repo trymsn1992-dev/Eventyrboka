@@ -5,13 +5,14 @@ import { ProfileScreen, SaveState } from './components/ProfileScreen';
 import { PlanScreen } from './components/PlanScreen';
 import { StoryMagic } from './components/StoryMagic';
 import { PrintDialog } from './components/PrintDialog';
-import { saveHeroToProfile, saveMoralToProfile } from './services/samling';
-import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PERSONAL_STORY_NAME, PLAN_NAMES, STORY_NAME, TOTAL_PAGES } from './types';
+import { noteSavedMoral } from './services/samling';
+import { LoginBenefits, WishPanel, WishPill, niceDate } from './components/Wishes';
+import { StoryOptions, StorySegment, Choice, SavedStory, StoryPlan, SideCharacter, METAPHORS, DEFAULT_ART_STYLE, DURATIONS, PLAN_NAMES, TOTAL_PAGES, WISHES_PER_WEEK, wishCount, wishTotal } from './types';
 import { loadOwnHero } from './services/hero';
-import { generateCharacterSheet, generateIllustration, generateOpener, generatePage, setStoryTicket } from './services/geminiService';
+import { buyReadAloud, generateCharacterSheet, generateIllustration, generateOpener, generatePage, setReadAloudAccess } from './services/geminiService';
 import {
   AccountStatus,
-  buyStory,
+  buyWishes,
   cancelSubscription,
   chooseFreePlan,
   confirmPayment,
@@ -83,12 +84,21 @@ const App: React.FC = () => {
   // Set while re-reading a saved story, so saving again updates that story
   // (same id, same stored illustrations) instead of making a copy.
   const [loadedStory, setLoadedStory] = useState<{ id: string; createdAt: number } | null>(null);
-  // The ticket of a «Magihistorie» made on the free plan: it gives this
-  // story read-aloud and its drawing style, and is saved with it.
-  const [storyTicket, setTicketState] = useState<string | null>(null);
-  const applyTicket = (ticket: string | null) => {
-    setStoryTicket(ticket);
-    setTicketState(ticket);
+  // What gives the story on screen read-aloud: the pass it got when a wish
+  // was spent on it, or the ticket of a «Magihistorie» from before wishes.
+  // Both are saved with the story.
+  type ReadAccess = { pass?: string; legacyTicket?: string };
+  const [readAccess, setReadAccess] = useState<ReadAccess | null>(null);
+  const applyReadAccess = (seed: number | null, access: ReadAccess | null) => {
+    const has = access && (access.pass || access.legacyTicket) ? access : null;
+    setReadAloudAccess(seed !== null && has ? { storyKey: String(seed), ...has } : null);
+    setReadAccess(has);
+  };
+  // The panel about the wishes (how many, what they cost, buy more).
+  const [wishPanel, setWishPanel] = useState(false);
+  const openWishes = () => {
+    setWishPanel(true);
+    logEvent('Ønsker åpnet');
   };
   // "Log in to save the story", shown when a guest presses save.
   const [loginGate, setLoginGate] = useState(false);
@@ -198,9 +208,13 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (result === 'ok') {
           forgetShareLink();
-          status = { ...status, plan: 'pro', freeLeft: null };
-          rememberStatus(status);
-          setNotice(`Velkommen! Du har fått ${PLAN_NAMES.pro}.`);
+          status = await fetchStatus();
+          if (cancelled) return;
+          setNotice(
+            status.giftUntil
+              ? `Velkommen! Du er ${PLAN_NAMES.pro} til og med ${niceDate(status.giftUntil)}.`
+              : `Velkommen! Du er ${PLAN_NAMES.pro}.`
+          );
           logEvent('Prinsen-lenke brukt');
         } else if (result === 'login') {
           setLinkWaiting(true);
@@ -229,21 +243,20 @@ const App: React.FC = () => {
             );
             logEvent('Prinsen kjøpt');
           } else {
-            const name = result.personal ? PERSONAL_STORY_NAME : STORY_NAME;
             if (mine && order) startNow = order;
             setNotice(
               !mine
-                ? 'Betalingen er registrert. Logg inn med Vipps her for å lage historien.'
+                ? 'Betalingen er registrert. Logg inn med Vipps her for å bruke ønskene.'
                 : order
                   ? 'Takk for kjøpet! Historien lages nå.'
-                  : `Takk for kjøpet! Du har en ${name.toLowerCase()} til gode. Velg helt og start.`
+                  : `Takk for kjøpet! Du har fått ${wishCount(result.count)}.`
             );
-            logEvent('Historie kjøpt', { type: name });
+            logEvent('Historie kjøpt', { type: 'Ønske', antall: result.count });
           }
         } else if (result.status === 'cancelled') {
           setNotice(null);
           setError('Betalingen ble avbrutt. Ingenting er trukket.');
-          logEvent('Kjøp avbrutt', { type: back.kind === 'avtale' ? PLAN_NAMES.pro : 'Historie' });
+          logEvent('Kjøp avbrutt', { type: back.kind === 'avtale' ? PLAN_NAMES.pro : 'Ønske' });
         } else {
           keepPaymentReturn(back);
           setNotice(null);
@@ -253,7 +266,7 @@ const App: React.FC = () => {
         }
       }
       setAccount(status);
-      if (startNow) void handleStartStory(startNow.options, startNow.personal, status.plan === 'pro');
+      if (startNow) void handleStartStory(startNow.options, status.plan === 'pro');
       // Back from logging in halfway through a story: open it again.
       const pending = takePendingStory();
       if (pending && !startNow) restorePendingStory(pending, status.innlogget);
@@ -310,9 +323,9 @@ const App: React.FC = () => {
       fornavn: '',
       valg: {},
       plan: null,
-      freeLeft: null,
-      credits: { plain: 0, personal: 0 },
+      wishes: null,
       subscription: null,
+      giftUntil: null,
     });
     setNotice(null);
     setView('setup');
@@ -357,7 +370,7 @@ const App: React.FC = () => {
     setWaitingFor(null);
     setPrinting(null);
     setLoginGate(false);
-    applyTicket(null);
+    applyReadAccess(null, null);
   };
 
   const getSheet = (opts: StoryOptions) => {
@@ -535,10 +548,34 @@ const App: React.FC = () => {
     }
   };
 
+  // The wishes on screen, kept in step with what the server just spent:
+  // the week's first, then bought ones. The server's own count arrives with
+  // the next /api/meg.
+  const spendLocal = (count: number) => {
+    setAccount(prev => {
+      if (!prev.wishes || count < 1) return prev;
+      const fromWeek = Math.min(count, prev.wishes.week);
+      const next = {
+        ...prev,
+        wishes: {
+          ...prev.wishes,
+          week: prev.wishes.week - fromWeek,
+          bought: Math.max(0, prev.wishes.bought - (count - fromWeek)),
+        },
+      };
+      rememberStatus(next);
+      return next;
+    });
+  };
+  // Ask the server again how many wishes there are (after something failed).
+  const refreshWishes = async () => {
+    const status = await fetchStatus();
+    setAccount(prev => ({ ...prev, wishes: status.wishes, guestUsed: status.guestUsed }));
+  };
+
   // `pro`: given when the account state on screen may not have landed yet.
   const handleStartStory = async (
     selectedOptions: StoryOptions,
-    personal: boolean,
     pro = account.plan === 'pro'
   ) => {
     resetFlow();
@@ -553,45 +590,34 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     const seed = Math.floor(Math.random() * 1_000_000_000);
+    // A story with something the family made themselves: its own hero or moral.
+    const ownThings =
+      Boolean(selectedOptions.heroToken) || !METAPHORS.includes(selectedOptions.metaphor);
     try {
       // Start the character sheet now so it's ready for page 1's picture.
-      // A «Magihistorie» on the free plan gets its drawing style through
-      // the ticket that comes with page 1, so its sheet waits for that.
-      const usesTicket = personal && !pro;
-      if (!usesTicket) void getSheet(selectedOptions);
-      insightBegin(selectedOptions, personal);
-      const { segment: opener, premise, guest, ticket, bought } = await generateOpener(selectedOptions, seed, personal);
+      void getSheet(selectedOptions);
+      insightBegin(selectedOptions, ownThings);
+      const { segment: opener, premise, guest, wishes: spent, bought, moralId } =
+        await generateOpener(selectedOptions, seed);
       if (runRef.current !== run) return;
       logStoryStarted(selectedOptions);
-      logEvent('Historietype', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
+      logEvent('Historietype', { type: ownThings ? 'Magi' : 'Vanlig' });
       insightStarted({
         who: guest ? 'gjest' : pro ? 'prinsen' : 'askeladden',
         bought: Boolean(bought),
       });
-      applyTicket(ticket);
-      // A hero or moral made for this magic story is now kept on the account,
-      // and can be picked again later — also in a plain story.
-      if (personal && !guest) {
-        const own = selectedOptions.heroToken ? loadOwnHero() : null;
-        if (own && own.token === selectedOptions.heroToken) void saveHeroToProfile(own, ticket);
-        if (!METAPHORS.includes(selectedOptions.metaphor)) {
-          void saveMoralToProfile(selectedOptions.metaphor, ticket);
-        }
-      }
-      // A bought story is spent, or else the week's free stories: a plain
-      // one uses one, a personal one all.
-      if (bought) {
-        const kind = personal ? 'personal' : 'plain';
-        setAccount(prev => ({
-          ...prev,
-          credits: { ...prev.credits, [kind]: Math.max(0, prev.credits[kind] - 1) },
-        }));
-      } else if (!guest) {
-        setAccount(prev =>
-          prev.plan === 'pro' || prev.freeLeft === null
-            ? prev
-            : { ...prev, freeLeft: usesTicket ? 0 : Math.max(0, prev.freeLeft - 1) }
-        );
+      // A moral typed for this story is kept on the account now, and can be
+      // picked again for free.
+      if (moralId) noteSavedMoral(selectedOptions.metaphor, moralId);
+      if (guest) {
+        // The one story without a login is made.
+        setAccount(prev => {
+          const next = { ...prev, guestUsed: true };
+          rememberStatus(next);
+          return next;
+        });
+      } else {
+        spendLocal(spent);
       }
       setStoryMeta({ seed, premise });
       setSegments([opener]);
@@ -605,6 +631,8 @@ const App: React.FC = () => {
       logEvent('Oppstart feilet');
       insightStartFailed(msg);
       setIsLoading(false);
+      // The wishes were given back (or there weren't enough): show the real count.
+      void refreshWishes();
     }
   };
 
@@ -648,12 +676,17 @@ const App: React.FC = () => {
     setSegments(pending.segments);
     setChosenByPage(pending.chosenByPage);
     setCurrentPageIndex(pending.pageIndex);
-    setLoadedStory(null);
+    setLoadedStory(pending.purchase ? pending.saved ?? null : null);
+    applyReadAccess(pending.seed, {
+      pass: pending.readAloudPass,
+      legacyTicket: pending.personalTicket,
+    });
     setView('reading');
     insightResume();
     // Logged in to save it: save it now. Saving again later (when a picture
-    // has landed) updates the same story.
-    if (innlogget) {
+    // has landed) updates the same story. (Back from buying wishes, the story
+    // is just opened again.)
+    if (innlogget && !pending.purchase) {
       insightLoggedIn();
       const saved = { id: generateId(), createdAt: Date.now() };
       setLoadedStory(saved);
@@ -699,7 +732,7 @@ const App: React.FC = () => {
     setError(null);
   };
 
-  // Gratis or Pro. Pro is given through a share link for now.
+  // Askeladden or Prinsen.
   const isPro = account.plan === 'pro';
   // Who is reading, for the insight events.
   useEffect(() => {
@@ -714,7 +747,7 @@ const App: React.FC = () => {
   };
   const applyPlan = (plan: 'gratis' | 'pro') => {
     setAccount(prev => {
-      const next = { ...prev, plan, freeLeft: plan === 'pro' ? null : prev.freeLeft };
+      const next = { ...prev, plan };
       rememberStatus(next);
       return next;
     });
@@ -722,18 +755,45 @@ const App: React.FC = () => {
     setView('setup');
     window.scrollTo({ top: 0 });
   };
-  // Pay for one story with Vipps; it is made when the buyer comes back.
+  // Buy the wishes a story is short of with Vipps; the story is made when
+  // the buyer comes back.
   const [leavingToPay, setLeavingToPay] = useState(false);
-  const handleBuyStory = async (selectedOptions: StoryOptions, personal: boolean) => {
+  const handleBuyStory = async (selectedOptions: StoryOptions, count: number) => {
     if (leavingToPay) return;
     setLeavingToPay(true);
     setError(null);
-    logEvent('Kjøp startet', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
+    logEvent('Kjøp startet', { type: 'Ønske', antall: count });
     try {
-      await buyStory({ options: selectedOptions, personal });
+      await buyWishes(count, { options: selectedOptions });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen om litt.');
       setLeavingToPay(false);
+    }
+  };
+  // Buy wishes from the panel. Resolves to an error message if it failed. A
+  // story on screen waits in the browser and is opened again afterwards.
+  const handleBuyWishes = async (count: number): Promise<string | null> => {
+    logEvent('Kjøp startet', { type: 'Ønske', antall: count });
+    try {
+      if (view === 'reading' && options && storyMeta && segments.length > 0) {
+        await savePendingStory({
+          options,
+          segments,
+          chosenByPage,
+          seed: storyMeta.seed,
+          premise: storyMeta.premise,
+          pageIndex: currentPageIndex,
+          sheet: sheetValue.current,
+          purchase: true,
+          saved: loadedStory ?? undefined,
+          readAloudPass: readAccess?.pass,
+          personalTicket: readAccess?.legacyTicket,
+        });
+      }
+      await buyWishes(count);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen om litt.';
     }
   };
   // Prinsen: approve the agreement in Vipps. Resolves to an error message.
@@ -811,8 +871,28 @@ const App: React.FC = () => {
     });
   };
 
+  // The story on screen as it is saved. `pass`: the read-aloud pass, when it
+  // was bought a moment ago and hasn't reached the state yet.
+  const buildStory = (pass = readAccess?.pass): SavedStory | null =>
+    !options || segments.length === 0
+      ? null
+      : {
+          id: loadedStory?.id ?? generateId(),
+          createdAt: loadedStory?.createdAt ?? Date.now(),
+          options: options,
+          segments: segments.map((s, i) =>
+            chosenByPage[i] !== undefined ? { ...s, chosenIndex: chosenByPage[i] } : s
+          ),
+          plan: plan ?? undefined,
+          premise: storyMeta?.premise,
+          seed: storyMeta?.seed,
+          ...(readAccess?.legacyTicket ? { personalTicket: readAccess.legacyTicket } : {}),
+          ...(pass ? { readAloudPass: pass } : {}),
+        };
+
   const handleSaveStory = async (): Promise<boolean> => {
-    if (!options || segments.length === 0) return false;
+    const newStory = buildStory();
+    if (!newStory) return false;
     // Saving needs a login. (Where Vipps isn't set up, the story is kept in
     // this browser instead.)
     if (!account.innlogget && account.vippsReady) {
@@ -821,21 +901,28 @@ const App: React.FC = () => {
       insightWall('sett');
       return false;
     }
+    const ok = await storeStory(newStory, account.innlogget);
+    if (ok) setLoadedStory({ id: newStory.id, createdAt: newStory.createdAt });
+    return ok;
+  };
 
-    const newStory: SavedStory = {
-      id: loadedStory?.id ?? generateId(),
-      createdAt: loadedStory?.createdAt ?? Date.now(),
-      options: options,
-      segments: segments.map((s, i) =>
-        chosenByPage[i] !== undefined ? { ...s, chosenIndex: chosenByPage[i] } : s
-      ),
-      plan: plan ?? undefined,
-      premise: storyMeta?.premise,
-      seed: storyMeta?.seed,
-      ...(storyTicket ? { personalTicket: storyTicket } : {}),
-    };
-
-    return storeStory(newStory, account.innlogget);
+  // Spend a wish on read-aloud of the story on screen. Resolves to an error
+  // message, or null when read-aloud now works.
+  const handleUnlockReadAloud = async (): Promise<string | null> => {
+    if (!storyMeta) return 'Det er ingen historie å lese opp.';
+    try {
+      const pass = await buyReadAloud(String(storyMeta.seed));
+      applyReadAccess(storyMeta.seed, { ...(readAccess ?? {}), pass });
+      spendLocal(1);
+      logEvent('Opplesning kjøpt');
+      // A story that is already saved keeps the pass, so listening again is free.
+      const story = loadedStory && account.innlogget ? buildStory(pass) : null;
+      if (story) void saveStoryAccount(story, true);
+      return null;
+    } catch (err) {
+      void refreshWishes();
+      return err instanceof Error && err.message ? err.message : 'Noe gikk galt. Prøv igjen om litt.';
+    }
   };
 
   const handleLoadStory = (story: SavedStory) => {
@@ -857,15 +944,19 @@ const App: React.FC = () => {
 
     setOptions(storyOptions);
     setPlan(story.plan ?? null);
+    const seed = story.seed ?? Math.floor(Math.random() * 1_000_000_000);
     setStoryMeta({
-      seed: story.seed ?? Math.floor(Math.random() * 1_000_000_000),
+      seed,
       premise: story.premise ?? story.plan?.logline ?? '',
     });
     setSegments(story.segments);
     setCurrentPageIndex(0);
     setChosenByPage(chosen);
     setLoadedStory({ id: story.id, createdAt: story.createdAt });
-    applyTicket(typeof story.personalTicket === 'string' ? story.personalTicket : null);
+    applyReadAccess(seed, {
+      pass: typeof story.readAloudPass === 'string' ? story.readAloudPass : undefined,
+      legacyTicket: typeof story.personalTicket === 'string' ? story.personalTicket : undefined,
+    });
     setView('reading');
     logEvent('Lagret eventyr åpnet');
   };
@@ -930,6 +1021,9 @@ const App: React.FC = () => {
                 <img src="/magiboka-logo-dark.webp" alt="Magiboka" width={645} height={188} className="hidden dark:block h-9 sm:h-10 md:h-12 w-auto" />
               </button>
               <div className="flex items-center gap-1 sm:gap-3">
+                {account.innlogget && account.plan && account.wishes && (
+                  <WishPill wishes={account.wishes} onClick={openWishes} />
+                )}
                 {account.innlogget && account.plan && (
                 <button
                   onClick={openProfile}
@@ -984,7 +1078,7 @@ const App: React.FC = () => {
           {linkWaiting && !account.innlogget && (
             <div className="bg-amber-100 dark:bg-amber-900 text-amber-950 dark:text-amber-50 text-sm md:text-base py-2.5 px-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center">
               <span className="font-semibold">
-                Du har fått {PLAN_NAMES.pro}: så mange historier dere vil, med alt inkludert.
+                Du har fått {PLAN_NAMES.pro} i gave: {wishCount(WISHES_PER_WEEK.pro)} hver uke.
               </span>
               {account.vippsReady ? (
                 <a
@@ -1049,32 +1143,20 @@ const App: React.FC = () => {
             aria-modal="true"
             aria-labelledby="logg-inn-tittel"
           >
-            <div className="w-full max-w-md rounded-3xl bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 shadow-2xl p-6 sm:p-8 text-center">
+            <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 shadow-2xl p-6 sm:p-8 text-center">
               <h2 id="logg-inn-tittel" className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
                 Logg inn for å lagre eventyret
               </h2>
-              <p className="mt-4 rounded-2xl bg-emerald-50 dark:bg-emerald-400/10 border border-emerald-200 dark:border-emerald-400/30 px-4 py-3 text-emerald-900 dark:text-emerald-100">
-                <span className="block text-xl font-extrabold">Ta vare på eventyrene deres</span>
-                <span className="block mt-0.5 text-sm font-semibold">Det koster ingenting å logge inn.</span>
-              </p>
-              <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+              <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">
                 Eventyret venter her mens du logger inn, og lagres med en gang du er tilbake.
               </p>
-              {account.vippsReady || !account.checked ? (
-                <button
-                  type="button"
-                  onClick={loginFromStory}
-                  disabled={leavingForLogin}
-                  className="mt-6 flex w-full justify-center items-center gap-2 rounded-full bg-[#FF5B24] text-[#1A0B05] text-lg font-bold py-4 px-6 shadow-lg hover:bg-[#FF7445] disabled:opacity-70 transition-colors"
-                >
-                  {leavingForLogin && <Loader2 className="w-5 h-5 animate-spin" />}
-                  Logg inn med Vipps
-                </button>
-              ) : (
-                <p className="mt-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-4 px-4 font-semibold text-gray-600 dark:text-gray-300">
-                  Innlogging er ikke tilgjengelig akkurat nå. Prøv igjen om litt.
-                </p>
-              )}
+              <LoginBenefits
+                title="Med innlogging får dere"
+                canLogIn={account.vippsReady || !account.checked}
+                onLogin={loginFromStory}
+                busy={leavingForLogin}
+                className="mt-4"
+              />
               <button
                 type="button"
                 onClick={() => setLoginGate(false)}
@@ -1085,6 +1167,26 @@ const App: React.FC = () => {
               </button>
             </div>
           </div>
+        )}
+
+        {/* The wishes: how many, what they are used on, and how to get more. */}
+        {wishPanel && account.wishes && (
+          <WishPanel
+            wishes={account.wishes}
+            plan={account.plan}
+            giftUntil={account.giftUntil}
+            canBuy={account.canBuy}
+            onBuy={handleBuyWishes}
+            onOpenPlan={
+              isReading
+                ? undefined
+                : () => {
+                    setWishPanel(false);
+                    openPlan();
+                  }
+            }
+            onClose={() => setWishPanel(false)}
+          />
         )}
 
         {/* While a new story is made: the picked hero and moral become a fairy tale. */}
@@ -1100,6 +1202,7 @@ const App: React.FC = () => {
               canBuy={account.canBuy}
               canSubscribe={account.canSubscribe}
               subscription={account.subscription}
+              giftUntil={account.giftUntil}
               onSubscribe={handleSubscribe}
               onCancel={handleCancelSubscription}
             />
@@ -1114,6 +1217,7 @@ const App: React.FC = () => {
             canBuy={account.canBuy}
             canSubscribe={account.canSubscribe}
             subscription={account.subscription}
+            giftUntil={account.giftUntil}
             onSubscribe={handleSubscribe}
             onCancel={handleCancelSubscription}
           />
@@ -1121,7 +1225,10 @@ const App: React.FC = () => {
           <SetupScreen 
             onStart={handleStartStory} 
             isLoading={isLoading || leavingToPay} 
-            credits={account.credits}
+            wishes={account.innlogget ? account.wishes : null}
+            onOpenWishes={openWishes}
+            onWishesSpent={spendLocal}
+            guestUsed={account.guestUsed}
             canBuy={account.canBuy}
             onBuy={handleBuyStory}
             preferences={prefs}
@@ -1129,7 +1236,6 @@ const App: React.FC = () => {
             askForAge={!ageKnown}
             onOpenProfile={() => openProfile()}
             isPro={isPro}
-            freeLeft={account.freeLeft}
             onOpenPlan={openPlan}
             loggedIn={account.innlogget}
             canLogIn={account.vippsReady}
@@ -1148,6 +1254,8 @@ const App: React.FC = () => {
             onBack={handleRestart}
             isPro={isPro}
             onOpenPlan={openPlan}
+            wishes={account.innlogget ? account.wishes : null}
+            onOpenWishes={openWishes}
           />
         ) : null}
 
@@ -1167,7 +1275,12 @@ const App: React.FC = () => {
               isGenerating={isLoading}
               pageNumber={currentPageIndex + 1}
               totalPages={estimatedPages}
-              readAloud={isPro || storyTicket !== null}
+              readAloud={readAccess !== null}
+              onUnlockReadAloud={handleUnlockReadAloud}
+              wishesLeft={
+                !account.innlogget ? null : account.wishes ? wishTotal(account.wishes) : 1
+              }
+              onOpenWishes={openWishes}
             />
           )
         )}

@@ -67,6 +67,8 @@ const EVENTS = new Set([
   "Oppstart feilet",
   "Min side åpnet",
   "Lagret eventyr åpnet",
+  "Ønsker åpnet",
+  "Opplesning kjøpt",
 ]);
 const DETAIL = /^[\p{L}\p{N} ._-]{1,40}$/u;
 

@@ -1,13 +1,13 @@
 // GET: tells the client whether the user is logged in, whether login is wired
 // up at all, and which setup choices the user has saved. The response shape
 // drives the login/logout button in the header.
-// It also says what can be bought with Vipps and what the user has paid for.
+// It also says how many wishes the user has, and what can be bought with Vipps.
 // POST: saves the setup choices (age group, reading length and drawing style)
-// to the account, picks the free plan, redeems a share link for Pro, or
-// counts a story that was started before logging in.
+// to the account, picks the free plan, or redeems a share link for Prinsen.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   SESSION_LIFETIME_SEC,
+  guestUsed,
   readSession,
   sessionCookie,
 } from "./_lib/session.js";
@@ -18,11 +18,11 @@ import {
   setPlan,
   supabaseReady,
 } from "./_lib/supabase.js";
-import { freeStoriesLeft, isPro, validProLink } from "./_lib/access.js";
+import { proLinkUntil, wishBalance, type WishBalance } from "./_lib/access.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import {
-  boughtStories,
   purchasesReady,
+  today,
   subscriptionOf,
   subscriptionReady,
   type Subscription,
@@ -84,7 +84,8 @@ export default async function handler(
         res.end();
         return;
       }
-      if (!validProLink(body.lenke)) {
+      const until = proLinkUntil(body.lenke);
+      if (!until || until < today()) {
         res.statusCode = 400;
         res.end();
         return;
@@ -94,7 +95,9 @@ export default async function handler(
         res.end();
         return;
       }
-      const saved = await setPlan(session.sub, "pro");
+      // Someone who pays for Prinsen already has it: the gift changes nothing.
+      const saved =
+        (await subscriptionOf(session.sub)) !== null || (await setPlan(session.sub, "pro", until));
       res.statusCode = saved ? 204 : 503;
       res.end();
       return;
@@ -130,10 +133,10 @@ export default async function handler(
   let valg: Record<string, string> = {};
   // null = not chosen yet (the plan page is shown after login).
   let plan: "gratis" | "pro" | null = null;
-  // Free stories left this week (a personal one needs them all); null on Pro.
-  let gratisIgjen: number | null = null;
-  // Bought stories not yet made, and the Prinsen subscription if there is one.
-  let tilGode = { historie: 0, dinHistorie: 0 };
+  // The wishes the account has; null when not logged in.
+  let onsker: WishBalance | null = null;
+  // Prinsen as a gift lasts through this day; the subscription, if there is one.
+  let prinsenTil: string | null = null;
   let abonnement: Subscription | null = null;
   if (session) {
     // Renew the login at most once a day, so it never runs out for someone
@@ -142,17 +145,15 @@ export default async function handler(
     if (age > DAY_SEC) {
       res.setHeader("Set-Cookie", sessionCookie(session.sub, session.fornavn || ""));
     }
-    const [account, left, bought, subscription] = await Promise.all([
+    const [account, subscription] = await Promise.all([
       getAccount(session.sub),
-      freeStoriesLeft(session.sub),
-      boughtStories(session.sub),
       subscriptionOf(session.sub),
     ]);
-    tilGode = bought;
     abonnement = subscription;
     valg = cleanPreferences(account.innstillinger);
     plan = account.plan;
-    gratisIgjen = plan === "pro" ? null : left;
+    prinsenTil = account.prinsenTil;
+    onsker = await wishBalance(session.sub, plan);
   }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(
@@ -163,11 +164,13 @@ export default async function handler(
       fornavn: innlogget ? session?.fornavn || "" : "",
       valg,
       plan,
-      gratisIgjen,
-      // Whether single stories and Prinsen can be bought with Vipps yet.
+      onsker,
+      prinsenTil,
+      // The one story a visitor gets without a login is made in this browser.
+      gjestBrukt: guestUsed(req),
+      // Whether extra wishes and Prinsen can be bought with Vipps yet.
       kjopKlar: purchasesReady(),
       abonnementKlar: subscriptionReady(),
-      tilGode,
       abonnement: abonnement && { status: abonnement.status, betaltTil: abonnement.paidUntil },
     })
   );

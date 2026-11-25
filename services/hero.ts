@@ -44,28 +44,50 @@ export async function preparePhoto(file: File): Promise<string> {
   }
 }
 
-// Draws the hero. Takes 15-30 seconds. Throws with a message for the reader
-// when the photo can't be used (for example a photo of a person).
+// A new try at a hero that is already paid for (see api/figur.ts).
+export interface HeroRetry {
+  pass: string;
+  left: number;
+}
+
+// Draws the hero. Costs one wish — except with a `retry` pass from the try
+// before. Takes 15-30 seconds. Throws with a message for the reader when the
+// photo can't be used (for example a photo of a person).
 export async function makeHero(
   photo: string,
   name: string,
   artStyle: string | undefined,
   // A few words about what the hero is like, if the family wrote any.
-  traits?: string
-): Promise<OwnHero> {
+  traits?: string,
+  retry?: HeroRetry | null
+): Promise<{ hero: OwnHero; retry: HeroRetry | null }> {
   const data = await postJson<{
     navn: string;
     undertittel: string;
     token: string;
     ark: string;
     artStyle: string;
-  }>("/api/figur", { bilde: photo, navn: name, karakter: traits, artStyle });
+    omtegning?: string;
+    omtegningerIgjen?: number;
+  }>("/api/figur", {
+    bilde: photo,
+    navn: name,
+    karakter: traits,
+    artStyle,
+    omtegning: retry?.pass,
+  });
   return {
-    name: data.navn,
-    tagline: data.undertittel,
-    token: data.token,
-    sheet: data.ark,
-    artStyle: data.artStyle || DEFAULT_ART_STYLE,
+    hero: {
+      name: data.navn,
+      tagline: data.undertittel,
+      token: data.token,
+      sheet: data.ark,
+      artStyle: data.artStyle || DEFAULT_ART_STYLE,
+    },
+    retry:
+      typeof data.omtegning === "string" && typeof data.omtegningerIgjen === "number"
+        ? { pass: data.omtegning, left: data.omtegningerIgjen }
+        : null,
   };
 }
 

@@ -1,13 +1,12 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Choice, PERSONAL_STORY_NAME, StorySegment } from '../types';
+import { Choice, StorySegment, wishCount } from '../types';
 import { Button } from './Button';
 import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Sparkles, Save, Home, Printer, Volume2, Loader2, StopCircle, Music, Mic, MessageSquare, Star } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { IllustrationLoader } from './IllustrationLoader';
 import { logEvent } from '../services/analytics';
 import { insightError, insightRated, insightReadAloud } from '../services/insight';
-import { ProBadge } from './SetupScreen';
 
 const FEEDBACK_URL = 'https://grinas.typeform.com/to/sFjrTX2j';
 
@@ -55,9 +54,14 @@ interface BookPageProps {
   isGenerating: boolean;
   pageNumber: number;
   totalPages?: number; // Total estimated pages
-  // Read-aloud is a Pro feature.
-  // Read-aloud is part of «Magihistorie» and Prinsen.
+  // Read-aloud of a story costs one wish, once. True when this story has it.
   readAloud: boolean;
+  // Spend a wish on read-aloud of this story. Resolves to an error message,
+  // or null when it went well (read-aloud then works at once).
+  onUnlockReadAloud: () => Promise<string | null>;
+  // Wishes left; null when not logged in.
+  wishesLeft: number | null;
+  onOpenWishes: () => void;
 }
 
 const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivElement | null> }> = ({
@@ -73,10 +77,16 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
   isGenerating,
   pageNumber,
   totalPages,
-  readAloud
+  readAloud,
+  onUnlockReadAloud,
+  wishesLeft,
+  onOpenWishes
 }) => {
-  // Shown when someone on Gratis taps "Les høyt".
-  const [showProNote, setShowProNote] = useState(false);
+  // Shown when "Les høyt" is tapped on a story that doesn't have read-aloud
+  // yet: what it costs, and the button that spends the wish.
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
   // Chunked text reveal: the page text is split into one-sentence chunks and
   // shown one at a time in a fixed-height frame on mobile. Keeps text small
   // so the illustration stays prominent and the layout never shifts.
@@ -186,7 +196,8 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
     stopAudio();
     setChunksRevealed(1);
     setFurthestChunk(1);
-    setShowProNote(false);
+    setShowUnlock(false);
+    setUnlockError(null);
     setRating(0);
     setHoverRating(0);
   }, [pageKey]);
@@ -317,10 +328,28 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
 
   const handleReadAloud = async () => {
     if (!readAloud) {
-      setShowProNote(true);
+      setShowUnlock(true);
       logEvent('Lås truffet', { funksjon: 'Les høyt' });
       return;
     }
+    await startReading();
+  };
+
+  // Spend a wish on read-aloud of this story, then start reading.
+  const handleUnlock = async () => {
+    setUnlocking(true);
+    setUnlockError(null);
+    const failed = await onUnlockReadAloud();
+    setUnlocking(false);
+    if (failed) {
+      setUnlockError(failed);
+      return;
+    }
+    setShowUnlock(false);
+    await startReading();
+  };
+
+  const startReading = async () => {
     if (isPlaying) {
       stopAudio();
       return;
@@ -659,7 +688,12 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
                     <Volume2 className="w-4 h-4" />
                   )}
                   {isLoadingAudio ? 'Laster lyd...' : isPlaying ? 'Stopp opplesning' : hasVoice ? 'Les høyt igjen' : 'Les høyt'}
-                  {!readAloud && <ProBadge label={PERSONAL_STORY_NAME} />}
+                  {!readAloud && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-950 whitespace-nowrap">
+                      <Star className="w-3 h-3 fill-amber-950" aria-hidden="true" />
+                      {wishCount(1)}
+                    </span>
+                  )}
                 </button>
                 {isPlaying && hasVoice && (
                   <button
@@ -671,10 +705,41 @@ const BookPageView: React.FC<BookPageProps & { hostRef: React.RefObject<HTMLDivE
                   </button>
                 )}
                 </div>
-                {showProNote && (
-                  <p role="status" className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 text-center">
-                    Opplesning er med i magihistorier og i Prinsen.
-                  </p>
+                {showUnlock && !readAloud && (
+                  <div role="status" className="max-w-sm rounded-2xl bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 px-4 py-3 text-center text-sm text-gray-700 dark:text-gray-200">
+                    {wishesLeft === null ? (
+                      <p>Logg inn for å få historien lest opp.</p>
+                    ) : wishesLeft > 0 ? (
+                      <>
+                        <p>
+                          Opplesning av hele historien koster {wishCount(1)}. Du har {wishCount(wishesLeft)}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleUnlock}
+                          disabled={unlocking}
+                          className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-70"
+                        >
+                          {unlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4 fill-amber-300 text-amber-300" />}
+                          Bruk et ønske og les høyt
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p>Opplesning koster {wishCount(1)}, og du har ingen igjen.</p>
+                        <button
+                          type="button"
+                          onClick={onOpenWishes}
+                          className="mt-2 font-semibold text-indigo-600 dark:text-indigo-300 underline underline-offset-4"
+                        >
+                          Se ønskene
+                        </button>
+                      </>
+                    )}
+                    {unlockError && (
+                      <p role="alert" className="mt-2 font-semibold text-red-600 dark:text-red-400">{unlockError}</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

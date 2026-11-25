@@ -1,22 +1,32 @@
-// Payment with Vipps: single stories (ePayment API) and the Prinsen
+// Payment with Vipps: extra wishes (ePayment API) and the Prinsen
 // subscription (Recurring API v3). Both use the same keys as the login, plus
 // VIPPS_SUBSCRIPTION_KEY and VIPPS_MSN. Each is switched on by its own env
 // var, so nothing is sold before Vipps has approved the product:
-//   VIPPS_BETALING=1     single stories
+//   VIPPS_BETALING=1     extra wishes
 //   VIPPS_ABONNEMENT=1   Prinsen
 // The tables (kjop, avtaler) are in supabase/schema.sql.
 import { randomBytes } from "node:crypto";
 import type { VercelRequest } from "@vercel/node";
 import { systemHeaders, vippsClientId, vippsClientSecret, vippsReady } from "./vipps.js";
-import { getAccount, quotaRpc, setPlan, supabaseReady, tableRequest } from "./supabase.js";
 import {
-  PERSONAL_STORY_NAME,
+  endExpiredGifts,
+  getAccount,
+  setPlan,
+  supabaseReady,
+  tableRequest,
+  today,
+} from "./supabase.js";
+import {
+  MAX_WISHES_PER_PURCHASE,
   PLAN_NAMES,
-  PRICE_PERSONAL_STORY_KR,
   PRICE_PRINSEN_PER_WEEK_KR,
-  PRICE_SIMPLE_STORY_KR,
-  STORY_NAME,
+  WISHES_PER_WEEK,
+  WISH_PRICE_KR,
+  wishCount,
+  type Plan,
 } from "../../types.js";
+
+export { today };
 
 const env = (name: string) => (process.env[name] || "").trim();
 const switchedOn = (name: string) => ["1", "true", "på"].includes(env(name).toLowerCase());
@@ -85,9 +95,6 @@ async function vipps<T>(
 
 // ---- Dates (Norwegian time, as YYYY-MM-DD) ---------------------------------
 
-export const today = (): string =>
-  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(new Date());
-
 export function addDays(date: string, days: number): string {
   const d = new Date(`${date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -97,39 +104,39 @@ export function addDays(date: string, days: number): string {
 const daysUntil = (date: string): number =>
   Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${today()}T12:00:00Z`)) / 86_400_000);
 
-// ---- Single stories --------------------------------------------------------
+// ---- Extra wishes -----------------------------------------------------------
+//
+// One payment buys 1-10 wishes. The price of each depends on the plan the
+// buyer is on when they pay (see WISH_PRICE_KR). A paid purchase is wishes
+// the buyer has until they are used (bruk_onsker in supabase/schema.sql).
 
-export type PurchaseKind = "historie" | "din-historie";
-
-export const isPurchaseKind = (v: unknown): v is PurchaseKind =>
-  v === "historie" || v === "din-historie";
-
-const PURCHASE: Record<PurchaseKind, { ore: number; name: string }> = {
-  historie: { ore: PRICE_SIMPLE_STORY_KR * 100, name: STORY_NAME },
-  "din-historie": { ore: PRICE_PERSONAL_STORY_KR * 100, name: PERSONAL_STORY_NAME },
-};
+export const validWishCount = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_WISHES_PER_PURCHASE;
 
 interface PurchaseRow {
   referanse: string;
   vipps_sub: string;
-  type: PurchaseKind;
+  type: string;
   belop: number;
+  antall?: number;
   status: "opprettet" | "betalt" | "avbrutt";
 }
 
 // Sends the buyer to Vipps: returns the address to open, or null on failure.
 export async function startPurchase(
   vippsSub: string,
-  kind: PurchaseKind,
+  count: number,
+  plan: Plan | null,
   origin: string
 ): Promise<string | null> {
   const reference = `mb-${randomBytes(16).toString("hex")}`;
-  const { ore, name } = PURCHASE[kind];
+  const ore = count * WISH_PRICE_KR[plan === "pro" ? "pro" : "gratis"] * 100;
   // The row first: a payment we have no record of could never be delivered.
   const saved = await tableRequest("POST", "kjop", "", {
     referanse: reference,
     vipps_sub: vippsSub,
-    type: kind,
+    type: "onske",
+    antall: count,
     belop: ore,
   });
   if (!saved) return null;
@@ -143,7 +150,7 @@ export async function startPurchase(
         reference,
         userFlow: "WEB_REDIRECT",
         returnUrl: `${origin}/?betalt=${reference}`,
-        paymentDescription: `Magiboka – ${name}`,
+        paymentDescription: `Magiboka – ${wishCount(count)}`,
       },
       reference
     );
@@ -155,10 +162,11 @@ export async function startPurchase(
 }
 
 export interface PurchaseOutcome {
-  // betalt: the money is taken and the story is the buyer's to make.
+  // betalt: the money is taken and the wishes are the buyer's.
   // venter: not approved in Vipps yet. avbrutt: nothing was paid.
   status: "betalt" | "venter" | "avbrutt" | "ukjent" | "feil";
-  kind?: PurchaseKind;
+  // How many wishes the purchase is for.
+  count?: number;
   vippsSub?: string;
 }
 
@@ -175,7 +183,7 @@ export async function confirmPurchase(reference: string): Promise<PurchaseOutcom
   if (!rows) return { status: "feil" };
   const row = rows[0];
   if (!row) return { status: "ukjent" };
-  const who = { kind: row.type, vippsSub: row.vipps_sub };
+  const who = { count: row.antall ?? 1, vippsSub: row.vipps_sub };
   if (row.status !== "opprettet") return { status: row.status, ...who };
   try {
     const path = `/epayment/v1/payments/${reference}`;
@@ -207,39 +215,6 @@ export async function confirmPurchase(reference: string): Promise<PurchaseOutcom
     console.error(`Vipps-kjøp ${reference} kunne ikke bekreftes:`, (err as Error).message);
     return { status: "feil", ...who };
   }
-}
-
-// Spend one bought story of this kind. Returns its reference (so it can be
-// given back if the story fails), or null when there is none.
-export async function useBoughtStory(
-  vippsSub: string,
-  kind: PurchaseKind
-): Promise<string | null> {
-  if (!purchasesReady()) return null;
-  const ref = await quotaRpc<string | null>("bruk_kjop", { p_sub: vippsSub, p_type: kind });
-  return typeof ref === "string" && ref ? ref : null;
-}
-
-export async function giveBackBoughtStory(reference: string): Promise<void> {
-  await tableRequest("PATCH", "kjop", `referanse=eq.${reference}`, { brukt: null });
-}
-
-// Bought stories not yet made.
-export async function boughtStories(
-  vippsSub: string
-): Promise<{ historie: number; dinHistorie: number }> {
-  const out = { historie: 0, dinHistorie: 0 };
-  if (!purchasesReady()) return out;
-  const rows = await tableRequest<{ type: string }>(
-    "GET",
-    "kjop",
-    `vipps_sub=eq.${encodeURIComponent(vippsSub)}&status=eq.betalt&brukt=is.null&select=type`
-  );
-  for (const row of rows ?? []) {
-    if (row.type === "historie") out.historie += 1;
-    else if (row.type === "din-historie") out.dinHistorie += 1;
-  }
-  return out;
 }
 
 // ---- Prinsen ----------------------------------------------------------------
@@ -319,7 +294,7 @@ export async function startSubscription(
         merchantRedirectUrl: `${origin}/?avtale=${reference}`,
         merchantAgreementUrl: `${origin}/?side=plan`,
         productName: `Magiboka ${PLAN_NAMES.pro}`,
-        productDescription: "Så mange historier dere vil. Ingen binding.",
+        productDescription: `${wishCount(WISHES_PER_WEEK.pro)} hver uke. Ingen binding.`,
       },
       reference
     );
@@ -407,9 +382,11 @@ export async function stopSubscription(vippsSub: string): Promise<string | null>
   return saved ? row.betalt_til : null;
 }
 
-// The agreement is over: back to the free plan.
+// The agreement is over: back to the free plan — unless Prinsen has since
+// been given as a gift that still lasts.
 async function endSubscription(row: AgreementRow): Promise<void> {
-  if ((await getAccount(row.vipps_sub)).plan === "pro") {
+  const account = await getAccount(row.vipps_sub);
+  if (account.plan === "pro" && !account.prinsenTil) {
     await setPlan(row.vipps_sub, "gratis");
   }
   await updateAgreement(row.avtale_id, { status: "avsluttet", trekk_id: null, trekk_forfall: null });
@@ -485,13 +462,17 @@ async function tendAgreement(row: AgreementRow): Promise<string> {
 }
 
 // The daily job (api/trekk.ts): orders next week's charges, records the
-// ones that went through, ends what is cancelled or unpaid, and picks up
-// purchases that were paid without the buyer coming back to the site.
+// ones that went through, ends what is cancelled or unpaid, picks up
+// purchases that were paid without the buyer coming back to the site, and
+// ends gifts of Prinsen that have run out.
 export async function dailyRound(): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const note = (what: string) => {
     counts[what] = (counts[what] ?? 0) + 1;
   };
+
+  const giftsEnded = await endExpiredGifts();
+  if (giftsEnded) counts["gave: utløpt"] = giftsEnded;
 
   if (subscriptionReady()) {
     const agreements =

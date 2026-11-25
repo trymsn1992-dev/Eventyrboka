@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { SetupPreferences } from '../services/account';
-import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, normalizeAgeGroup } from '../types';
+import { AGE_GROUPS, ART_STYLES, DEFAULT_ART_STYLE, PLAN_NAMES, SavedStory, Wishes, normalizeAgeGroup, wishCount, wishTotal } from '../types';
 import { Button } from './Button';
 import { SelectedBadge, SelectionSection, cardClass, styleArt } from './SetupScreen';
-import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Lightbulb, Palette, PlayCircle, Printer, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, Crown, Library, Lightbulb, Palette, PlayCircle, Printer, Sparkles, Star, Trash2 } from 'lucide-react';
 import { PrintDialog } from './PrintDialog';
 import { Collection, cachedCollection, loadCollection, removeHero, removeMoral } from '../services/samling';
 
@@ -22,9 +22,11 @@ interface ProfileScreenProps {
   onLoadStory: (story: SavedStory) => void;
   onDeleteStory: (e: React.MouseEvent, id: string) => void;
   onBack: () => void;
-  // On Pro every story uses the chosen drawing style; otherwise only «Magihistorie» does.
   isPro: boolean;
   onOpenPlan: () => void;
+  // The wishes the account has, and the way to the panel about them.
+  wishes: Wishes | null;
+  onOpenWishes: () => void;
 }
 
 // The style cards need a hero to show the style on.
@@ -52,6 +54,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onBack,
   isPro,
   onOpenPlan,
+  wishes,
+  onOpenWishes,
 }) => {
   const artStyle = preferences.artStyle ?? DEFAULT_ART_STYLE;
   // The heroes and morals the family has made (services/samling.ts).
@@ -92,6 +96,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <p className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-100">
             <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500' : 'text-gray-400'}`} />
             Du er {isPro ? PLAN_NAMES.pro : PLAN_NAMES.gratis}
+            {wishes && (
+              <button
+                type="button"
+                onClick={onOpenWishes}
+                className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/20 px-2.5 py-0.5 text-sm font-bold text-amber-900 dark:text-amber-100 hover:bg-amber-200 dark:hover:bg-amber-400/30"
+              >
+                <Star className="w-4 h-4 fill-amber-400 text-amber-500" aria-hidden="true" />
+                {wishCount(wishTotal(wishes))}
+              </button>
+            )}
           </p>
           <button
             type="button"

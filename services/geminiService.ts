@@ -1,13 +1,17 @@
 import { Choice, SideCharacter, StoryOptions, StorySegment } from "../types";
 
-// The ticket of the story on screen, when it is a «Magihistorie» made on the
-// free plan (see api/_lib/access.ts). Sent along with that story's requests.
-let storyTicket: string | null = null;
-export const setStoryTicket = (ticket: string | null): void => {
-  storyTicket = ticket;
+// What lets the story on screen be read aloud (see api/_lib/access.ts): the
+// pass it got when a wish was spent on read-aloud, together with the story's
+// key — or, for a «Magihistorie» from before wishes, its old ticket.
+export interface ReadAloudAccess {
+  storyKey: string;
+  pass?: string;
+  legacyTicket?: string;
+}
+let readAloud: ReadAloudAccess | null = null;
+export const setReadAloudAccess = (access: ReadAloudAccess | null): void => {
+  readAloud = access;
 };
-const withTicket = <B extends object>(body: B): B | (B & { billett: string }) =>
-  storyTicket ? { ...body, billett: storyTicket } : body;
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -39,7 +43,7 @@ export const generateCharacterSheet = async (
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/character-sheet",
-      withTicket({ character, artStyle, heroToken })
+      { character, artStyle, heroToken }
     );
     return base64 ?? undefined;
   } catch (error) {
@@ -60,14 +64,14 @@ export const generateIllustration = async (
   try {
     const { base64 } = await postJson<{ base64: string | null }>(
       "/api/image",
-      withTicket({
+      {
         prompt: segment.illustrationPrompt,
         character: options.character,
         heroToken: options.heroToken,
         artStyle: options.artStyle,
         characterSheet,
         sideCharacters,
-      })
+      }
     );
     return base64 ?? undefined;
   } catch (error) {
@@ -87,26 +91,27 @@ interface PageResponse {
 // the same story; `premise` is the problem the whole story is about.
 export const generateOpener = async (
   options: StoryOptions,
-  seed: number,
-  // Ask for a «Magihistorie» (own moral, chosen drawing style, read-aloud).
-  personal: boolean
+  seed: number
 ): Promise<{
   segment: StorySegment;
   premise: string;
   guest: boolean;
-  ticket: string | null;
-  // Paid for with a bought story, not one of the week's free ones.
+  // How many wishes it cost, and whether any of them was a bought one.
+  wishes: number;
   bought: boolean;
+  // Set when a moral typed for this story was kept on the account.
+  moralId: string | null;
 }> => {
   const data = await postJson<
     PageResponse & {
       premise?: string;
       sideCharacters?: SideCharacter[];
       gjest?: boolean;
-      billett?: string;
+      onsker?: number;
       kjopt?: boolean;
+      laerepengeId?: string;
     }
-  >("/api/opener", { options, seed, personlig: personal });
+  >("/api/opener", { options, seed });
   return {
     segment: {
       text: data.text,
@@ -118,8 +123,9 @@ export const generateOpener = async (
     premise: data.premise ?? "",
     // The server saw no login: the story can be read, and saved after a login.
     guest: data.gjest === true,
-    ticket: typeof data.billett === "string" ? data.billett : null,
+    wishes: typeof data.onsker === "number" ? data.onsker : 0,
     bought: data.kjopt === true,
+    moralId: typeof data.laerepengeId === "string" ? data.laerepengeId : null,
   };
 };
 
@@ -140,7 +146,7 @@ export interface PageRequest {
 export const generatePage = async (req: PageRequest): Promise<StorySegment> => {
   const data = await postJson<PageResponse & { newSideCharacters?: SideCharacter[] }>(
     "/api/side",
-    withTicket({
+    {
       options: req.options,
       seed: req.seed,
       premise: req.premise,
@@ -151,7 +157,7 @@ export const generatePage = async (req: PageRequest): Promise<StorySegment> => {
       })),
       sideCharacters: req.sideCharacters,
       forceEnding: req.forceEnding === true,
-    })
+    }
   );
   return {
     text: data.text,
@@ -166,13 +172,25 @@ export const generateSpeech = async (
   text: string
 ): Promise<string | undefined> => {
   try {
-    const { base64 } = await postJson<{ base64: string | null }>(
-      "/api/speech",
-      withTicket({ text })
-    );
+    const { base64 } = await postJson<{ base64: string | null }>("/api/speech", {
+      text,
+      historie: readAloud?.storyKey,
+      lesepass: readAloud?.pass,
+      billett: readAloud?.legacyTicket,
+    });
     return base64 ?? undefined;
   } catch (error) {
     console.error("Speech failed:", error);
     return undefined;
   }
+};
+
+// Spend a wish on read-aloud of one story. Resolves to the pass that lets it
+// be read aloud from now on; throws with a message for the reader otherwise.
+export const buyReadAloud = async (storyKey: string): Promise<string> => {
+  const { lesepass } = await postJson<{ lesepass: string }>("/api/speech", {
+    kjop: true,
+    historie: storyKey,
+  });
+  return lesepass;
 };

@@ -1,5 +1,5 @@
 // Payment with Vipps (see _lib/betaling.ts). POST with one of:
-//   { kjop: "historie" | "din-historie" }  buy one story        -> { url }
+//   { kjop: <1-10> }                       buy extra wishes     -> { url }
 //   { abonner: true }                      start Prinsen        -> { url }
 //   { bekreft: <reference>, slag: "kjop" | "avtale" }
 //                                          back from Vipps      -> { status, ... }
@@ -7,18 +7,18 @@
 // `url` is where the browser goes to pay or approve.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { readSession } from "./_lib/session.js";
-import { isPro } from "./_lib/access.js";
+import { getAccount } from "./_lib/supabase.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
 import {
   confirmPurchase,
   confirmSubscription,
-  isPurchaseKind,
   purchasesReady,
   siteOrigin,
   startPurchase,
   startSubscription,
   stopSubscription,
   subscriptionReady,
+  validWishCount,
 } from "./_lib/betaling.js";
 
 export const maxDuration = 30;
@@ -63,10 +63,10 @@ export default async function handler(
       res.status(200).json({ status, min: Boolean(session && session.sub === vippsSub) });
       return;
     }
-    const { status, kind, vippsSub } = await confirmPurchase(body.bekreft);
+    const { status, count, vippsSub } = await confirmPurchase(body.bekreft);
     res
       .status(200)
-      .json({ status, type: kind, min: Boolean(session && session.sub === vippsSub) });
+      .json({ status, antall: count, min: Boolean(session && session.sub === vippsSub) });
     return;
   }
 
@@ -77,14 +77,16 @@ export default async function handler(
 
   if (body.kjop !== undefined) {
     if (!purchasesReady()) {
-      res.status(503).json({ error: "Kjøp av historier er ikke åpnet ennå." });
+      res.status(503).json({ error: "Kjøp av ønsker er ikke åpnet ennå." });
       return;
     }
-    if (!isPurchaseKind(body.kjop)) {
-      res.status(400).json({ error: "Ukjent historietype." });
+    if (!validWishCount(body.kjop)) {
+      res.status(400).json({ error: "Velg mellom 1 og 10 ønsker." });
       return;
     }
-    const url = await startPurchase(session.sub, body.kjop, siteOrigin(req));
+    // The price of a wish follows the plan the buyer is on right now.
+    const { plan } = await getAccount(session.sub);
+    const url = await startPurchase(session.sub, body.kjop, plan, siteOrigin(req));
     if (!url) {
       res.status(502).json({ error: "Fikk ikke kontakt med Vipps. Prøv igjen om litt." });
       return;
@@ -99,7 +101,7 @@ export default async function handler(
       return;
     }
     // Also those who have Prinsen from a share link: nothing to pay for.
-    const started = (await isPro(session.sub))
+    const started = (await getAccount(session.sub)).plan === "pro"
       ? "har"
       : await startSubscription(session.sub, siteOrigin(req));
     if (started === "har") {

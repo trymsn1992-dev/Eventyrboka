@@ -9,16 +9,14 @@ import { supabaseReady } from "./_lib/supabase.js";
 import { openHero } from "./_lib/hero.js";
 import { parseDataUrl } from "./_lib/gemini.js";
 import { getClientIp, rateLimit } from "./_lib/rate-limit.js";
-import { mayPersonalize } from "./_lib/access.js";
 import {
   deleteItem,
   heroItemId,
   listItems,
-  moralItemId,
   saveItem,
   validItemId,
 } from "./_lib/samling.js";
-import { ART_STYLES, DEFAULT_ART_STYLE, cleanCustomMetaphor } from "../types.js";
+import { ART_STYLES, DEFAULT_ART_STYLE } from "../types.js";
 
 export const config = { maxDuration: 30 };
 
@@ -114,29 +112,11 @@ export default async function handler(
     return;
   }
 
-  const body = (req.body ?? {}) as { helt?: unknown; laerepenge?: unknown; billett?: unknown };
+  const body = (req.body ?? {}) as { helt?: unknown };
 
-  // Making a hero or a moral of your own is magic: it is kept on the account
-  // from inside a «Magihistorie» (its ticket is sent along), or on Prinsen.
-  if (!(await mayPersonalize(session, body.billett))) {
-    res.statusCode = 403;
-    res.end();
-    return;
-  }
-
-  if (body.laerepenge !== undefined) {
-    const tekst = cleanCustomMetaphor(body.laerepenge);
-    if (!tekst) {
-      res.statusCode = 400;
-      res.end();
-      return;
-    }
-    const id = moralItemId(session.sub, tekst);
-    const saved = await saveItem(session.sub, "laerepenge", id, { tekst });
-    if (saved === "ok") json(res, 200, { id });
-    else json(res, saved === "full" ? 409 : 503, {});
-    return;
-  }
+  // A hero is paid for with a wish where it is drawn (/api/figur), and its
+  // token is signed there — so keeping it here costs nothing more. A moral
+  // of your own is paid for and kept by /api/opener, not here.
 
   if (body.helt && typeof body.helt === "object") {
     const h = body.helt as Record<string, unknown>;

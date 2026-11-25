@@ -548,3 +548,164 @@ create table if not exists public.samling (
 create index if not exists samling_bruker_idx
   on public.samling (vipps_sub, type, opprettet desc);
 alter table public.samling enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Ønsker (se api/_lib/access.ts). Alt som koster noe, koster ett ønske: en
+-- historie, en ny helt fra bilde, en ny lærepenge, opplesning av en historie.
+--   Askeladden: 2 ønsker hver uke.   Prinsen: 8 (3 + 5) hver uke.
+-- Ukas ønsker telles i forbruk-raden «bruker:<vipps_sub>:uke» (mandag norsk
+-- tid) og nullstilles av seg selv. Kjøpte ønsker ligger i kjop og varer til
+-- de er brukt. Ukas brukes først.
+
+-- Et kjøp kan gjelde flere ønsker. brukt settes når alle er brukt.
+alter table public.kjop
+  add column if not exists antall       integer not null default 1,
+  add column if not exists brukt_antall integer not null default 0;
+
+-- Kjøp fra før ønskene kom: en magihistorie (20 kr) er verdt to ønsker.
+update public.kjop set antall = 2
+ where type = 'din-historie' and brukt is null and antall = 1;
+
+-- Prinsen i gave (delelenke): varer til og med denne dagen. NULL = ingen
+-- gave (Prinsen kommer da fra abonnementet i avtaler).
+alter table public.brukere
+  add column if not exists prinsen_til date;
+
+-- De som fikk Prinsen fra den gamle delelenka, har den ut 2026.
+update public.brukere b set prinsen_til = date '2026-12-31'
+ where b.plan = 'pro' and b.prinsen_til is null
+   and not exists (
+     select 1 from public.avtaler a
+      where a.vipps_sub = b.vipps_sub and a.status in ('aktiv', 'stoppet'));
+
+-- Bruker p_antall ønsker: først av ukas (opp til p_uke_grense), så av de
+-- kjøpte, eldste først. Alt eller ingenting. Svarer med én kvittering per
+-- ønske («uke» eller referansen til kjøpet), eller NULL når det ikke er nok.
+create or replace function public.bruk_onsker(p_sub text, p_antall integer, p_uke_grense integer)
+returns text[]
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_uke     date := date_trunc('week', now() at time zone 'Europe/Oslo')::date;
+  v_nokkel  text := 'bruker:' || p_sub || ':uke';
+  v_brukt   integer;
+  v_fra_uke integer;
+  v_mangler integer;
+  v_tar     integer;
+  v_kvitt   text[] := '{}';
+  r         record;
+begin
+  if p_antall < 1 or p_antall > 20 then return null; end if;
+
+  -- Raden låses, så to forespørsler fra samme bruker går etter tur.
+  insert into forbruk (dag, nokkel, antall) values (v_uke, v_nokkel, 0)
+  on conflict (dag, nokkel) do nothing;
+  select antall into v_brukt from forbruk
+   where dag = v_uke and nokkel = v_nokkel for update;
+
+  v_fra_uke := least(p_antall, greatest(0, p_uke_grense - v_brukt));
+  v_mangler := p_antall - v_fra_uke;
+
+  if v_mangler > 0 then
+    if (select coalesce(sum(antall - brukt_antall), 0) from kjop
+         where vipps_sub = p_sub and status = 'betalt' and brukt is null) < v_mangler then
+      return null;
+    end if;
+    for r in
+      select referanse, antall - brukt_antall as igjen from kjop
+       where vipps_sub = p_sub and status = 'betalt' and brukt is null
+       order by opprettet
+       for update
+    loop
+      exit when v_mangler = 0;
+      v_tar := least(v_mangler, r.igjen);
+      update kjop
+         set brukt_antall = brukt_antall + v_tar,
+             brukt = case when brukt_antall + v_tar >= antall then now() else null end
+       where referanse = r.referanse;
+      for i in 1..v_tar loop v_kvitt := array_append(v_kvitt, r.referanse); end loop;
+      v_mangler := v_mangler - v_tar;
+    end loop;
+  end if;
+
+  update forbruk set antall = antall + v_fra_uke where dag = v_uke and nokkel = v_nokkel;
+  for i in 1..v_fra_uke loop v_kvitt := array_prepend('uke', v_kvitt); end loop;
+  return v_kvitt;
+end;
+$$;
+
+-- Gir ønsker tilbake når det de skulle brukes på, ikke ble noe av.
+create or replace function public.gi_tilbake_onsker(p_sub text, p_kvitteringer text[])
+returns boolean
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_uke date := date_trunc('week', now() at time zone 'Europe/Oslo')::date;
+  k     text;
+begin
+  foreach k in array coalesce(p_kvitteringer, '{}') loop
+    if k = 'uke' then
+      update forbruk set antall = greatest(0, antall - 1)
+       where dag = v_uke and nokkel = 'bruker:' || p_sub || ':uke';
+    else
+      update kjop set brukt_antall = greatest(0, brukt_antall - 1), brukt = null
+       where referanse = k and vipps_sub = p_sub;
+    end if;
+  end loop;
+  return true;
+end;
+$$;
+
+revoke all on function public.bruk_onsker(text, integer, integer) from public, anon, authenticated;
+revoke all on function public.gi_tilbake_onsker(text, text[]) from public, anon, authenticated;
+grant execute on function public.bruk_onsker(text, integer, integer) to service_role;
+grant execute on function public.gi_tilbake_onsker(text, text[]) to service_role;
+
+-- Kostnadstaket telles nå per konto for innloggede (konto:<hash>:…) og per
+-- IP bare for gjester. Samme funksjon som over, med rydding av de nye
+-- nøklene og av gamle ukestellere.
+create or replace function public.tell_forbruk(
+  p_ip_nokkel   text,
+  p_ip_grense   integer,
+  p_alle_nokkel text,
+  p_alle_grense integer
+) returns text
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_dag    date := (now() at time zone 'Europe/Oslo')::date;
+  v_antall integer;
+begin
+  if p_alle_grense < 1 then return 'alle'; end if;
+  if p_ip_grense   < 1 then return 'ip';   end if;
+
+  insert into forbruk (dag, nokkel, antall) values (v_dag, p_alle_nokkel, 1)
+  on conflict (dag, nokkel) do update set antall = forbruk.antall + 1
+    where forbruk.antall < p_alle_grense
+  returning antall into v_antall;
+  if v_antall is null then return 'alle'; end if;
+
+  -- Dagens første: rydd. Tellere per besøkende og konto slettes etter ett
+  -- døgn, ukestellere etter tre uker, fellestellerne etter 90 dager.
+  if v_antall = 1 then
+    delete from forbruk where (nokkel like 'ip:%' or nokkel like 'konto:%') and dag < v_dag - 1;
+    delete from forbruk where nokkel like 'bruker:%' and dag < v_dag - 21;
+    delete from forbruk where dag < v_dag - 90;
+  end if;
+
+  v_antall := null;
+  insert into forbruk (dag, nokkel, antall) values (v_dag, p_ip_nokkel, 1)
+  on conflict (dag, nokkel) do update set antall = forbruk.antall + 1
+    where forbruk.antall < p_ip_grense
+  returning antall into v_antall;
+  if v_antall is null then
+    update forbruk set antall = antall - 1 where dag = v_dag and nokkel = p_alle_nokkel;
+    return 'ip';
+  end if;
+
+  return 'ok';
+end;
+$$;

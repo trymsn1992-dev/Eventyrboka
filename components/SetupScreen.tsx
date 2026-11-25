@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SetupPreferences } from '../services/account';
-import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, cleanHeroTraits, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, ART_STYLES, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, FREE_STORIES_PER_WEEK, PERSONAL_STORY_NAME, PLAN_NAMES, storyCount, PRICE_PERSONAL_STORY_KR, PRICE_SIMPLE_STORY_KR, STORY_NAME, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
+import { StoryOptions, OwnHero, HERO_NAME_MAX, HERO_TRAITS_MAX, cleanHeroName, cleanHeroTraits, CHARACTERS, CHARACTER_TRAITS, METAPHORS, AGE_GROUPS, DURATIONS, DEFAULT_ART_STYLE, CUSTOM_METAPHOR_MAX, PLAN_NAMES, WISH_PRICE_KR, Wishes, wishCount, wishTotal, cleanCustomMetaphor, normalizeAgeGroup } from '../types';
 import { Button } from './Button';
 import { logEvent } from '../services/analytics';
-import { Sparkles, User, Lightbulb, Calendar, Clock, Check, BookOpen, Camera, Loader2, Pencil } from 'lucide-react';
-import { loadOwnHero, makeHero, preparePhoto, saveOwnHero, selectOwnHero } from '../services/hero';
-import { SavedMoral, cachedCollection, loadCollection, removeHero } from '../services/samling';
+import { Sparkles, User, Lightbulb, Calendar, Clock, Check, Camera, Loader2, Pencil, Star } from 'lucide-react';
+import { HeroRetry, loadOwnHero, makeHero, preparePhoto, saveOwnHero, selectOwnHero } from '../services/hero';
+import { SavedMoral, cachedCollection, loadCollection, removeHero, saveHeroToProfile } from '../services/samling';
+import { LoginBenefits } from './Wishes';
 
 interface SetupScreenProps {
-  // `personal`: make it a «Magihistorie» (own moral, chosen drawing style, read-aloud).
-  onStart: (options: StoryOptions, personal: boolean) => void;
+  onStart: (options: StoryOptions) => void;
   isLoading: boolean;
   // The remembered choices (age, length, drawing style). Age and drawing
   // style are set on Min side; length is picked here.
@@ -19,19 +19,23 @@ interface SetupScreenProps {
   // No age has been saved yet (first visit): ask for it here as well.
   askForAge: boolean;
   onOpenProfile: () => void;
-  // On Pro every story is a «Magihistorie», and there is no weekly limit.
+  // Prinsen pays less for an extra wish.
   isPro: boolean;
-  // Free stories left this week (null when unknown or on Pro). A «Din
-  // historie» needs all of them.
-  freeLeft: number | null;
+  // The wishes the account has (null when logged out or unknown). A story
+  // costs one; a new hero and a new moral cost one each.
+  wishes: Wishes | null;
+  onOpenWishes: () => void;
+  // A wish was spent here (a hero was drawn).
+  onWishesSpent: (count: number) => void;
   onOpenPlan: () => void;
-  // A story can be made without a login; saving it needs one.
+  // One story can be made without a login; the rest needs one.
   loggedIn: boolean;
-  // Bought stories not yet made, whether more can be bought with Vipps, and
-  // the way to buy the one picked here (the story starts when it is paid).
-  credits: { plain: number; personal: number };
+  // That one story has already been made in this browser.
+  guestUsed: boolean;
+  // Extra wishes can be bought with Vipps, and the way to buy the ones the
+  // story picked here is short of (the story starts when they are paid).
   canBuy: boolean;
-  onBuy: (options: StoryOptions, personal: boolean) => void;
+  onBuy: (options: StoryOptions, count: number) => void;
   // Vipps login is set up, so a guest can be offered it.
   canLogIn: boolean;
 }
@@ -87,10 +91,8 @@ export const styleArt = (character: string, style: string): string | undefined =
   return suffix ? hero.replace('/velger/', '/velger/stil/').replace('.webp', `-${suffix}.webp`) : hero;
 };
 
-// Marks something that needs Prinsen (the "pro" plan) — or, with another
-// label, «Magihistorie».
-// A glowing, slowly turning ring around what belongs to «Magihistorie»:
-// your own hero and your own moral. The content inside stands still.
+// A glowing, slowly turning ring around what the family makes themselves:
+// their own hero and their own moral. The content inside stands still.
 export const MagicCircle = ({ children }: { children: React.ReactNode }) => (
   <span className="relative shrink-0 w-16 h-16 sm:w-20 sm:h-20">
     <span
@@ -129,11 +131,13 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   askForAge,
   onOpenProfile,
   isPro,
-  freeLeft,
+  wishes,
+  onOpenWishes,
+  onWishesSpent,
   onOpenPlan,
   loggedIn,
+  guestUsed,
   canLogIn,
-  credits,
   canBuy,
   onBuy,
 }) => {
@@ -146,17 +150,11 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       // Private mode — the picks just won't survive the login.
     }
   }, [picked]);
-  // The kind of story follows from what is picked — there is no choice of
-  // its own. Prinsen always gets «Magihistorie». For Askeladden a story is
-  // one when it has something new and magic in it: a moral typed just now,
-  // or a hero not yet kept on the account. It is free while none of the
-  // week's free stories are used, and can otherwise be bought. Guests get
-  // the plain kind.
-  // Set when something magic was tapped but can't be had: where to say why.
-  const [personalNote, setPersonalNote] = useState<'hero' | 'moral' | null>(null);
-  const freePersonal = freeLeft === null || freeLeft >= FREE_STORIES_PER_WEEK;
-  const canPickPersonal =
-    loggedIn && !isPro && (freePersonal || credits.personal > 0 || canBuy);
+  // A hero or a moral of your own needs a login. Set when a guest tapped
+  // one: where to say so.
+  const [loginNote, setLoginNote] = useState<'hero' | 'moral' | null>(null);
+  const wishesKnown = loggedIn && wishes !== null;
+  const wishesLeft = wishTotal(wishes);
   // A hero made from a photo of a toy or a drawing (services/hero.ts). The
   // last one made is kept in this browser and can be picked again.
   const [ownHero, setOwnHero] = useState<OwnHero | null>(loadOwnHero);
@@ -202,13 +200,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const [useCustomMoral, setUseCustomMoral] = useState(false);
   const [customMoral, setCustomMoral] = useState('');
   const customMoralRef = useRef<HTMLInputElement>(null);
-  const magicPicked =
-    (useCustomMoral && !moralFromSaved) || (useOwnHero && ownHero !== null && !ownHero.id);
-  const personal = isPro || (magicPicked && canPickPersonal);
-  // Making a hero of your own is magic («Magihistorie»), like typing your own
-  // moral. One already kept on the account (it has an id) can be picked in
-  // any story.
-  const ownHeroPicked = useOwnHero && ownHero !== null && (personal || Boolean(ownHero.id));
+  // The retries that cost nothing, for the hero that was just drawn.
+  const [heroRetry, setHeroRetry] = useState<HeroRetry | null>(null);
+  const ownHeroPicked = useOwnHero && ownHero !== null && loggedIn;
   const options: StoryOptions = {
     ...picked,
     ...(ownHeroPicked && ownHero ? { character: ownHero.name, heroToken: ownHero.token } : {}),
@@ -217,19 +211,26 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     // Everyone picks their own drawing style (on Min side).
     artStyle: preferences.artStyle ?? DEFAULT_ART_STYLE,
   };
-  // The story picked is neither free this week nor already bought.
-  const mustPay =
-    loggedIn &&
-    !isPro &&
-    freeLeft !== null &&
-    (personal ? !freePersonal && credits.personal === 0 : freeLeft === 0 && credits.plain === 0);
-  const price = personal ? PRICE_PERSONAL_STORY_KR : PRICE_SIMPLE_STORY_KR;
-  const outOfFreeStories = mustPay && !canBuy;
-  // Count each time the week's free stories turn out to be used up.
+  // What the story costs: one wish, and one more for a moral typed just now
+  // (one that is already kept on the account is free to use again).
+  const typedMoral = useCustomMoral ? cleanCustomMetaphor(customMoral) : null;
+  const newMoral =
+    useCustomMoral &&
+    !moralFromSaved &&
+    !savedMorals.some(m => m.text.toLowerCase() === (typedMoral ?? '').toLowerCase());
+  const cost = 1 + (newMoral ? 1 : 0);
+  // The account is short of wishes for the story picked.
+  const missing = wishesKnown ? Math.max(0, cost - wishesLeft) : 0;
+  const mustBuy = missing > 0;
+  const price = missing * WISH_PRICE_KR[isPro ? 'pro' : 'gratis'];
+  const outOfWishes = mustBuy && !canBuy;
+  // The one story without a login is used: the next one needs a login.
+  const guestDone = !loggedIn && guestUsed;
+  // Count each time the wishes turn out not to reach.
   useEffect(() => {
-    if (mustPay) logEvent('Kvote truffet', { type: personal ? PERSONAL_STORY_NAME : STORY_NAME });
-  }, [mustPay, personal]);
-  // While single stories can't be bought yet: count who would have.
+    if (mustBuy) logEvent('Kvote truffet', { mangler: missing });
+  }, [mustBuy, missing]);
+  // While wishes can't be bought yet: count who would have.
   const [wantsToBuy, setWantsToBuy] = useState(false);
 
   // Warm the serverless functions in the background. Sending OPTIONS gets a
@@ -288,20 +289,19 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     }
   };
 
-  // True when the story may be a «Magihistorie»; otherwise says why not,
-  // next to what was tapped.
-  const allowMagic = (where: 'hero' | 'moral'): boolean => {
-    if (isPro || canPickPersonal) {
-      setPersonalNote(null);
-      return true;
+  // A hero or a moral of your own needs a login. Says so next to what was
+  // tapped when there is none.
+  const needsLogin = (where: 'hero' | 'moral'): boolean => {
+    if (loggedIn) {
+      setLoginNote(null);
+      return false;
     }
-    setPersonalNote(where);
-    logEvent('Lås truffet', { funksjon: PERSONAL_STORY_NAME });
-    return false;
+    setLoginNote(where);
+    logEvent('Lås truffet', { funksjon: where === 'hero' ? 'Egen helt' : 'Egen lærepenge' });
+    return true;
   };
   const pickCustomMoral = () => {
-    // Your own moral makes it a «Magihistorie».
-    if (!allowMagic('moral')) return;
+    if (needsLogin('moral')) return;
     setUseCustomMoral(true);
     if (moralFromSaved) setCustomMoral('');
     setMoralFromSaved(false);
@@ -310,17 +310,16 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     window.setTimeout(() => customMoralRef.current?.focus(), 0);
   };
 
-  // A moral the family typed before, picked again. No magic needed.
+  // A moral the family typed before, picked again. Costs nothing.
   const pickSavedMoral = (moral: SavedMoral) => {
     setUseCustomMoral(true);
     setMoralFromSaved(true);
     setCustomMoral(moral.text);
     advanceFrom('metaphor');
   };
-  // A hero the family made before, picked again. No magic needed once it is
-  // kept on the account; one that only lives in this browser still is.
+  // A hero the family made before, picked again. Costs nothing.
   const pickSavedHero = (hero: OwnHero) => {
-    if (!hero.id && !allowMagic('hero')) return;
+    if (needsLogin('hero')) return;
     selectOwnHero(hero);
     setOwnHero(hero);
     setUseOwnHero(true);
@@ -328,13 +327,15 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
     advanceFrom('character');
   };
   const openHeroForm = () => {
-    if (!allowMagic('hero')) return;
+    if (needsLogin('hero')) return;
     setHeroFormOpen(true);
     setHeroDraft(null);
     setHeroError(null);
     window.clearTimeout(advanceTimer.current);
     window.setTimeout(() => heroNameRef.current?.focus(), 0);
   };
+  // A new try at the hero just drawn costs nothing while there are retries left.
+  const freeRetry = heroRetry !== null && heroRetry.left > 0 ? heroRetry : null;
   const handleHeroPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Let the same file be picked again after an error.
@@ -359,15 +360,24 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
       setHeroError('Ta eller velg et bilde først.');
       return;
     }
+    // A new hero costs a wish.
+    if (!freeRetry && wishesKnown && wishesLeft < 1) {
+      setHeroError('En ny helt koster et ønske, og du har ingen igjen.');
+      onOpenWishes();
+      return;
+    }
     setHeroBusy(true);
     setHeroError(null);
     try {
-      const hero = await makeHero(
+      const { hero, retry } = await makeHero(
         heroPhoto,
         name,
         preferences.artStyle,
-        cleanHeroTraits(heroTraits) ?? undefined
+        cleanHeroTraits(heroTraits) ?? undefined,
+        freeRetry
       );
+      if (!freeRetry) onWishesSpent(1);
+      setHeroRetry(retry);
       // Shown first: the family says yes, or asks for a new try.
       setHeroDraft(hero);
       logEvent('Egen helt laget');
@@ -380,6 +390,9 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
   const handleAcceptHero = () => {
     if (!heroDraft) return;
     void saveOwnHero(heroDraft);
+    // Kept on the account at once: it is paid for, and free to use again.
+    void saveHeroToProfile(heroDraft);
+    setHeroRetry(null);
     setHeroes(prev => [heroDraft, ...prev.filter(h => h.token !== heroDraft.token)]);
     setOwnHero(heroDraft);
     setUseOwnHero(true);
@@ -408,40 +421,35 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const start = mustPay ? onBuy : onStart;
-    if (!useCustomMoral || !(personal || moralFromSaved)) {
-      start(options, personal);
-      return;
+    if (guestDone) return;
+    let chosen = options;
+    if (useCustomMoral) {
+      const metaphor = cleanCustomMetaphor(customMoral);
+      if (!metaphor) {
+        setMoralFromSaved(false);
+        customMoralRef.current?.focus();
+        return;
+      }
+      chosen = { ...options, metaphor };
     }
-    const metaphor = cleanCustomMetaphor(customMoral);
-    if (!metaphor) {
-      setMoralFromSaved(false);
-      customMoralRef.current?.focus();
-      return;
-    }
-    start({ ...options, metaphor }, personal);
+    if (mustBuy) onBuy(chosen, missing);
+    else onStart(chosen);
   };
 
-  // Why the magic that was tapped can't be had right now.
-  const magicNote = (
+  // Said next to a hero or moral of your own that a guest tapped.
+  const loginNoteText = (
     <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-      {loggedIn ? (
-        `En egen helt eller lærepenge gjør historien til en ${PERSONAL_STORY_NAME.toLowerCase()}. Den bruker begge ukas gratis historier, og dere har allerede brukt av dem. Nye kommer på mandag.`
-      ) : (
+      Logg inn for å lage en egen helt eller lærepenge.
+      {canLogIn && (
         <>
-          Logg inn for å lage en egen helt eller lærepenge.
-          {canLogIn && (
-            <>
-              {' '}
-              <a
-                href="/api/vipps/start"
-                onClick={() => logEvent('Vipps-innlogging klikket')}
-                className="underline underline-offset-4"
-              >
-                Logg inn med Vipps
-              </a>
-            </>
-          )}
+          {' '}
+          <a
+            href="/api/vipps/start"
+            onClick={() => logEvent('Vipps-innlogging klikket')}
+            className="underline underline-offset-4"
+          >
+            Logg inn med Vipps
+          </a>
         </>
       )}
     </p>
@@ -553,7 +561,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     {heroes.length > 0 ? 'Lag en ny helt' : 'Lag din egen helt'}
                   </span>
                   <span className="block text-[11px] sm:text-xs font-medium opacity-75">
-                    Ta bilde av kosedyret, en leke eller en tegning
+                    Ta bilde av kosedyret, en leke eller en tegning · koster 1 ønske
                   </span>
                 </span>
               </button>
@@ -606,8 +614,10 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                               <Loader2 className="w-5 h-5 animate-spin" />
                               Tegner på nytt …
                             </>
+                          ) : freeRetry ? (
+                            `Prøv på nytt (gratis, ${freeRetry.left} forsøk igjen)`
                           ) : (
-                            'Prøv på nytt'
+                            'Prøv på nytt · 1 ønske'
                           )}
                         </button>
                         <button
@@ -719,7 +729,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                     ) : (
                       <>
                         <Sparkles className="w-5 h-5" />
-                        Tegn helten
+                        {freeRetry ? 'Tegn helten på nytt (gratis)' : 'Tegn helten · 1 ønske'}
                       </>
                     )}
                   </button>
@@ -734,7 +744,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </div>
               )}
             </div>
-            {personalNote === 'hero' && !canPickPersonal && magicNote}
+            {loginNote === 'hero' && !loggedIn && loginNoteText}
           </div>
 
           {/* 2. Metaphor Selection (Hva skal vi lære?) */}
@@ -815,7 +825,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                   <span className="flex items-center gap-2 text-sm sm:text-base font-bold leading-snug">
                     Skriv din egen
                   </span>
-                  <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå</span>
+                  <span className="block text-[11px] sm:text-xs font-medium opacity-75">Noe dere øver på akkurat nå · koster 1 ønske</span>
                 </span>
               </button>
               {useCustomMoral && !moralFromSaved && (
@@ -835,7 +845,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
                 </div>
               )}
             </div>
-            {personalNote === 'moral' && !canPickPersonal && magicNote}
+            {loginNote === 'moral' && !loggedIn && loginNoteText}
           </div>
 
           {/* 3. Length — and age, until one has been saved (then it lives on Min side) */}
@@ -862,105 +872,103 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({
           </div>
 
           <div className="pt-6 scroll-mb-6" data-step={4}>
-            <Button
-              type="submit"
-              fullWidth
-              disabled={isLoading || outOfFreeStories || heroBusy}
-              className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
-            >
-              {isLoading ? (
-                mustPay ? "Åpner Vipps..." : "Tryller frem historien og tegner bilder..."
-              ) : mustPay && canBuy ? (
-                <>
-                  <Sparkles className="h-6 w-6" />
-                  Kjøp og start – {price} kr med Vipps
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-6 w-6" />
-                  Start Eventyret
-                </>
-              )}
-            </Button>
-            {mustPay && canBuy && (
-              <p className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
-                Du betaler {price} kr i Vipps, og historien lages med en gang du er tilbake.
-              </p>
+            {guestDone ? (
+              /* The one story without a login is made: what a login gives. */
+              <LoginBenefits title="Logg inn for å lage flere eventyr" canLogIn={canLogIn} />
+            ) : (
+              <>
+                <Button
+                  type="submit"
+                  fullWidth
+                  disabled={isLoading || outOfWishes || heroBusy}
+                  className="flex justify-center items-center gap-3 text-xl py-6 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all"
+                >
+                  {isLoading ? (
+                    mustBuy ? "Åpner Vipps..." : "Tryller frem historien og tegner bilder..."
+                  ) : mustBuy && canBuy ? (
+                    <>
+                      <Sparkles className="h-6 w-6" />
+                      Kjøp {wishCount(missing)} og start – {price} kr med Vipps
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-6 w-6" />
+                      Start Eventyret
+                      {wishesKnown && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-0.5 text-base font-bold">
+                          <Star className="h-4 w-4 fill-amber-300 text-amber-300" aria-hidden="true" />
+                          {wishCount(cost)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </Button>
+                {mustBuy && canBuy && (
+                  <p className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
+                    Du betaler {price} kr i Vipps, og historien lages med en gang du er tilbake.
+                  </p>
+                )}
+              </>
             )}
 
-            {/* Guests can make a whole story; the login comes when they save it. */}
-            {!loggedIn && (
-              <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                Du trenger ikke logge inn for å lage eventyr. Vil du lagre det, logger du inn med Vipps.
-                {canLogIn && (
+            {/* Logged in: what the story costs, and how many wishes there are. */}
+            {wishesKnown && (
+              <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
+                {newMoral
+                  ? 'Historien koster 1 ønske, og den nye lærepengen 1.'
+                  : 'Historien koster 1 ønske.'}{' '}
+                {outOfWishes
+                  ? `Du har ${wishCount(wishesLeft)}. Nye kommer på mandag, og kjøp av flere kommer snart.`
+                  : `Du har ${wishCount(wishesLeft)}.`}{' '}
+                <button
+                  type="button"
+                  onClick={onOpenWishes}
+                  className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
+                >
+                  Se ønskene
+                </button>
+                {!isPro && (
                   <>
-                    {' '}
-                    <a
-                      href="/api/vipps/start"
-                      onClick={() => logEvent('Vipps-innlogging klikket')}
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={onOpenPlan}
                       className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
                     >
-                      Logg inn nå
-                    </a>
+                      Se {PLAN_NAMES.pro}
+                    </button>
                   </>
                 )}
               </p>
             )}
-
-            {/* The picks made it a «Magihistorie»: say so, and what it uses. */}
-            {personal && !isPro && (
-              <p role="status" className="mt-4 text-center text-sm font-semibold text-amber-700 dark:text-amber-300">
-                Dette blir en {PERSONAL_STORY_NAME.toLowerCase()}, siden dere har valgt en ny egen helt eller lærepenge.
-                {freePersonal ? ' Den bruker begge ukas gratis historier.' : ''}
-              </p>
-            )}
-
-            {/* Free plan: how many stories are left this week. */}
-            {loggedIn && !isPro && freeLeft !== null && (
-              <p className="mt-4 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
-                {credits.plain + credits.personal > 0
-                  ? `Dere har til gode: ${[
-                      credits.plain > 0 && storyCount(credits.plain),
-                      credits.personal > 0 && storyCount(credits.personal, true),
-                    ]
-                      .filter(Boolean)
-                      .join(' og ')}.`
-                  : outOfFreeStories
-                  ? `Dere har brukt ukas gratis historier. Nye kommer på mandag. Kjøp av flere (vanlig historie ${PRICE_SIMPLE_STORY_KR} kr, magihistorie ${PRICE_PERSONAL_STORY_KR} kr) kommer snart.`
-                  : freeLeft === 0
-                  ? 'Dere har brukt ukas gratis historier. Nye kommer på mandag.'
-                  : freeLeft >= FREE_STORIES_PER_WEEK
-                    ? `Ukas gratis historier er klare: ${storyCount(FREE_STORIES_PER_WEEK)} eller ${storyCount(1, true)}.`
-                    : `Dere har ${storyCount(freeLeft)} igjen gratis denne uka.`}
-                {' '}
-                <button
-                  type="button"
-                  onClick={onOpenPlan}
-                  className="underline decoration-dotted underline-offset-4 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
-                >
-                  Se {PLAN_NAMES.pro}
-                </button>
-              </p>
-            )}
-            {outOfFreeStories && (
+            {outOfWishes && (
               <p className="mt-3 text-center text-sm">
                 {wantsToBuy ? (
                   <span role="status" className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    Takk! Vi sier fra når du kan kjøpe historier.
+                    Takk! Vi sier fra når du kan kjøpe ønsker.
                   </span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => {
                       setWantsToBuy(true);
-                      logEvent('Kjøp ønsket', { type: 'enkelthistorie' });
+                      logEvent('Kjøp ønsket', { type: 'ønske' });
                     }}
                     className="rounded-full border-2 border-indigo-300 dark:border-indigo-600 px-4 py-2 font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors"
                   >
-                    Jeg vil kjøpe en historie til
+                    Jeg vil kjøpe flere ønsker
                   </button>
                 )}
               </p>
+            )}
+
+            {/* A guest gets one story; everything else comes with a login. */}
+            {!loggedIn && !guestDone && (
+              <LoginBenefits
+                title="Én historie uten innlogging – logg inn og få mer"
+                canLogIn={canLogIn}
+                className="mt-6"
+              />
             )}
 
             {/* What the story is made for. Changed on Min side, not here. */}

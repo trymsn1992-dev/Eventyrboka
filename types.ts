@@ -93,9 +93,12 @@ export interface SavedStory {
   // with — needed to write a new branch when re-reading picks the other option.
   premise?: string;
   seed?: number;
-  // A «Magihistorie» made on the free plan carries the server's ticket for
-  // it, so read-aloud and its drawing style keep working when it is re-read.
+  // Stories made as «Magihistorie» before wishes came carry the ticket they
+  // got then: it still gives them read-aloud.
   personalTicket?: string;
+  // Read-aloud has been paid for with a wish: the server's pass for it, so
+  // the story can be listened to again for free.
+  readAloudPass?: string;
 }
 
 export interface StoryState {
@@ -228,27 +231,36 @@ export function cleanCustomMetaphor(input: unknown): string | null {
 
 // Plans. In the database and the code they are "gratis" and "pro"; to the
 // user they are Askeladden and Prinsen.
-//  - Askeladden: free stories each week, then pay per story.
-//  - Prinsen: a weekly price, no commitment, everything included.
-// There are two kinds of story. To the user they are «Vanlig historie» and
-// «Magihistorie»; in the code the second one is "personal": your own moral, a
-// chosen drawing style and read-aloud. Each week Askeladden gets two of the
-// first kind or one of the second for free. Payment is not built yet — the
-// prices are shown, and Prinsen is given through a share link.
+//
+// Everything that costs something costs one wish («ønske»): a story, a new
+// hero drawn from a photo, a new moral of your own, and read-aloud of a
+// story. A hero or moral made once is free to use again.
+//  - No login: one plain story, once.
+//  - Askeladden: 2 wishes every week. An extra wish is 10 kr.
+//  - Prinsen: 20 kr a week, 8 wishes every week (3 + 5). An extra wish is 5 kr.
+// The week's wishes are reset on Monday; bought ones last until they are used.
 export type Plan = "gratis" | "pro";
 export const PLAN_NAMES: Record<Plan, string> = { gratis: "Askeladden", pro: "Prinsen" };
-export const STORY_NAME = "Vanlig historie";
-export const PERSONAL_STORY_NAME = "Magihistorie";
-// The names inside a sentence: "2 vanlige historier", "1 magihistorie".
-export const storyCount = (n: number, personal = false): string =>
-  personal
-    ? `${n} ${n === 1 ? "magihistorie" : "magihistorier"}`
-    : `${n} ${n === 1 ? "vanlig historie" : "vanlige historier"}`;
-// The week's free stories, counted in plain stories. A personal one uses all of them.
-export const FREE_STORIES_PER_WEEK = 2;
-export const PRICE_SIMPLE_STORY_KR = 10;
-export const PRICE_PERSONAL_STORY_KR = 20;
+export const WISHES_PER_WEEK: Record<Plan, number> = { gratis: 2, pro: 8 };
+// How Prinsen's 8 are presented: the free ones plus what the 20 kr gives.
+export const PRINSEN_FREE_WISHES = 3;
+export const PRINSEN_PAID_WISHES = WISHES_PER_WEEK.pro - PRINSEN_FREE_WISHES;
+export const WISH_PRICE_KR: Record<Plan, number> = { gratis: 10, pro: 5 };
 export const PRICE_PRINSEN_PER_WEEK_KR = 20;
+// The most wishes one payment can be for.
+export const MAX_WISHES_PER_PURCHASE = 10;
+// "1 ønske", "3 ønsker".
+export const wishCount = (n: number): string => `${n} ${n === 1 ? "ønske" : "ønsker"}`;
+
+// The wishes an account has right now.
+export interface Wishes {
+  // Left of this week's, and how many the week started with.
+  week: number;
+  weekTotal: number;
+  // Bought and not yet used.
+  bought: number;
+}
+export const wishTotal = (w: Wishes | null): number => (w ? w.week + w.bought : 0);
 
 export const AGE_GROUPS = [
   "Småbarn (1-3 år)",
