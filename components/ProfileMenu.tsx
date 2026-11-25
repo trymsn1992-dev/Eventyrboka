@@ -71,8 +71,8 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({
         aria-label={wishes ? `Min profil. Du har ${wishCount(total)}` : 'Min profil'}
         className={`inline-flex items-center gap-2 pl-3 pr-2.5 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
           open || profileActive
-            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-100'
-            : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700'
+            ? 'bg-indigo-100 text-indigo-800 dark:bg-white/20 dark:text-white'
+            : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-white/10 dark:text-gray-100 dark:hover:bg-white/20'
         }`}
       >
         <User className="w-4 h-4 shrink-0" aria-hidden="true" />

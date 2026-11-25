@@ -1036,11 +1036,13 @@ const App: React.FC = () => {
               <span className="underline font-semibold">gi tilbakemelding</span>
             </span>
           </a>
-          <header className="bg-white dark:bg-gray-900 shadow-sm py-2.5 px-4 sm:py-4 sm:px-6">
+          {/* In dark mode the header has the night blue of the logo, so the logo
+              sits in it without a box around it. */}
+          <header className="bg-white dark:bg-[#000c31] shadow-sm dark:shadow-none dark:border-b dark:border-indigo-950 py-2.5 px-4 sm:py-4 sm:px-6">
             <div className="max-w-7xl mx-auto flex justify-between items-center gap-2 sm:gap-3">
               <button
                 onClick={handleRestart}
-                className="flex shrink-0 items-center cursor-pointer bg-white dark:bg-[#000c31] rounded-xl px-2 py-1 dark:p-0 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-indigo-900"
+                className="flex shrink-0 items-center cursor-pointer bg-white dark:bg-transparent rounded-xl px-2 py-1 dark:p-0 overflow-hidden shadow-sm dark:shadow-none ring-1 ring-gray-200 dark:ring-0"
                 aria-label="Magiboka — til forsiden"
               >
                 {/* The dark logo carries its own night-blue background and padding. */}
